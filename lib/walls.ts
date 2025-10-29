@@ -31,9 +31,54 @@ export function createWall(
   }
 }
 
+// Crée un nouveau mur avec détection automatique de la pièce
+export function createWallInRoom(
+  start: Point,
+  end: Point,
+  floor: Floor,
+  thickness: number = WALL_THICKNESS.INTERIOR,
+  isLoadBearing: boolean = false
+): Wall | null {
+  const room = findRoomContainingSegment(start, end, floor)
+  if (!room) {
+    return null
+  }
+  
+  return {
+    id: uuidv4(),
+    segment: [start, end],
+    thickness,
+    roomId: room.id,
+    isLoadBearing
+  }
+}
+
 // Trouve la pièce qui contient un point
 export function findRoomContainingPoint(point: Point, floor: Floor): Room | null {
   return floor.rooms.find(room => isPointInPolygon(point, room.polygon)) || null
+}
+
+// Trouve la pièce qui contient un segment entier (les deux extrémités et des points intermédiaires)
+export function findRoomContainingSegment(start: Point, end: Point, floor: Floor): Room | null {
+  const room = findRoomContainingPoint(start, floor)
+  if (!room || !isPointInPolygon(end, room.polygon)) {
+    return null
+  }
+  
+  // Vérifier quelques points intermédiaires pour s'assurer que le segment ne sort pas de la pièce
+  const steps = 5
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps
+    const intermediate = {
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t
+    }
+    if (!isPointInPolygon(intermediate, room.polygon)) {
+      return null
+    }
+  }
+  
+  return room
 }
 
 // Vérifie si un point est dans un polygone (ray casting algorithm)
@@ -90,7 +135,7 @@ function direction(p1: Point, p2: Point, p3: Point): number {
 export function validateWallPlacement(
   wall: Wall,
   floor: Floor
-): { valid: boolean; message?: string } {
+): { valid: boolean; message?: string; roomId?: string } {
   // Vérifier la longueur minimale
   const length = Math.hypot(
     wall.segment[1].x - wall.segment[0].x,
@@ -101,24 +146,18 @@ export function validateWallPlacement(
     return { valid: false, message: "Le mur est trop court (minimum 0.5 unités)" }
   }
   
-  // Vérifier que le mur est dans une pièce si roomId est spécifié
-  if (wall.roomId) {
-    const room = floor.rooms.find(r => r.id === wall.roomId)
-    if (!room) {
-      return { valid: false, message: "Pièce introuvable" }
-    }
-    
-    const midPoint = {
-      x: (wall.segment[0].x + wall.segment[1].x) / 2,
-      y: (wall.segment[0].y + wall.segment[1].y) / 2
-    }
-    
-    if (!isPointInPolygon(midPoint, room.polygon)) {
-      return { valid: false, message: "Le mur doit être à l'intérieur de la pièce" }
-    }
+  // Vérifier que le segment entier est dans une pièce
+  const room = findRoomContainingSegment(wall.segment[0], wall.segment[1], floor)
+  if (!room) {
+    return { valid: false, message: "Le mur doit être entièrement à l'intérieur d'une pièce" }
   }
   
-  return { valid: true }
+  // Si un roomId est spécifié, vérifier qu'il correspond à la pièce détectée
+  if (wall.roomId && wall.roomId !== room.id) {
+    return { valid: false, message: "Le mur ne peut pas sortir de sa pièce d'origine" }
+  }
+  
+  return { valid: true, roomId: room.id }
 }
 
 // Trouve les points d'accrochage le long des murs existants

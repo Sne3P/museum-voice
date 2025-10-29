@@ -7,7 +7,7 @@ import { findWallSegmentForElement, isElementInRoom } from "@/lib/geometry"
 interface ContextMenuProps {
   x: number
   y: number
-  type: "background" | "room" | "door" | "verticalLink" | "artwork"
+  type: "background" | "room" | "door" | "verticalLink" | "artwork" | "wall"
   elementId?: string
   onClose: () => void
   state: EditorState
@@ -80,12 +80,16 @@ export function ContextMenu({
 
           const artworksToDelete = floor.artworks.filter((artwork) => isElementInRoom(artwork, room))
 
+          // Supprimer les murs intérieurs de la pièce
+          const wallsToDelete = floor.walls.filter((wall) => wall.roomId === room.id)
+
           return {
             ...floor,
             rooms: floor.rooms.filter((r) => r.id !== elementId),
             doors: floor.doors.filter((d) => !doorsToDelete.includes(d)),
             verticalLinks: floor.verticalLinks.filter((l) => !linksToDelete.includes(l)),
             artworks: floor.artworks.filter((a) => !artworksToDelete.includes(a)),
+            walls: floor.walls.filter((w) => !wallsToDelete.includes(w)),
           }
         } else if (type === "door") {
           return { ...floor, doors: floor.doors.filter((d) => d.id !== elementId) }
@@ -93,6 +97,8 @@ export function ContextMenu({
           return { ...floor, verticalLinks: floor.verticalLinks.filter((l) => l.id !== elementId) }
         } else if (type === "artwork") {
           return { ...floor, artworks: floor.artworks.filter((a) => a.id !== elementId) }
+        } else if (type === "wall") {
+          return { ...floor, walls: floor.walls.filter((w) => w.id !== elementId) }
         }
         return floor
       })

@@ -153,36 +153,55 @@ export function MuseumEditor() {
         }
       }
 
-      if (e.key === "Delete" && state.selectedElementId) {
+      if (e.key === "Delete" && (state.selectedElementId || state.selectedElements.length > 0)) {
         e.preventDefault()
         const newFloors = state.floors.map((floor) => {
           if (floor.id !== state.currentFloorId) return floor
 
-          return {
-            ...floor,
-            rooms:
-              state.selectedElementType === "room"
-                ? floor.rooms.filter((r) => r.id !== state.selectedElementId)
-                : floor.rooms,
-            artworks:
-              state.selectedElementType === "artwork"
-                ? floor.artworks.filter((a) => a.id !== state.selectedElementId)
-                : floor.artworks,
-            doors:
-              state.selectedElementType === "door"
-                ? floor.doors.filter((d) => d.id !== state.selectedElementId)
-                : floor.doors,
-            verticalLinks:
-              state.selectedElementType === "verticalLink"
-                ? floor.verticalLinks.filter((v) => v.id !== state.selectedElementId)
-                : floor.verticalLinks,
+          let updatedFloor = { ...floor }
+
+          // Gérer la sélection simple (ancien système)
+          if (state.selectedElementId) {
+            if (state.selectedElementType === "room") {
+              updatedFloor.rooms = floor.rooms.filter((r) => r.id !== state.selectedElementId)
+            } else if (state.selectedElementType === "artwork") {
+              updatedFloor.artworks = floor.artworks.filter((a) => a.id !== state.selectedElementId)
+            } else if (state.selectedElementType === "door") {
+              updatedFloor.doors = floor.doors.filter((d) => d.id !== state.selectedElementId)
+            } else if (state.selectedElementType === "verticalLink") {
+              updatedFloor.verticalLinks = floor.verticalLinks.filter((v) => v.id !== state.selectedElementId)
+            } else if (state.selectedElementType === "wall") {
+              updatedFloor.walls = floor.walls.filter((w) => w.id !== state.selectedElementId)
+            }
           }
+
+          // Gérer les sélections multiples (nouveau système)
+          if (state.selectedElements.length > 0) {
+            const elementsToDelete = state.selectedElements.filter(el => el.type !== "vertex")
+            
+            elementsToDelete.forEach(element => {
+              if (element.type === "room") {
+                updatedFloor.rooms = updatedFloor.rooms.filter((r) => r.id !== element.id)
+              } else if (element.type === "artwork") {
+                updatedFloor.artworks = updatedFloor.artworks.filter((a) => a.id !== element.id)
+              } else if (element.type === "door") {
+                updatedFloor.doors = updatedFloor.doors.filter((d) => d.id !== element.id)
+              } else if (element.type === "verticalLink") {
+                updatedFloor.verticalLinks = updatedFloor.verticalLinks.filter((v) => v.id !== element.id)
+              } else if (element.type === "wall") {
+                updatedFloor.walls = updatedFloor.walls.filter((w) => w.id !== element.id)
+              }
+            })
+          }
+
+          return updatedFloor
         })
 
         updateState({
           floors: newFloors,
           selectedElementId: null,
           selectedElementType: null,
+          selectedElements: [],
         })
       }
 

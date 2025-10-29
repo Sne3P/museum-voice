@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useRef, useCallback, useState, useEffect } from "react"
-import type { EditorState, Floor, Point, Room, Artwork, Door, VerticalLink, HoverInfo, DragInfo } from "@/lib/types"
+import type { EditorState, Floor, Point, Room, Artwork, Door, VerticalLink, HoverInfo, DragInfo, Wall, SelectionInfo } from "@/lib/types"
 import {
   snapToGrid,
   isPointInPolygon,
@@ -22,6 +22,14 @@ import {
   getArtworkResizeHandle,
   calculateBounds,
 } from "@/lib/geometry"
+import {
+  createWall,
+  createWallInRoom,
+  validateWallPlacement,
+  findWallSnapPoints,
+  findRoomContainingSegment,
+  WALL_THICKNESS,
+} from "@/lib/walls"
 import { 
   GRID_SIZE, 
   MAJOR_GRID_INTERVAL, 
@@ -37,6 +45,11 @@ import { useRenderOptimization, useThrottle } from "@/lib/hooks"
 import { useKeyboardShortcuts, getInteractionCursor, calculateSmoothZoom } from "@/lib/interactions"
 import { validateRoom, validateArtwork, validateDoor, validateVerticalLink } from "@/lib/validation"
 import { ContextMenu } from "./context-menu"
+
+// Fonction utilitaire pour vérifier si un élément est sélectionné
+const isElementSelected = (elementId: string, elementType: string, selectedElements: ReadonlyArray<SelectionInfo>) => {
+  return selectedElements.some(sel => sel.id === elementId && sel.type === elementType)
+}
 
 interface CanvasProps {
   state: EditorState
@@ -62,14 +75,15 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
   } | null>(null)
 
   const [dragStartState, setDragStartState] = useState<{
-    type: "vertex" | "room" | "door" | "verticalLink" | "artwork" // Added artwork
+    type: "vertex" | "room" | "door" | "verticalLink" | "artwork" | "wall"
     originalData: any
   } | null>(null)
 
   const [draggedVertex, setDraggedVertex] = useState<{ roomId: string; vertexIndex: number } | null>(null)
   const [draggedRoom, setDraggedRoom] = useState<{ roomId: string; startPos: Point; roomStartPos: Point } | null>(null)
+  const [draggedWall, setDraggedWall] = useState<{ wallId: string; startPos: Point; wallStartPos: Point } | null>(null)
   const [draggedElement, setDraggedElement] = useState<{
-    type: "door" | "verticalLink"
+    type: "door" | "verticalLink" | "wall"
     id: string
     endpoint: "start" | "end"
   } | null>(null)
@@ -93,7 +107,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
   } | null>(null)
 
   const [hoveredElement, setHoveredElement] = useState<{
-    type: "room" | "door" | "verticalLink" | "artwork" | "vertex" | "doorEndpoint" | "linkEndpoint" // Added artwork endpoint types
+    type: "room" | "door" | "verticalLink" | "artwork" | "wall" | "vertex" | "doorEndpoint" | "linkEndpoint" | "wallEndpoint"
     id: string
     vertexIndex?: number
     endpoint?: "start" | "end"
@@ -112,7 +126,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
-    type: "background" | "room" | "door" | "verticalLink" | "artwork" // Added artwork
+    type: "background" | "room" | "door" | "verticalLink" | "artwork" | "wall"
     elementId?: string
   } | null>(null)
 
@@ -249,7 +263,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
         })
       }
     },
-    [worldToScreen, hoveredElement, draggedRoom, draggedVertex, isValidPlacement, state.selectedTool],
+    [worldToScreen, hoveredElement, draggedRoom, draggedWall, draggedVertex, isValidPlacement, state.selectedTool],
   )
 
   const drawArtwork = useCallback(
@@ -614,6 +628,130 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
     [worldToScreen, state.zoom, state.selectedTool, draggedElement, hoveredElement, isValidPlacement],
   )
 
+  const drawWall = useCallback(
+    (ctx: CanvasRenderingContext2D, wall: Wall, isSelected: boolean, isHovered: boolean) => {
+      const start = worldToScreen(wall.segment[0].x * GRID_SIZE, wall.segment[0].y * GRID_SIZE)
+      const end = worldToScreen(wall.segment[1].x * GRID_SIZE, wall.segment[1].y * GRID_SIZE)
+
+      const isDraggingThis = draggedElement?.type === "wall" && draggedElement.id === wall.id
+      
+      const strokeColor =
+        isDraggingThis && !isValidPlacement
+          ? COLORS.wallInvalid || "rgb(239, 68, 68)"
+          : isSelected
+            ? COLORS.wallSelected || "rgb(139, 69, 19)"
+            : isHovered
+              ? COLORS.wallHovered || "rgb(160, 82, 45)"
+              : COLORS.wallDefault || "rgb(101, 67, 33)"
+
+      // Calcul de l'épaisseur du mur en pixels
+      const thicknessPixels = (wall.thickness || WALL_THICKNESS.INTERIOR) * GRID_SIZE * state.zoom
+
+      // Vecteur perpendiculaire pour l'épaisseur
+      const dx = end.x - start.x
+      const dy = end.y - start.y
+      const length = Math.hypot(dx, dy)
+      
+      if (length === 0) return
+
+      const perpX = (-dy / length) * (thicknessPixels / 2)
+      const perpY = (dx / length) * (thicknessPixels / 2)
+
+      // Dessiner le mur comme un rectangle épais
+      ctx.beginPath()
+      ctx.moveTo(start.x + perpX, start.y + perpY)
+      ctx.lineTo(end.x + perpX, end.y + perpY)
+      ctx.lineTo(end.x - perpX, end.y - perpY)
+      ctx.lineTo(start.x - perpX, start.y - perpY)
+      ctx.closePath()
+
+      // Remplissage du mur
+      ctx.fillStyle = strokeColor.replace('rgb', 'rgba').replace(')', ', 0.7)')
+      ctx.fill()
+
+      // Contour du mur
+      ctx.strokeStyle = strokeColor
+      ctx.lineWidth = isSelected ? 2 : isHovered ? 1.5 : 1
+      ctx.stroke()
+
+      // Points de contrôle aux extrémités si sélectionné ou survolé
+      const isStartHovered =
+        hoveredElement?.type === "wallEndpoint" && hoveredElement.id === wall.id && hoveredElement.endpoint === "start"
+      const isEndHovered =
+        hoveredElement?.type === "wallEndpoint" && hoveredElement.id === wall.id && hoveredElement.endpoint === "end"
+
+      if (
+        state.selectedTool === "select" ||
+        isSelected ||
+        isHovered ||
+        isDraggingThis ||
+        isStartHovered ||
+        isEndHovered
+      ) {
+        const endpointRadius = 8 * state.zoom
+
+        // Point de début
+        ctx.beginPath()
+        ctx.arc(start.x, start.y, isStartHovered ? endpointRadius * 1.3 : endpointRadius, 0, Math.PI * 2)
+        if (isStartHovered) {
+          ctx.shadowColor = strokeColor
+          ctx.shadowBlur = 15
+        }
+        ctx.fillStyle = strokeColor
+        ctx.fill()
+        ctx.shadowBlur = 0
+        ctx.strokeStyle = "white"
+        ctx.lineWidth = 2
+        ctx.stroke()
+
+        // Point de fin
+        ctx.beginPath()
+        ctx.arc(end.x, end.y, isEndHovered ? endpointRadius * 1.3 : endpointRadius, 0, Math.PI * 2)
+        if (isEndHovered) {
+          ctx.shadowColor = strokeColor
+          ctx.shadowBlur = 15
+        }
+        ctx.fillStyle = strokeColor
+        ctx.fill()
+        ctx.shadowBlur = 0
+        ctx.strokeStyle = "white"
+        ctx.lineWidth = 2
+        ctx.stroke()
+      }
+
+      // Affichage de l'épaisseur si sélectionné
+      if (isSelected) {
+        const midX = (start.x + end.x) / 2
+        const midY = (start.y + end.y) / 2
+        
+        const fontSize = Math.max(8, 8 * state.zoom)
+        ctx.font = `${fontSize}px system-ui, -apple-system, sans-serif`
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        
+        const thicknessText = `${Math.round((wall.thickness || WALL_THICKNESS.INTERIOR) * 100)}cm`
+        const textWidth = ctx.measureText(thicknessText).width
+        const padding = 3 * state.zoom
+        
+        // Fond pour le texte
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)"
+        ctx.beginPath()
+        ctx.roundRect(midX - textWidth/2 - padding, midY - fontSize/2 - padding/2, textWidth + padding*2, fontSize + padding, 2 * state.zoom)
+        ctx.fill()
+        
+        // Contour
+        ctx.strokeStyle = strokeColor
+        ctx.lineWidth = 1
+        ctx.stroke()
+        
+        // Texte
+        ctx.fillStyle = strokeColor
+        ctx.fillText(thicknessText, midX, midY)
+      }
+    },
+    [worldToScreen, state.zoom, state.selectedTool, draggedElement, hoveredElement, isValidPlacement],
+  )
+
   const validatePlacement = useCallback(
     (tool: string, point: Point, startPoint?: Point) => {
       if (tool === "room" && state.currentPolygon.length > 0) {
@@ -682,6 +820,23 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           setIsValidPlacement(wallSegmentSnap !== null)
           setCreationPreview(null)
         }
+      } else if (tool === "wall") {
+        if (startPoint && point) {
+          // Vérifier que le segment est entièrement dans une pièce
+          const room = findRoomContainingSegment(startPoint, point, currentFloor)
+          if (room) {
+            const tempWall = createWall(startPoint, point, WALL_THICKNESS.INTERIOR, room.id)
+            const validation = validateWallPlacement(tempWall, currentFloor)
+            setIsValidPlacement(validation.valid)
+            setCreationPreview({ start: startPoint, end: point, valid: validation.valid })
+          } else {
+            setIsValidPlacement(false)
+            setCreationPreview({ start: startPoint, end: point, valid: false })
+          }
+        } else {
+          setIsValidPlacement(true)
+          setCreationPreview(null)
+        }
       }
     },
     [state.currentPolygon, currentFloor, wallSegmentSnap],
@@ -701,7 +856,8 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
     drawGrid(ctx, width, height)
 
     currentFloor.rooms.forEach((room) => {
-      const isSelected = state.selectedElementId === room.id && state.selectedElementType === "room"
+      const isSelected = (state.selectedElementId === room.id && state.selectedElementType === "room") ||
+                        isElementSelected(room.id, "room", state.selectedElements)
       const isHovered = hoveredElement?.type === "room" && hoveredElement.id === room.id
       drawRoom(ctx, room, isSelected, isHovered)
     })
@@ -847,21 +1003,31 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
     }
 
     currentFloor.artworks.forEach((artwork) => {
-      const isSelected = state.selectedElementId === artwork.id && state.selectedElementType === "artwork"
+      const isSelected = (state.selectedElementId === artwork.id && state.selectedElementType === "artwork") ||
+                        isElementSelected(artwork.id, "artwork", state.selectedElements)
       const isHovered = hoveredElement?.type === "artwork" && hoveredElement.id === artwork.id
       drawArtwork(ctx, artwork, isSelected, isHovered)
     })
 
     currentFloor.doors.forEach((door) => {
-      const isSelected = state.selectedElementId === door.id && state.selectedElementType === "door"
+      const isSelected = (state.selectedElementId === door.id && state.selectedElementType === "door") ||
+                        isElementSelected(door.id, "door", state.selectedElements)
       const isHovered = hoveredElement?.type === "door" && hoveredElement.id === door.id
       drawDoor(ctx, door, isSelected, isHovered)
     })
 
     currentFloor.verticalLinks.forEach((link) => {
-      const isSelected = state.selectedElementId === link.id && state.selectedElementType === "verticalLink"
+      const isSelected = (state.selectedElementId === link.id && state.selectedElementType === "verticalLink") ||
+                        isElementSelected(link.id, "verticalLink", state.selectedElements)
       const isHovered = hoveredElement?.type === "verticalLink" && hoveredElement.id === link.id
       drawVerticalLink(ctx, link, isSelected, isHovered)
+    })
+
+    currentFloor.walls.forEach((wall) => {
+      const isSelected = (state.selectedElementId === wall.id && state.selectedElementType === "wall") ||
+                        isElementSelected(wall.id, "wall", state.selectedElements)
+      const isHovered = hoveredElement?.type === "wall" && hoveredElement.id === wall.id
+      drawWall(ctx, wall, isSelected, isHovered)
     })
 
     if (selectionBox) {
@@ -905,6 +1071,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
     drawVerticalLink,
     worldToScreen,
     draggedRoom,
+    draggedWall,
     draggedElement,
     draggedArtwork, // Add to dependencies
     resizingArtwork, // Add to dependencies
@@ -988,6 +1155,20 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               return artwork
             })
 
+            // Déplacer les murs intérieurs de la pièce avec la pièce
+            const updatedWalls = floor.walls.map((wall) => {
+              if (wall.roomId === room.id) {
+                return {
+                  ...wall,
+                  segment: [
+                    { x: wall.segment[0].x + deltaX, y: wall.segment[0].y + deltaY },
+                    { x: wall.segment[1].x + deltaX, y: wall.segment[1].y + deltaY }
+                  ] as [Point, Point]
+                }
+              }
+              return wall
+            })
+
             return {
               ...floor,
               rooms: floor.rooms.map((r) => {
@@ -997,11 +1178,51 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               doors: updatedDoors,
               verticalLinks: updatedLinks,
               artworks: updatedArtworks,
+              walls: updatedWalls,
             }
           })
 
           updateState({ floors: newFloors })
           setDraggedRoom({ ...draggedRoom, startPos: gridPos })
+        }
+        setHoveredPoint(gridPos)
+        return
+      }
+
+      if (draggedWall) {
+        const deltaX = gridPos.x - draggedWall.startPos.x
+        const deltaY = gridPos.y - draggedWall.startPos.y
+
+        const wall = currentFloor.walls.find((w) => w.id === draggedWall.wallId)
+        if (wall) {
+          const newSegment: [Point, Point] = [
+            { x: wall.segment[0].x + deltaX, y: wall.segment[0].y + deltaY },
+            { x: wall.segment[1].x + deltaX, y: wall.segment[1].y + deltaY }
+          ]
+
+          // Vérifier que le mur entier reste dans la même pièce
+          const originalRoom = currentFloor.rooms.find(r => r.id === wall.roomId)
+          if (originalRoom) {
+            const tempWall = { ...wall, segment: newSegment }
+            const validation = validateWallPlacement(tempWall, currentFloor)
+            const isStillInSameRoom = validation.roomId === wall.roomId
+            setIsValidPlacement(validation.valid && isStillInSameRoom)
+
+            if (validation.valid && isStillInSameRoom) {
+              const newFloors = state.floors.map((floor) => {
+                if (floor.id !== state.currentFloorId) return floor
+                return {
+                  ...floor,
+                  walls: floor.walls.map((w) => {
+                    if (w.id !== wall.id) return w
+                    return { ...w, segment: newSegment }
+                  }),
+                }
+              })
+              updateState({ floors: newFloors })
+            }
+          }
+          setDraggedWall({ ...draggedWall, startPos: gridPos })
         }
         setHoveredPoint(gridPos)
         return
@@ -1125,7 +1346,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
                 return { ...door, segment: newSegment, width }
               }),
             }
-          } else {
+          } else if (draggedElement.type === "verticalLink") {
             return {
               ...floor,
               verticalLinks: floor.verticalLinks.map((link) => {
@@ -1148,7 +1369,26 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
                 return { ...link, segment: newSegment, width }
               }),
             }
+          } else if (draggedElement.type === "wall") {
+            return {
+              ...floor,
+              walls: floor.walls.map((wall) => {
+                if (wall.id !== draggedElement.id) return wall
+
+                const newSegment: [Point, Point] =
+                  draggedElement.endpoint === "start" ? [gridPos, wall.segment[1]] : [wall.segment[0], gridPos]
+
+                // Create temporary wall for validation
+                const tempWall = { ...wall, segment: newSegment }
+                const validation = validateWallPlacement(tempWall, floor)
+                setIsValidPlacement(validation.valid)
+
+                return tempWall
+              }),
+            }
           }
+
+          return floor
         })
 
         updateState({ floors: newFloors })
@@ -1285,6 +1525,33 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           }
         }
 
+        if (!foundHover) {
+          for (const wall of currentFloor.walls) {
+            const startScreen = worldToScreen(wall.segment[0].x * GRID_SIZE, wall.segment[0].y * GRID_SIZE)
+            const endScreen = worldToScreen(wall.segment[1].x * GRID_SIZE, wall.segment[1].y * GRID_SIZE)
+
+            const canvas = canvasRef.current
+            if (!canvas) continue
+            const rect = canvas.getBoundingClientRect()
+            const mouseScreenX = e.clientX - rect.left
+            const mouseScreenY = e.clientY - rect.top
+
+            const distToStart = Math.hypot(mouseScreenX - startScreen.x, mouseScreenY - startScreen.y)
+            const distToEnd = Math.hypot(mouseScreenX - endScreen.x, mouseScreenY - endScreen.y)
+
+            if (distToStart < 25) {
+              setHoveredElement({ type: "wallEndpoint", id: wall.id, endpoint: "start" })
+              foundHover = true
+              break
+            }
+            if (distToEnd < 25) {
+              setHoveredElement({ type: "wallEndpoint", id: wall.id, endpoint: "end" })
+              foundHover = true
+              break
+            }
+          }
+        }
+
         // Priority 2: Check room vertices
         if (!foundHover) {
           for (const room of currentFloor.rooms) {
@@ -1394,7 +1661,37 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           }
         }
 
-        // Priority 6: Check rooms (body)
+        // Priority 6: Check walls (body)
+        if (!foundHover) {
+          for (const wall of currentFloor.walls) {
+            const startScreen = worldToScreen(wall.segment[0].x * GRID_SIZE, wall.segment[0].y * GRID_SIZE)
+            const endScreen = worldToScreen(wall.segment[1].x * GRID_SIZE, wall.segment[1].y * GRID_SIZE)
+
+            const canvas = canvasRef.current
+            if (!canvas) continue
+            const rect = canvas.getBoundingClientRect()
+            const mouseScreenX = e.clientX - rect.left
+            const mouseScreenY = e.clientY - rect.top
+
+            // Calculer la distance à la ligne + épaisseur du mur
+            const thicknessPixels = (wall.thickness || 0.15) * GRID_SIZE * state.zoom
+            const distToLine =
+              Math.abs(
+                (endScreen.y - startScreen.y) * mouseScreenX -
+                  (endScreen.x - startScreen.x) * mouseScreenY +
+                  endScreen.x * startScreen.y -
+                  endScreen.y * startScreen.x,
+              ) / Math.hypot(endScreen.y - startScreen.y, endScreen.x - startScreen.x)
+
+            if (distToLine < thicknessPixels / 2 + 5) {
+              setHoveredElement({ type: "wall", id: wall.id })
+              foundHover = true
+              break
+            }
+          }
+        }
+
+        // Priority 7: Check rooms (body)
         if (!foundHover) {
           for (const room of currentFloor.rooms) {
             if (isPointInPolygon(gridPos, room.polygon)) {
@@ -1416,6 +1713,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
       state,
       currentFloor,
       draggedRoom,
+      draggedWall,
       draggedElement,
       draggedVertex,
       draggedArtwork, // Add to dependencies
@@ -1528,6 +1826,20 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           return
         }
 
+        if (hoveredElement?.type === "wallEndpoint") {
+          const wall = currentFloor.walls.find((w) => w.id === hoveredElement.id)
+          if (wall) {
+            setDragStartState({ type: "wall", originalData: { ...wall } })
+            setDraggedElement({
+              type: "wall",
+              id: wall.id,
+              endpoint: hoveredElement.endpoint!,
+            })
+            setIsValidPlacement(true)
+          }
+          return
+        }
+
         if (hoveredElement?.type === "vertex") {
           const room = currentFloor.rooms.find((r) => r.id === hoveredElement.id)
           if (room) {
@@ -1550,6 +1862,21 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
 
         if (hoveredElement?.type === "verticalLink") {
           updateState({ selectedElementId: hoveredElement.id, selectedElementType: "verticalLink" })
+          return
+        }
+
+        if (hoveredElement?.type === "wall") {
+          const wall = currentFloor.walls.find((w) => w.id === hoveredElement.id)
+          if (wall) {
+            setDragStartState({ type: "wall", originalData: { ...wall } })
+            setDraggedWall({
+              wallId: wall.id,
+              startPos: gridPos,
+              wallStartPos: wall.segment[0],
+            })
+            setIsValidPlacement(true)
+            updateState({ selectedElementId: wall.id, selectedElementType: "wall" })
+          }
           return
         }
 
@@ -1620,6 +1947,12 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
         }
         return
       }
+
+      if (state.selectedTool === "wall") {
+        setDrawStartPoint(gridPos)
+        setIsDragging(true)
+        return
+      }
     },
     [state, currentFloor, hoveredElement, wallSegmentSnap, screenToWorld, worldToScreen, updateState],
   )
@@ -1639,7 +1972,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
 
         const selectedElements: Array<{
           id: string
-          type: "room" | "artwork" | "door" | "verticalLink" | "vertex"
+          type: "room" | "artwork" | "door" | "verticalLink" | "wall" | "vertex"
           vertexIndex?: number
           roomId?: string
         }> = []
@@ -1687,7 +2020,82 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           }
         })
 
-        updateState({ selectedElements })
+        currentFloor.walls.forEach((wall) => {
+          // Vérifier si les deux extrémités du mur sont dans la sélection
+          const startInSelection = wall.segment[0].x >= minX && wall.segment[0].x <= maxX && 
+                                  wall.segment[0].y >= minY && wall.segment[0].y <= maxY
+          const endInSelection = wall.segment[1].x >= minX && wall.segment[1].x <= maxX && 
+                                wall.segment[1].y >= minY && wall.segment[1].y <= maxY
+          
+          if (startInSelection && endInSelection) {
+            // Tout le mur est sélectionné
+            selectedElements.push({ id: wall.id, type: "wall" })
+          } else {
+            // Ajouter les points individuels si seulement partiellement sélectionné
+            if (startInSelection) {
+              selectedElements.push({ id: wall.id, type: "vertex", vertexIndex: 0, roomId: wall.id })
+            }
+            if (endInSelection) {
+              selectedElements.push({ id: wall.id, type: "vertex", vertexIndex: 1, roomId: wall.id })
+            }
+          }
+        })
+
+        // Logique intelligente : si tous les points d'un élément sont sélectionnés, sélectionner l'élément complet
+        const processIntelligentSelection = (elements: typeof selectedElements) => {
+          const elementGroups = new Map<string, { type: string; vertices: number[]; total: number }>()
+          
+          // Grouper les vertices par élément
+          elements.forEach(el => {
+            if (el.type === "vertex" && el.vertexIndex !== undefined) {
+              const key = el.roomId || el.id
+              if (!elementGroups.has(key)) {
+                // Déterminer le nombre total de vertices pour cet élément
+                let totalVertices = 0
+                if (el.roomId && el.roomId !== el.id) {
+                  // C'est un vertex de room
+                  const room = currentFloor.rooms.find(r => r.id === el.roomId)
+                  totalVertices = room ? room.polygon.length : 0
+                } else {
+                  // C'est un vertex de mur (2 points)
+                  totalVertices = 2
+                }
+                
+                elementGroups.set(key, { 
+                  type: el.roomId && el.roomId !== el.id ? "room" : "wall", 
+                  vertices: [], 
+                  total: totalVertices 
+                })
+              }
+              elementGroups.get(key)!.vertices.push(el.vertexIndex)
+            }
+          })
+          
+          // Remplacer les vertices par l'élément complet si tous sont sélectionnés
+          const finalElements = elements.filter(el => !(el.type === "vertex"))
+          
+          elementGroups.forEach((group, elementId) => {
+            if (group.vertices.length === group.total) {
+              // Tous les vertices sont sélectionnés, ajouter l'élément complet
+              finalElements.push({ id: elementId, type: group.type as any })
+            } else {
+              // Garder seulement les vertices sélectionnés
+              group.vertices.forEach(vertexIndex => {
+                finalElements.push({ 
+                  id: elementId, 
+                  type: "vertex" as any, 
+                  vertexIndex, 
+                  roomId: group.type === "room" ? elementId : elementId 
+                })
+              })
+            }
+          })
+          
+          return finalElements
+        }
+
+        const intelligentSelection = processIntelligentSelection(selectedElements)
+        updateState({ selectedElements: intelligentSelection })
         setSelectionBox(null)
         return
       }
@@ -1778,6 +2186,27 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
         return
       }
 
+      if (draggedWall) {
+        if (!isValidPlacement && dragStartState?.type === "wall") {
+          const originalData = dragStartState.originalData
+          const newFloors = state.floors.map((floor) => {
+            if (floor.id !== state.currentFloorId) return floor
+            return {
+              ...floor,
+              walls: floor.walls.map((wall) => {
+                if (wall.id === originalData.id) return originalData
+                return wall
+              }),
+            }
+          })
+          updateState({ floors: newFloors })
+        }
+        setDraggedWall(null)
+        setDragStartState(null)
+        setIsValidPlacement(true)
+        return
+      }
+
       if (draggedElement) {
         if (!isValidPlacement && dragStartState) {
           const originalData = dragStartState.originalData
@@ -1798,6 +2227,14 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
                 verticalLinks: floor.verticalLinks.map((link) => {
                   if (link.id === originalData.id) return originalData
                   return link
+                }),
+              }
+            } else if (dragStartState.type === "wall") {
+              return {
+                ...floor,
+                walls: floor.walls.map((wall) => {
+                  if (wall.id === originalData.id) return originalData
+                  return wall
                 }),
               }
             }
@@ -1942,6 +2379,16 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
         )
 
         updateState({ floors: newFloors })
+      } else if (state.selectedTool === "wall" && drawStartPoint && hoveredPoint && isValidPlacement) {
+        const newWall = createWallInRoom(drawStartPoint, hoveredPoint, currentFloor)
+        
+        if (newWall) {
+          const newFloors = state.floors.map((floor) =>
+            floor.id === state.currentFloorId ? { ...floor, walls: [...floor.walls, newWall] } : floor,
+          )
+
+          updateState({ floors: newFloors })
+        }
       }
 
       setIsDragging(false)
@@ -1959,6 +2406,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
       creationPreview,
       draggedVertex,
       draggedRoom,
+      draggedWall,
       draggedElement,
       draggedArtwork, // Add to dependencies
       resizingArtwork, // Add to dependencies

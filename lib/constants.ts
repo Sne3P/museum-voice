@@ -117,6 +117,12 @@ export const COLORS = {
   elevatorHovered: "#f87171", // danger.light
   elevatorInvalid: "#dc2626", // danger.default
 
+  // Walls - black for structural elements (consistent with app theme)
+  wallDefault: "#374151", // gray.700 - professional dark gray
+  wallSelected: "#1f2937", // gray.800 - darker when selected
+  wallHovered: "#4b5563", // gray.600 - lighter when hovered
+  wallInvalid: "#dc2626", // danger.default
+
   
   // Validation feedback
   valid: "rgba(34, 197, 94, 0.6)",
@@ -146,6 +152,9 @@ export const STROKE_WIDTHS = {
   linkDefault: 8,
   linkSelected: 11,
   linkHovered: 10,
+  wallDefault: 4, // Walls are thicker by nature
+  wallSelected: 6,
+  wallHovered: 5,
   selectionBox: 2,
 } as const
 
