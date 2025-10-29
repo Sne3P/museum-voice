@@ -81,6 +81,139 @@ export function findRoomContainingSegment(start: Point, end: Point, floor: Floor
   return room
 }
 
+// Trouve les éléments (portes, liens, escaliers) attachés à un mur intérieur
+export function findElementsAttachedToWall(
+  wall: Wall,
+  floor: Floor
+): Array<{ type: 'door' | 'verticalLink'; id: string; element: any }> {
+  const attachedElements: Array<{ type: 'door' | 'verticalLink'; id: string; element: any }> = []
+  const tolerance = 0.2 // Tolérance pour considérer qu'un élément est attaché au mur
+
+  // Vérifier les portes
+  floor.doors.forEach(door => {
+    const doorMidpoint = {
+      x: (door.segment[0].x + door.segment[1].x) / 2,
+      y: (door.segment[0].y + door.segment[1].y) / 2
+    }
+    
+    const distanceToWall = distancePointToSegment(doorMidpoint, wall.segment[0], wall.segment[1])
+    if (distanceToWall <= tolerance) {
+      attachedElements.push({ type: 'door', id: door.id, element: door })
+    }
+  })
+
+  // Vérifier les liens verticaux (escaliers, ascenseurs)
+  floor.verticalLinks.forEach(link => {
+    const linkMidpoint = {
+      x: (link.segment[0].x + link.segment[1].x) / 2,
+      y: (link.segment[0].y + link.segment[1].y) / 2
+    }
+    
+    const distanceToWall = distancePointToSegment(linkMidpoint, wall.segment[0], wall.segment[1])
+    if (distanceToWall <= tolerance) {
+      attachedElements.push({ type: 'verticalLink', id: link.id, element: link })
+    }
+  })
+
+  return attachedElements
+}
+
+// Fonction utilitaire pour calculer la distance d'un point à un segment
+function distancePointToSegment(point: Point, segmentStart: Point, segmentEnd: Point): number {
+  const dx = segmentEnd.x - segmentStart.x
+  const dy = segmentEnd.y - segmentStart.y
+  const lengthSquared = dx * dx + dy * dy
+
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - segmentStart.x, point.y - segmentStart.y)
+  }
+
+  const t = Math.max(0, Math.min(1, 
+    ((point.x - segmentStart.x) * dx + (point.y - segmentStart.y) * dy) / lengthSquared
+  ))
+
+  const projectionX = segmentStart.x + t * dx
+  const projectionY = segmentStart.y + t * dy
+
+  return Math.hypot(point.x - projectionX, point.y - projectionY)
+}
+
+// Trouve le point de snap le plus proche sur les murs de pièce
+export function findRoomWallSnapPoint(
+  point: Point,
+  floor: Floor,
+  snapDistance: number = 0.4
+): { snapPoint: Point; roomId: string; segmentIndex: number } | null {
+  let closestSnap: { snapPoint: Point; roomId: string; segmentIndex: number; distance: number } | null = null
+
+  floor.rooms.forEach(room => {
+    // D'abord vérifier la proximité directe aux vertices
+    room.polygon.forEach((vertex, index) => {
+      const distance = Math.hypot(point.x - vertex.x, point.y - vertex.y)
+      
+      if (distance <= snapDistance && (!closestSnap || distance < closestSnap.distance)) {
+        closestSnap = {
+          snapPoint: vertex,
+          roomId: room.id,
+          segmentIndex: index,
+          distance
+        }
+      }
+    })
+
+    // Ensuite vérifier les projections sur les segments (toute la longueur)
+    room.polygon.forEach((vertex, index) => {
+      const nextIndex = (index + 1) % room.polygon.length
+      const segmentStart = vertex
+      const segmentEnd = room.polygon[nextIndex]
+
+      // Projeter le point sur le segment
+      const dx = segmentEnd.x - segmentStart.x
+      const dy = segmentEnd.y - segmentStart.y
+      const lengthSquared = dx * dx + dy * dy
+
+      if (lengthSquared === 0) return // Segment de longueur nulle
+
+      const t = Math.max(0, Math.min(1, 
+        ((point.x - segmentStart.x) * dx + (point.y - segmentStart.y) * dy) / lengthSquared
+      ))
+
+      const projectedPoint = {
+        x: segmentStart.x + t * dx,
+        y: segmentStart.y + t * dy
+      }
+
+      const distance = Math.hypot(point.x - projectedPoint.x, point.y - projectedPoint.y)
+
+      // Si la projection n'est pas trop proche d'un vertex déjà détecté
+      const tooCloseToVertex = room.polygon.some(v => {
+        const vertexDist = Math.hypot(projectedPoint.x - v.x, projectedPoint.y - v.y)
+        return vertexDist < 0.05 // Très petite tolérance pour éviter doublons
+      })
+
+      if (!tooCloseToVertex && distance <= snapDistance && (!closestSnap || distance < closestSnap.distance)) {
+        closestSnap = {
+          snapPoint: projectedPoint,
+          roomId: room.id,
+          segmentIndex: index,
+          distance
+        }
+      }
+    })
+  })
+
+  if (closestSnap) {
+    const snap = closestSnap as { snapPoint: Point; roomId: string; segmentIndex: number; distance: number }
+    return {
+      snapPoint: snap.snapPoint,
+      roomId: snap.roomId,
+      segmentIndex: snap.segmentIndex
+    }
+  }
+  
+  return null
+}
+
 // Vérifie si un point est dans un polygone (ray casting algorithm)
 function isPointInPolygon(point: Point, polygon: readonly Point[]): boolean {
   if (polygon.length < 3) return false
@@ -282,4 +415,126 @@ function getRoomBounds(room: Room): { minX: number; minY: number; maxX: number; 
   })
   
   return { minX, minY, maxX, maxY }
+}
+
+// Met à jour les murs attachés à une pièce quand elle change de forme
+export function updateWallsAttachedToRoom(
+  oldRoom: Room, 
+  newRoom: Room, 
+  floor: Floor
+): { updatedWalls: Wall[], invalidWalls: string[] } {
+  const updatedWalls: Wall[] = []
+  const invalidWalls: string[] = []
+  
+  floor.walls.forEach(wall => {
+    if (wall.roomId !== oldRoom.id) {
+      updatedWalls.push(wall)
+      return
+    }
+    
+    // Vérifier si le mur était snappé sur l'ancien mur de pièce
+    const [startPoint, endPoint] = wall.segment
+    let newStartPoint = startPoint
+    let newEndPoint = endPoint
+    let wallMoved = false
+    
+    // Pour chaque point du mur, vérifier s'il était snappé sur un segment de l'ancienne pièce
+    const tolerance = 0.1
+    
+    // Vérifier le point de départ
+    oldRoom.polygon.forEach((vertex, index) => {
+      const nextIndex = (index + 1) % oldRoom.polygon.length
+      const oldSegmentStart = vertex
+      const oldSegmentEnd = oldRoom.polygon[nextIndex]
+      
+      const distance = distancePointToSegment(startPoint, oldSegmentStart, oldSegmentEnd)
+      if (distance <= tolerance) {
+        // Ce point était snappé sur ce segment - le projeter sur le nouveau segment correspondant
+        if (index < newRoom.polygon.length) {
+          const newSegmentStart = newRoom.polygon[index]
+          const newSegmentEnd = newRoom.polygon[(index + 1) % newRoom.polygon.length]
+          
+          // Calculer la position relative sur l'ancien segment
+          const oldDx = oldSegmentEnd.x - oldSegmentStart.x
+          const oldDy = oldSegmentEnd.y - oldSegmentStart.y
+          const oldLength = Math.hypot(oldDx, oldDy)
+          
+          if (oldLength > 0) {
+            const t = Math.max(0, Math.min(1, 
+              ((startPoint.x - oldSegmentStart.x) * oldDx + (startPoint.y - oldSegmentStart.y) * oldDy) / (oldLength * oldLength)
+            ))
+            
+            // Appliquer la même position relative sur le nouveau segment
+            const newDx = newSegmentEnd.x - newSegmentStart.x
+            const newDy = newSegmentEnd.y - newSegmentStart.y
+            
+            newStartPoint = {
+              x: newSegmentStart.x + t * newDx,
+              y: newSegmentStart.y + t * newDy
+            }
+            wallMoved = true
+          }
+        }
+      }
+    })
+    
+    // Vérifier le point de fin
+    oldRoom.polygon.forEach((vertex, index) => {
+      const nextIndex = (index + 1) % oldRoom.polygon.length
+      const oldSegmentStart = vertex
+      const oldSegmentEnd = oldRoom.polygon[nextIndex]
+      
+      const distance = distancePointToSegment(endPoint, oldSegmentStart, oldSegmentEnd)
+      if (distance <= tolerance) {
+        // Ce point était snappé sur ce segment
+        if (index < newRoom.polygon.length) {
+          const newSegmentStart = newRoom.polygon[index]
+          const newSegmentEnd = newRoom.polygon[(index + 1) % newRoom.polygon.length]
+          
+          const oldDx = oldSegmentEnd.x - oldSegmentStart.x
+          const oldDy = oldSegmentEnd.y - oldSegmentStart.y
+          const oldLength = Math.hypot(oldDx, oldDy)
+          
+          if (oldLength > 0) {
+            const t = Math.max(0, Math.min(1, 
+              ((endPoint.x - oldSegmentStart.x) * oldDx + (endPoint.y - oldSegmentStart.y) * oldDy) / (oldLength * oldLength)
+            ))
+            
+            const newDx = newSegmentEnd.x - newSegmentStart.x
+            const newDy = newSegmentEnd.y - newSegmentStart.y
+            
+            newEndPoint = {
+              x: newSegmentStart.x + t * newDx,
+              y: newSegmentStart.y + t * newDy
+            }
+            wallMoved = true
+          }
+        }
+      }
+    })
+    
+    // Créer le mur mis à jour
+    const updatedWall: Wall = {
+      ...wall,
+      segment: [newStartPoint, newEndPoint]
+    }
+    
+    // Vérifier si le mur mis à jour est toujours valide
+    const isStillInRoom = findRoomContainingSegment(newStartPoint, newEndPoint, { ...floor, rooms: [newRoom] })
+    const hasSnapPoints = wallMoved // Si le mur a bougé, c'est qu'il était snappé
+    
+    if (isStillInRoom || hasSnapPoints) {
+      // Validation complète
+      const validation = validateWallPlacement(updatedWall, { ...floor, rooms: [newRoom], walls: [] })
+      if (validation.valid) {
+        updatedWalls.push(updatedWall)
+      } else {
+        invalidWalls.push(wall.id)
+      }
+    } else {
+      invalidWalls.push(wall.id)
+    }
+  })
+  
+  return { updatedWalls, invalidWalls }
 }

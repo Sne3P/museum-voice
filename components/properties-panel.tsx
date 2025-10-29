@@ -5,10 +5,11 @@ import type { EditorState, Floor } from "@/lib/types"
 interface PropertiesPanelProps {
   state: EditorState
   updateState: (updates: Partial<EditorState>) => void
+  saveToHistory: (newState: EditorState, actionDescription?: string) => void
   currentFloor: Floor
 }
 
-export function PropertiesPanel({ state, updateState, currentFloor }: PropertiesPanelProps) {
+export function PropertiesPanel({ state, updateState, saveToHistory, currentFloor }: PropertiesPanelProps) {
   const element =
     state.selectedElementType === "room"
       ? currentFloor.rooms.find((r) => r.id === state.selectedElementId)
@@ -55,7 +56,15 @@ export function PropertiesPanel({ state, updateState, currentFloor }: Properties
       }
     })
 
-    updateState({ floors: newFloors })
+    const newState = { floors: newFloors }
+    updateState(newState)
+    
+    // Sauvegarder dans l'historique
+    const elementTypeName = state.selectedElementType === "room" ? "pièce" :
+                           state.selectedElementType === "artwork" ? "œuvre d'art" :
+                           state.selectedElementType === "door" ? "porte" :
+                           state.selectedElementType === "wall" ? "mur" : "élément"
+    saveToHistory({ ...state, ...newState }, `Modifier propriétés ${elementTypeName}`)
   }
 
   return (

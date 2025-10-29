@@ -28,6 +28,9 @@ import {
   validateWallPlacement,
   findWallSnapPoints,
   findRoomContainingSegment,
+  findElementsAttachedToWall,
+  findRoomWallSnapPoint,
+  updateWallsAttachedToRoom,
   WALL_THICKNESS,
 } from "@/lib/walls"
 import { 
@@ -53,16 +56,44 @@ const isElementSelected = (elementId: string, elementType: string, selectedEleme
 
 interface CanvasProps {
   state: EditorState
-  updateState: (updates: Partial<EditorState>) => void
+  updateState: (updates: Partial<EditorState>, saveHistory?: boolean, actionDescription?: string) => void
+  updateStateTemporary?: (updates: Partial<EditorState>) => void
+  saveToHistory?: (newState: EditorState, actionDescription?: string) => void
   currentFloor: Floor
   onNavigateToFloor?: (floorId: string) => void
   onRecenter?: () => void
 }
 
-export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: CanvasProps) {
+export function Canvas({ 
+  state, 
+  updateState, 
+  updateStateTemporary, 
+  saveToHistory, 
+  currentFloor, 
+  onNavigateToFloor 
+}: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const animationFrameRef = useRef<number | null>(null)
+
+  // Helper pour mise à jour intelligente
+  const smartUpdate = useCallback((updates: Partial<EditorState>, actionType: 'temporary' | 'final', description?: string) => {
+    if (actionType === 'temporary' && updateStateTemporary) {
+      updateStateTemporary(updates)
+    } else if (actionType === 'final') {
+      updateState(updates, true, description)
+    } else {
+      updateState(updates)
+    }
+  }, [updateState, updateStateTemporary])
+
+  // Version simple pour actions finales avec description automatique
+  const finalizeAction = useCallback((updates: Partial<EditorState>, description: string) => {
+    smartUpdate(updates, 'final', description)
+  }, [smartUpdate])
+
+  // État pour capturer les actions en cours
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null)
 
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null)
   const [isValidPlacement, setIsValidPlacement] = useState(true)
@@ -822,17 +853,51 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
         }
       } else if (tool === "wall") {
         if (startPoint && point) {
-          // Vérifier que le segment est entièrement dans une pièce
-          const room = findRoomContainingSegment(startPoint, point, currentFloor)
-          if (room) {
-            const tempWall = createWall(startPoint, point, WALL_THICKNESS.INTERIOR, room.id)
-            const validation = validateWallPlacement(tempWall, currentFloor)
-            setIsValidPlacement(validation.valid)
-            setCreationPreview({ start: startPoint, end: point, valid: validation.valid })
+          // Essayer de snapper les points sur les murs de pièce
+          const startSnap = findRoomWallSnapPoint(startPoint, currentFloor)
+          const endSnap = findRoomWallSnapPoint(point, currentFloor)
+          
+          const actualStart = startSnap ? startSnap.snapPoint : startPoint
+          const actualEnd = endSnap ? endSnap.snapPoint : point
+
+          // Vérifier si le segment est valide pour création de mur intérieur
+          let isValid = false
+          let targetRoomId: string | undefined = undefined
+
+          // D'abord, identifier la pièce cible
+          if (startSnap) {
+            targetRoomId = startSnap.roomId
+          } else if (endSnap) {
+            targetRoomId = endSnap.roomId
           } else {
-            setIsValidPlacement(false)
-            setCreationPreview({ start: startPoint, end: point, valid: false })
+            // Aucun snap - vérifier si entièrement dans une pièce
+            const room = findRoomContainingSegment(actualStart, actualEnd, currentFloor)
+            if (room) {
+              targetRoomId = room.id
+            }
           }
+
+          if (targetRoomId) {
+            const targetRoom = currentFloor.rooms.find(r => r.id === targetRoomId)
+            if (targetRoom) {
+              // Vérifications strictes pour murs intérieurs :
+              // 1. Les points non-snappés doivent être à l'intérieur de la pièce
+              const startInRoom = Boolean(startSnap || isPointInPolygon(actualStart, targetRoom.polygon))
+              const endInRoom = Boolean(endSnap || isPointInPolygon(actualEnd, targetRoom.polygon))
+              
+              // 2. Le segment entier doit rester dans la pièce (points intermédiaires)
+              const segmentInRoom = findRoomContainingSegment(actualStart, actualEnd, currentFloor)?.id === targetRoomId
+              
+              // 3. Validation standard du placement de mur
+              const tempWall = createWall(actualStart, actualEnd, WALL_THICKNESS.INTERIOR, targetRoomId)
+              const validation = validateWallPlacement(tempWall, currentFloor)
+              
+              isValid = startInRoom && endInRoom && (segmentInRoom || Boolean(startSnap || endSnap)) && validation.valid
+            }
+          }
+
+          setIsValidPlacement(isValid)
+          setCreationPreview({ start: actualStart, end: actualEnd, valid: isValid })
         } else {
           setIsValidPlacement(true)
           setCreationPreview(null)
@@ -1002,6 +1067,49 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
       ctx.fill()
     }
 
+    // Preview pour les murs
+    if (creationPreview && state.selectedTool === "wall") {
+      const start = worldToScreen(creationPreview.start.x * GRID_SIZE, creationPreview.start.y * GRID_SIZE)
+      const end = worldToScreen(creationPreview.end.x * GRID_SIZE, creationPreview.end.y * GRID_SIZE)
+
+      // Dessiner le mur preview avec épaisseur
+      const dx = end.x - start.x
+      const dy = end.y - start.y
+      const length = Math.hypot(dx, dy)
+      
+      if (length > 0) {
+        const normalX = -dy / length
+        const normalY = dx / length
+        const thickness = WALL_THICKNESS.INTERIOR * GRID_SIZE * state.zoom / 2
+
+        const p1 = { x: start.x + normalX * thickness, y: start.y + normalY * thickness }
+        const p2 = { x: start.x - normalX * thickness, y: start.y - normalY * thickness }
+        const p3 = { x: end.x - normalX * thickness, y: end.y - normalY * thickness }
+        const p4 = { x: end.x + normalX * thickness, y: end.y + normalY * thickness }
+
+        ctx.beginPath()
+        ctx.moveTo(p1.x, p1.y)
+        ctx.lineTo(p2.x, p2.y)
+        ctx.lineTo(p3.x, p3.y)
+        ctx.lineTo(p4.x, p4.y)
+        ctx.closePath()
+        
+        ctx.fillStyle = creationPreview.valid ? "rgba(55, 65, 81, 0.4)" : "rgba(239, 68, 68, 0.4)"
+        ctx.fill()
+        
+        ctx.strokeStyle = creationPreview.valid ? "rgba(55, 65, 81, 0.8)" : "rgba(239, 68, 68, 0.8)"
+        ctx.lineWidth = 1
+        ctx.stroke()
+      }
+
+      // Points de départ et fin
+      ctx.beginPath()
+      ctx.arc(start.x, start.y, 4 * state.zoom, 0, Math.PI * 2)
+      ctx.arc(end.x, end.y, 4 * state.zoom, 0, Math.PI * 2)
+      ctx.fillStyle = creationPreview.valid ? "rgb(55, 65, 81)" : "rgb(239, 68, 68)"
+      ctx.fill()
+    }
+
     currentFloor.artworks.forEach((artwork) => {
       const isSelected = (state.selectedElementId === artwork.id && state.selectedElementType === "artwork") ||
                         isElementSelected(artwork.id, "artwork", state.selectedElements)
@@ -1155,7 +1263,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               return artwork
             })
 
-            // Déplacer les murs intérieurs de la pièce avec la pièce
+            // Pour le déplacement de forme entière : simple translation des murs intérieurs
             const updatedWalls = floor.walls.map((wall) => {
               if (wall.roomId === room.id) {
                 return {
@@ -1182,7 +1290,8 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
             }
           })
 
-          updateState({ floors: newFloors })
+          // Mise à jour temporaire pendant le drag de pièce
+          smartUpdate({ floors: newFloors }, 'temporary')
           setDraggedRoom({ ...draggedRoom, startPos: gridPos })
         }
         setHoveredPoint(gridPos)
@@ -1209,15 +1318,48 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
             setIsValidPlacement(validation.valid && isStillInSameRoom)
 
             if (validation.valid && isStillInSameRoom) {
+              // Trouver les éléments attachés à ce mur
+              const attachedElements = findElementsAttachedToWall(wall, currentFloor)
+              
               const newFloors = state.floors.map((floor) => {
                 if (floor.id !== state.currentFloorId) return floor
-                return {
+                
+                let updatedFloor = {
                   ...floor,
                   walls: floor.walls.map((w) => {
                     if (w.id !== wall.id) return w
                     return { ...w, segment: newSegment }
                   }),
                 }
+
+                // Déplacer les éléments attachés avec le mur
+                attachedElements.forEach(attached => {
+                  if (attached.type === 'door') {
+                    updatedFloor.doors = updatedFloor.doors.map(door => {
+                      if (door.id !== attached.id) return door
+                      return {
+                        ...door,
+                        segment: [
+                          { x: door.segment[0].x + deltaX, y: door.segment[0].y + deltaY },
+                          { x: door.segment[1].x + deltaX, y: door.segment[1].y + deltaY }
+                        ] as [Point, Point]
+                      }
+                    })
+                  } else if (attached.type === 'verticalLink') {
+                    updatedFloor.verticalLinks = updatedFloor.verticalLinks.map(link => {
+                      if (link.id !== attached.id) return link
+                      return {
+                        ...link,
+                        segment: [
+                          { x: link.segment[0].x + deltaX, y: link.segment[0].y + deltaY },
+                          { x: link.segment[1].x + deltaX, y: link.segment[1].y + deltaY }
+                        ] as [Point, Point]
+                      }
+                    })
+                  }
+                })
+
+                return updatedFloor
               })
               updateState({ floors: newFloors })
             }
@@ -1255,7 +1397,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
             }
           })
 
-          updateState({ floors: newFloors })
+          smartUpdate({ floors: newFloors }, 'temporary')
           setDraggedArtwork({ ...draggedArtwork, startPos: gridPos })
         }
         setHoveredPoint(gridPos)
@@ -1303,7 +1445,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           }
         })
 
-        updateState({ floors: newFloors })
+        smartUpdate({ floors: newFloors }, 'temporary')
         setHoveredPoint(gridPos)
         return
       }
@@ -1334,6 +1476,9 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
 
                 const width = Math.hypot(newSegment[1].x - newSegment[0].x, newSegment[1].y - newSegment[0].y)
 
+                // Vérifier la taille minimum (1 grid = 1 unité)
+                const isMinSizeValid = width >= 1.0
+
                 const occupied = isWallSegmentOccupied(
                   newSegment[0],
                   newSegment[1],
@@ -1341,7 +1486,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
                   floor.verticalLinks,
                   floor.artworks,
                 )
-                setIsValidPlacement(!occupied)
+                setIsValidPlacement(!occupied && isMinSizeValid)
 
                 return { ...door, segment: newSegment, width }
               }),
@@ -1357,6 +1502,9 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
 
                 const width = Math.hypot(newSegment[1].x - newSegment[0].x, newSegment[1].y - newSegment[0].y)
 
+                // Vérifier la taille minimum (1 grid = 1 unité)
+                const isMinSizeValid = width >= 1.0
+
                 const occupied = isWallSegmentOccupied(
                   newSegment[0],
                   newSegment[1],
@@ -1364,7 +1512,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
                   floor.verticalLinks.filter((l) => l.id !== link.id),
                   floor.artworks,
                 )
-                setIsValidPlacement(!occupied)
+                setIsValidPlacement(!occupied && isMinSizeValid)
 
                 return { ...link, segment: newSegment, width }
               }),
@@ -1405,7 +1553,17 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
         newPolygon[draggedVertex.vertexIndex] = gridPos
 
         const overlaps = currentFloor.rooms.some((r) => r.id !== room.id && polygonsIntersect(newPolygon, r.polygon))
-        setIsValidPlacement(!overlaps)
+        
+        // Créer la nouvelle pièce temporaire pour validation
+        const newRoom = { ...room, polygon: newPolygon }
+        
+        // Vérifier les contraintes des murs attachés à cette pièce (pour déformation de vertex)
+        const { updatedWalls, invalidWalls } = updateWallsAttachedToRoom(room, newRoom, currentFloor)
+        const hasInvalidWalls = invalidWalls.length > 0
+        
+        // La position est valide si pas de chevauchement ET tous les murs restent valides
+        const isValid = !overlaps && !hasInvalidWalls
+        setIsValidPlacement(isValid)
 
         const newFloors = state.floors.map((floor) => {
           if (floor.id !== state.currentFloorId) return floor
@@ -1443,6 +1601,12 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
             return link
           })
 
+          // Utiliser les murs mis à jour avec snap dynamique pour déformation de vertex
+          const finalWalls = floor.walls.map((wall) => {
+            const updatedWall = updatedWalls.find(w => w.id === wall.id)
+            return updatedWall || wall
+          })
+
           return {
             ...floor,
             rooms: floor.rooms.map((r) => {
@@ -1451,10 +1615,11 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
             }),
             doors: updatedDoors,
             verticalLinks: updatedLinks,
+            walls: finalWalls,
           }
         })
 
-        updateState({ floors: newFloors })
+        smartUpdate({ floors: newFloors }, 'temporary')
         setHoveredPoint(gridPos)
         return
       }
@@ -1742,6 +1907,12 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
 
       if (state.selectedTool === "select") {
         if (!hoveredElement) {
+          // Désélectionner tout quand on clique sur le grid vide
+          updateState({
+            selectedElementId: null,
+            selectedElementType: null,
+            selectedElements: [],
+          })
           setSelectionBox({
             start: worldPos,
             end: worldPos,
@@ -1889,6 +2060,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               startPos: gridPos,
               roomStartPos: room.polygon[0],
             })
+            setActionInProgress("Déplacer pièce")
             setIsValidPlacement(true)
             updateState({ selectedElementId: room.id, selectedElementType: "room" })
           }
@@ -1914,10 +2086,10 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
             )
 
-            updateState({
+            finalizeAction({
               floors: newFloors,
               currentPolygon: [],
-            })
+            }, "Créer pièce polygonale")
             return
           }
         }
@@ -2113,7 +2285,10 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               }),
             }
           })
-          updateState({ floors: newFloors })
+          finalizeAction({ floors: newFloors }, "Annuler déplacement œuvre")
+        } else if (isValidPlacement) {
+          // Finaliser le déplacement réussi
+          finalizeAction({ floors: state.floors }, "Déplacer œuvre d'art")
         }
         setDraggedArtwork(null)
         setDragStartState(null)
@@ -2134,7 +2309,10 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               }),
             }
           })
-          updateState({ floors: newFloors })
+          finalizeAction({ floors: newFloors }, "Annuler redimensionnement œuvre")
+        } else if (isValidPlacement) {
+          // Finaliser le redimensionnement réussi
+          finalizeAction({ floors: state.floors }, "Redimensionner œuvre d'art")
         }
         setResizingArtwork(null)
         setDragStartState(null)
@@ -2157,7 +2335,10 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               }),
             }
           })
-          updateState({ floors: newFloors })
+          finalizeAction({ floors: newFloors }, "Annuler déplacement vertex")
+        } else if (isValidPlacement) {
+          // Finaliser le déplacement de vertex réussi
+          finalizeAction({ floors: state.floors }, "Déplacer vertex de pièce")
         }
         setDraggedVertex(null)
         setDragStartState(null)
@@ -2178,10 +2359,14 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               }),
             }
           })
-          updateState({ floors: newFloors })
+          smartUpdate({ floors: newFloors }, 'final', "Annuler déplacement pièce")
+        } else if (isValidPlacement && actionInProgress) {
+          // Finaliser l'action réussie avec l'état actuel
+          smartUpdate({ floors: state.floors }, 'final', actionInProgress)
         }
         setDraggedRoom(null)
         setDragStartState(null)
+        setActionInProgress(null)
         setIsValidPlacement(true)
         return
       }
@@ -2199,7 +2384,10 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
               }),
             }
           })
-          updateState({ floors: newFloors })
+          finalizeAction({ floors: newFloors }, "Annuler déplacement mur")
+        } else if (isValidPlacement) {
+          // Finaliser le déplacement de mur réussi
+          finalizeAction({ floors: state.floors }, "Déplacer mur")
         }
         setDraggedWall(null)
         setDragStartState(null)
@@ -2240,7 +2428,16 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
             }
             return floor
           })
-          updateState({ floors: newFloors })
+          const actionName = dragStartState.type === "door" ? "Annuler déplacement porte" :
+                           dragStartState.type === "verticalLink" ? "Annuler déplacement liaison" :
+                           "Annuler déplacement mur"
+          finalizeAction({ floors: newFloors }, actionName)
+        } else if (isValidPlacement) {
+          // Finaliser le déplacement d'élément réussi
+          const actionName = draggedElement.type === "door" ? "Déplacer porte" :
+                           draggedElement.type === "verticalLink" ? "Déplacer liaison verticale" :
+                           "Déplacer extrémité de mur"
+          finalizeAction({ floors: state.floors }, actionName)
         }
         setDraggedElement(null)
         setDragStartState(null)
@@ -2280,7 +2477,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
         )
 
-        updateState({ floors: newFloors })
+        finalizeAction({ floors: newFloors }, "Créer pièce rectangulaire")
       } else if (state.selectedTool === "circle") {
         const radius = Math.max(Math.abs(gridPos.x - drawStartPoint.x), Math.abs(gridPos.y - drawStartPoint.y))
         const polygon = createCirclePolygon(drawStartPoint, radius)
@@ -2294,7 +2491,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
         )
 
-        updateState({ floors: newFloors })
+        smartUpdate({ floors: newFloors }, 'final', "Créer pièce circulaire")
       } else if (state.selectedTool === "triangle") {
         const polygon = createTrianglePolygon(drawStartPoint, gridPos)
 
@@ -2307,7 +2504,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
         )
 
-        updateState({ floors: newFloors })
+        smartUpdate({ floors: newFloors }, 'final', "Créer pièce triangulaire")
       } else if (state.selectedTool === "arc") {
         const polygon = createArcPolygon(drawStartPoint, gridPos)
 
@@ -2320,7 +2517,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
         )
 
-        updateState({ floors: newFloors })
+        smartUpdate({ floors: newFloors }, 'final', "Créer pièce arc")
       } else if (state.selectedTool === "artwork") {
         const minX = Math.min(drawStartPoint.x, gridPos.x)
         const minY = Math.min(drawStartPoint.y, gridPos.y)
@@ -2339,7 +2536,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           floor.id === state.currentFloorId ? { ...floor, artworks: [...floor.artworks, newArtwork] } : floor,
         )
 
-        updateState({ floors: newFloors })
+        finalizeAction({ floors: newFloors }, "Créer œuvre d'art")
       } else if (state.selectedTool === "door" && wallSegmentSnap && creationPreview) {
         const newDoor: Door = {
           id: `door-${Date.now()}`,
@@ -2356,7 +2553,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           floor.id === state.currentFloorId ? { ...floor, doors: [...floor.doors, newDoor] } : floor,
         )
 
-        updateState({ floors: newFloors })
+        finalizeAction({ floors: newFloors }, "Créer porte")
       } else if (
         (state.selectedTool === "stairs" || state.selectedTool === "elevator") &&
         wallSegmentSnap &&
@@ -2378,16 +2575,24 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           floor.id === state.currentFloorId ? { ...floor, verticalLinks: [...floor.verticalLinks, newLink] } : floor,
         )
 
-        updateState({ floors: newFloors })
+        const actionName = state.selectedTool === "stairs" ? "Créer escalier" : "Créer ascenseur"
+        finalizeAction({ floors: newFloors }, actionName)
       } else if (state.selectedTool === "wall" && drawStartPoint && hoveredPoint && isValidPlacement) {
-        const newWall = createWallInRoom(drawStartPoint, hoveredPoint, currentFloor)
+        // Appliquer le snap sur les murs de pièce pour la création finale
+        const startSnap = findRoomWallSnapPoint(drawStartPoint, currentFloor)
+        const endSnap = findRoomWallSnapPoint(hoveredPoint, currentFloor)
+        
+        const actualStart = startSnap ? startSnap.snapPoint : drawStartPoint
+        const actualEnd = endSnap ? endSnap.snapPoint : hoveredPoint
+        
+        const newWall = createWallInRoom(actualStart, actualEnd, currentFloor)
         
         if (newWall) {
           const newFloors = state.floors.map((floor) =>
             floor.id === state.currentFloorId ? { ...floor, walls: [...floor.walls, newWall] } : floor,
           )
 
-          updateState({ floors: newFloors })
+          finalizeAction({ floors: newFloors }, "Créer mur")
         }
       }
 
@@ -2537,6 +2742,7 @@ export function Canvas({ state, updateState, currentFloor, onNavigateToFloor }: 
           onClose={() => setContextMenu(null)}
           state={state}
           updateState={updateState}
+          saveToHistory={saveToHistory}
           currentFloor={currentFloor}
           onNavigateToFloor={onNavigateToFloor}
         />

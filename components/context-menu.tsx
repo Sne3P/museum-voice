@@ -12,6 +12,7 @@ interface ContextMenuProps {
   onClose: () => void
   state: EditorState
   updateState: (updates: Partial<EditorState>) => void
+  saveToHistory: (newState: EditorState, actionDescription?: string) => void
   currentFloor: Floor
   onNavigateToFloor?: (floorId: string) => void
 }
@@ -24,6 +25,7 @@ export function ContextMenu({
   onClose,
   state,
   updateState,
+  saveToHistory,
   currentFloor,
   onNavigateToFloor,
 }: ContextMenuProps) {
@@ -103,11 +105,21 @@ export function ContextMenu({
         return floor
       })
 
-      updateState({
+      const newState = {
         floors: newFloors,
         selectedElementId: null,
         selectedElementType: null,
-      })
+      }
+      
+      updateState(newState)
+      
+      // Sauvegarder dans l'historique
+      const elementTypeName = type === "room" ? "pièce" :
+                            type === "door" ? "porte" :
+                            type === "verticalLink" ? "liaison verticale" :
+                            type === "artwork" ? "œuvre d'art" :
+                            type === "wall" ? "mur" : "élément"
+      saveToHistory({ ...state, ...newState }, `Supprimer ${elementTypeName}`)
     }
     if (typeof onClose === "function") {
       onClose()
@@ -130,7 +142,9 @@ export function ContextMenu({
         }
       })
 
-      updateState({ floors: newFloors })
+      const newState = { floors: newFloors }
+      updateState(newState)
+      saveToHistory({ ...state, ...newState }, `Changer direction liaison verticale`)
     }
     if (typeof onClose === "function") {
       onClose()

@@ -42,21 +42,51 @@ export function MuseumEditor() {
 
   const currentFloor = state.floors.find((f) => f.id === state.currentFloorId)!
 
-  const updateState = useCallback((updates: Partial<EditorState>) => {
+  // Système d'historique amélioré
+  const saveToHistory = useCallback((newState: EditorState, actionDescription?: string) => {
     setState((prev) => {
-      const newState = { ...prev, ...updates }
-      if (updates.floors) {
-        const newHistory = prev.history.slice(0, prev.historyIndex + 1)
-        newHistory.push(newState)
-        return {
-          ...newState,
-          history: newHistory,
-          historyIndex: newHistory.length - 1,
+      // Ne pas sauvegarder si c'est identique au dernier état
+      if (prev.history.length > 0) {
+        const lastState = prev.history[prev.historyIndex]
+        if (JSON.stringify(lastState.floors) === JSON.stringify(newState.floors)) {
+          return { ...prev, ...newState }
         }
       }
-      return newState
+
+      const newHistory = prev.history.slice(0, prev.historyIndex + 1)
+      const stateToSave = {
+        ...newState,
+        actionDescription: actionDescription || 'Action'
+      }
+      newHistory.push(stateToSave)
+      
+      // Limiter l'historique à 50 actions pour éviter les problèmes de mémoire
+      if (newHistory.length > 50) {
+        newHistory.shift()
+      }
+      
+      return {
+        ...newState,
+        history: newHistory,
+        historyIndex: newHistory.length - 1,
+      }
     })
   }, [])
+
+  // Mise à jour temporaire sans historique (pour les drags en cours)
+  const updateStateTemporary = useCallback((updates: Partial<EditorState>) => {
+    setState((prev) => ({ ...prev, ...updates }))
+  }, [])
+
+  // Ancienne fonction pour compatibilité - maintenant ne sauvegarde QUE si explicitement demandé
+  const updateState = useCallback((updates: Partial<EditorState>, saveHistory = false, actionDescription?: string) => {
+    if (saveHistory && updates.floors) {
+      const newState = { ...state, ...updates }
+      saveToHistory(newState, actionDescription)
+    } else {
+      setState((prev) => ({ ...prev, ...updates }))
+    }
+  }, [state, saveToHistory])
 
   const addFloor = useCallback(() => {
     const newFloorNum = state.floors.length + 1
@@ -197,12 +227,21 @@ export function MuseumEditor() {
           return updatedFloor
         })
 
-        updateState({
+        const newState = {
           floors: newFloors,
           selectedElementId: null,
           selectedElementType: null,
           selectedElements: [],
-        })
+        }
+        
+        updateState(newState)
+        
+        // Sauvegarder dans l'historique
+        const deletedElementsCount = state.selectedElementId ? 1 : 
+                                   state.selectedElements.filter(el => el.type !== "vertex").length
+        const actionDescription = deletedElementsCount === 1 ? "Supprimer élément" : 
+                                `Supprimer ${deletedElementsCount} éléments`
+        saveToHistory({ ...state, ...newState }, actionDescription)
       }
 
       if (e.key === "Escape") {
@@ -238,6 +277,55 @@ export function MuseumEditor() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Boutons Undo/Redo */}
+          <div className="flex items-center gap-1 mr-2">
+            <button
+              onClick={() => {
+                if (state.historyIndex > 0) {
+                  setState(prev => ({
+                    ...prev.history[prev.historyIndex - 1],
+                    historyIndex: prev.historyIndex - 1,
+                  }))
+                }
+              }}
+              disabled={state.historyIndex <= 0}
+              className="rounded bg-muted px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Annuler (Ctrl+Z)"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+                />
+              </svg>
+            </button>
+            
+            <button
+              onClick={() => {
+                if (state.historyIndex < state.history.length - 1) {
+                  setState(prev => ({
+                    ...prev.history[prev.historyIndex + 1],
+                    historyIndex: prev.historyIndex + 1,
+                  }))
+                }
+              }}
+              disabled={state.historyIndex >= state.history.length - 1}
+              className="rounded bg-muted px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refaire (Ctrl+Y)"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"
+                />
+              </svg>
+            </button>
+          </div>
+
           <button
             onClick={recenterView}
             className="rounded bg-muted px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/80"
@@ -276,6 +364,8 @@ export function MuseumEditor() {
           <Canvas
             state={state}
             updateState={updateState}
+            updateStateTemporary={updateStateTemporary}
+            saveToHistory={saveToHistory}
             currentFloor={currentFloor}
             onNavigateToFloor={switchFloor}
             onRecenter={recenterView}
@@ -283,7 +373,7 @@ export function MuseumEditor() {
         </div>
 
         {state.selectedElementId && (
-          <PropertiesPanel state={state} updateState={updateState} currentFloor={currentFloor} />
+          <PropertiesPanel state={state} updateState={updateState} saveToHistory={saveToHistory} currentFloor={currentFloor} />
         )}
       </div>
 
