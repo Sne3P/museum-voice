@@ -219,3 +219,122 @@ export const VALIDATION = {
   maxLinkWidth: 15,
   roomOverlapTolerance: 0.01, // For floating point comparison
 } as const
+
+// === CONTRAINTES PROFESSIONNELLES STRICTES ===
+export const CONSTRAINTS = {
+  // Tailles minimales absolues
+  room: {
+    minArea: 2.0, // unités carrées minimum pour une pièce
+    minWidth: 1.0, // largeur minimum
+    minHeight: 1.0, // hauteur minimum
+    minPerimeter: 4.0, // périmètre minimum
+  },
+  
+  wall: {
+    minLength: 0.3, // longueur minimum d'un mur intérieur
+    maxLength: 50.0, // longueur maximum raisonnable
+    minDistanceFromEdge: 0.1, // distance minimum du bord de pièce
+  },
+  
+  artwork: {
+    minWidth: 0.2, // largeur minimum d'une œuvre
+    minHeight: 0.2, // hauteur minimum
+    maxWidth: 15.0, // largeur maximum
+    maxHeight: 15.0, // hauteur maximum
+    minDistanceFromWall: 0.1, // distance minimum du mur
+  },
+  
+  door: {
+    minWidth: 0.4, // largeur minimum d'une porte
+    maxWidth: 8.0, // largeur maximum
+    minClearance: 0.2, // espace libre minimum autour
+  },
+  
+  verticalLink: {
+    minWidth: 0.5, // largeur minimum escalier/ascenseur
+    maxWidth: 10.0, // largeur maximum
+    minClearance: 0.3, // espace libre minimum
+  },
+  
+  // Contraintes de chevauchement
+  overlap: {
+    tolerance: 1e-6, // tolérance numérique ultra-strict
+    bufferZone: 0.05, // zone tampon entre éléments
+  },
+  
+  // Contraintes de création
+  creation: {
+    minDragDistance: 0.3, // distance minimum pour valider une création
+    snapTolerance: 0.3, // tolérance de snap
+    gridSnapForce: true, // forcer le snap à la grille
+  },
+  
+  // Contraintes de déplacement
+  movement: {
+    maintainAspectRatio: false, // pour redimensionnement
+    preserveWallConnections: true, // préserver connexions lors déplacement
+    allowPartialOverlap: false, // interdire tout chevauchement partiel
+  }
+} as const
+
+// === FEEDBACK VISUEL PROFESSIONNEL ===
+export const VISUAL_FEEDBACK = {
+  colors: {
+    valid: "#22c55e", // vert pour actions valides
+    invalid: "#dc2626", // rouge pour actions invalides  
+    warning: "#f59e0b", // orange pour avertissements
+    creating: "#3b82f6", // bleu pour création en cours
+    moving: "#8b5cf6", // violet pour déplacement
+    resizing: "#06b6d4", // cyan pour redimensionnement
+  },
+  
+  opacity: {
+    preview: 0.6, // prévisualisation translucide
+    invalid: 0.3, // élément invalide très translucide
+    disabled: 0.4, // élément désactivé
+  },
+  
+  stroke: {
+    validThickness: 2,
+    invalidThickness: 3,
+    previewThickness: 2,
+    selectedThickness: 3,
+  },
+  
+  animation: {
+    errorShakeDuration: 200, // animation secousse erreur
+    highlightFadeDuration: 300, // surbrillance qui s'estompe
+    transitionDuration: 150, // transitions fluides
+  }
+} as const
+
+// === MESSAGES D'ERREUR PROFESSIONNELS ===
+export const ERROR_MESSAGES = {
+  room: {
+    tooSmall: "La pièce doit avoir une superficie minimum de {minArea} unités carrées",
+    tooNarrow: "La pièce doit avoir une largeur minimum de {minWidth} unités",
+    tooShort: "La pièce doit avoir une hauteur minimum de {minHeight} unités", 
+    overlapping: "Les pièces ne peuvent pas se chevaucher",
+    invalidShape: "La forme de la pièce n'est pas valide (auto-intersection)",
+  },
+  
+  wall: {
+    tooShort: "Le mur doit avoir une longueur minimum de {minLength} unités",
+    outsideRoom: "Le mur doit être entièrement à l'intérieur d'une pièce",
+    tooCloseToEdge: "Le mur est trop proche du bord de la pièce",
+    intersectsOther: "Le mur ne peut pas croiser un autre mur",
+  },
+  
+  artwork: {
+    tooSmall: "L'œuvre doit avoir une taille minimum de {minWidth}×{minHeight}",
+    tooBig: "L'œuvre dépasse la taille maximum autorisée",
+    outsideRoom: "L'œuvre doit être placée à l'intérieur d'une pièce",
+    tooCloseToWall: "L'œuvre est trop proche d'un mur",
+  },
+  
+  general: {
+    invalidOperation: "Opération non autorisée dans le contexte actuel",
+    constraintViolation: "Cette action viole les contraintes de l'éditeur",
+    geometryError: "Erreur de géométrie détectée",
+  }
+} as const

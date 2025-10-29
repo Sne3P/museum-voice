@@ -1,6 +1,7 @@
-import type { Point, Room, Artwork, Door, VerticalLink, ValidationResult, Bounds, Floor, Wall } from './types'
+import type { Point, Room, Artwork, Door, VerticalLink, ValidationResult, Floor, Wall } from './types'
 import { CONSTRAINTS, ERROR_MESSAGES, VISUAL_FEEDBACK } from './constants'
-import { calculatePolygonArea, getBoundingBox, polygonsIntersect } from './geometry'
+import { polygonsIntersect } from './geometry'
+import { findRoomContainingSegment, findRoomContainingPoint } from './walls'
 
 /**
  * SYSTÈME DE VALIDATION PROFESSIONNEL ULTRA-STRICT
@@ -157,6 +158,30 @@ export function validateRoomGeometry(room: Room, context?: ValidationContext): E
     }
   }
 }
+
+// === VALIDATION STRICTE PLACEMENT PIÈCE (pour canvas) ===
+export function validateRoomPlacementStrict(
+  roomToValidate: Room,
+  newPolygon: Point[],
+  floor: Floor
+): ValidationResult {
+  // Validation géométrique de base
+  const geometryResult = validateRoomGeometry(
+    { ...roomToValidate, polygon: newPolygon },
+    { floor, excludeIds: [roomToValidate.id] }
+  )
+  
+  if (!geometryResult.valid) {
+    return {
+      valid: false,
+      message: geometryResult.message,
+      suggestions: geometryResult.suggestions
+    }
+  }
+  
+  return { valid: true }
+}
+
 // === VALIDATION DES ŒUVRES D'ART (STRICT) ===
 export function validateArtworkPlacement(artwork: Artwork, context: ValidationContext): ExtendedValidationResult {
   const size = artwork.size || [1, 1]
@@ -228,7 +253,7 @@ export function validateArtworkPlacement(artwork: Artwork, context: ValidationCo
 }
 
 // === VALIDATION DES MURS INTÉRIEURS (STRICT) ===
-export function validateWallPlacementStrict(wall: Wall, context: ValidationContext): ExtendedValidationResult {
+export function validateWallPlacementStrict(wall: Wall, floor: Floor): ValidationResult {
   // 1. Vérifier longueur minimum
   const length = Math.hypot(
     wall.segment[1].x - wall.segment[0].x,
@@ -238,91 +263,115 @@ export function validateWallPlacementStrict(wall: Wall, context: ValidationConte
   if (length < CONSTRAINTS.wall.minLength) {
     return {
       valid: false,
-      severity: 'error',
-      code: 'WALL_TOO_SHORT',
       message: ERROR_MESSAGES.wall.tooShort.replace('{minLength}', CONSTRAINTS.wall.minLength.toString()),
-      suggestions: ['Allongez le mur', 'Repositionnez les extrémités'],
-      visualFeedback: {
-        color: VISUAL_FEEDBACK.colors.invalid,
-        opacity: 0.5,
-        strokeWidth: 4
-      }
+      suggestions: ['Allongez le mur', 'Repositionnez les extrémités']
     }
   }
   
   // 2. Vérifier que le segment entier est dans UNE SEULE pièce
-  const containingRoom = findRoomContainingSegment(wall.segment[0], wall.segment[1], context.floor)
+  const containingRoom = findRoomContainingSegment(wall.segment[0], wall.segment[1], floor)
   
   if (!containingRoom) {
     return {
       valid: false,
-      severity: 'error',
-      code: 'WALL_OUTSIDE_ROOM',
       message: ERROR_MESSAGES.wall.outsideRoom,
-      suggestions: ['Placez le mur entièrement dans une pièce', 'Ajustez les extrémités'],
-      visualFeedback: {
-        color: VISUAL_FEEDBACK.colors.invalid,
-        opacity: 0.3,
-        strokeWidth: 5,
-        highlight: true
-      }
+      suggestions: ['Placez le mur entièrement dans une pièce', 'Ajustez les extrémités']
     }
   }
   
   // 3. Vérifier intersections avec autres murs
-  const intersectingWalls = context.floor.walls.filter(otherWall => {
+  const intersectingWalls = floor.walls.filter(otherWall => {
     if (otherWall.id === wall.id) return false
-    if (context.excludeIds?.includes(otherWall.id)) return false
-    
     return segmentsIntersectStrict(wall.segment, otherWall.segment)
   })
   
   if (intersectingWalls.length > 0) {
     return {
       valid: false,
-      severity: 'error',
-      code: 'WALL_INTERSECTION',
       message: ERROR_MESSAGES.wall.intersectsOther,
-      affectedElements: intersectingWalls.map(w => w.id),
-      suggestions: ['Repositionnez le mur', 'Évitez les croisements'],
-      visualFeedback: {
-        color: VISUAL_FEEDBACK.colors.invalid,
-        opacity: 0.4,
-        strokeWidth: 4,
-        highlight: true
-      }
+      suggestions: ['Repositionnez le mur', 'Évitez les croisements']
     }
   }
   
+  return { valid: true }
+}
+
+// === FONCTIONS DE COMPATIBILITÉ (anciennes) ===
+export function validateRoom(room: Room): ValidationResult {
+  const result = validateRoomGeometry(room)
   return {
-    valid: true,
-    severity: 'info',
-    code: 'WALL_VALID',
-    message: 'Mur valide',
-    visualFeedback: {
-      color: VISUAL_FEEDBACK.colors.valid,
-      opacity: 1.0,
-      strokeWidth: 2
+    valid: result.valid,
+    message: result.message,
+    suggestions: result.suggestions
+  }
+}
+
+export function validateArtwork(artwork: Artwork, rooms: readonly Room[]): ValidationResult {
+  const mockFloor: Floor = {
+    id: 'mock',
+    name: 'mock',
+    rooms: [...rooms],
+    walls: [],
+    doors: [],
+    verticalLinks: [],
+    artworks: [],
+    escalators: [],
+    elevators: []
+  }
+  
+  const result = validateArtworkPlacement(artwork, { floor: mockFloor })
+  return {
+    valid: result.valid,
+    message: result.message,
+    suggestions: result.suggestions
+  }
+}
+
+export function validateDoor(door: Door): ValidationResult {
+  if (door.width < CONSTRAINTS.door.minWidth) {
+    return {
+      valid: false,
+      message: `Porte trop étroite (minimum: ${CONSTRAINTS.door.minWidth} unités)`,
+      suggestions: ['Augmentez la largeur de la porte']
     }
   }
+  
+  if (door.width > CONSTRAINTS.door.maxWidth) {
+    return {
+      valid: false,
+      message: `Porte trop large (maximum: ${CONSTRAINTS.door.maxWidth} unités)`,
+      suggestions: ['Réduisez la largeur de la porte']
+    }
+  }
+  
+  return { valid: true }
+}
+
+export function validateVerticalLink(link: VerticalLink): ValidationResult {
+  if (link.width < CONSTRAINTS.verticalLink.minWidth) {
+    return {
+      valid: false,
+      message: `${link.type} trop étroit (minimum: ${CONSTRAINTS.verticalLink.minWidth} unités)`,
+      suggestions: ['Augmentez la largeur']
+    }
+  }
+  
+  if (link.width > CONSTRAINTS.verticalLink.maxWidth) {
+    return {
+      valid: false,
+      message: `${link.type} trop large (maximum: ${CONSTRAINTS.verticalLink.maxWidth} unités)`,
+      suggestions: ['Réduisez la largeur']
+    }
+  }
+  
+  return { valid: true }
 }
 
 // === FONCTIONS UTILITAIRES STRICTES ===
 
 // Vérifie les intersections de polygones avec tolérance ultra-faible
 function doPolygonsIntersectStrict(poly1: readonly Point[], poly2: readonly Point[]): boolean {
-  // D'abord vérifier chevauchement de surface (pas juste contact)
-  if (polygonsIntersect(poly1, poly2)) {
-    // Vérifier si c'est juste un contact ponctuel ou une vraie intersection
-    const area1 = Math.abs(calculatePolygonArea(poly1))
-    const area2 = Math.abs(calculatePolygonArea(poly2))
-    
-    // Calculer l'aire d'intersection approximative
-    // Si significative par rapport aux pièces, c'est un vrai chevauchement
-    return true // Pour l'instant, tout contact = intersection
-  }
-  
-  return false
+  return polygonsIntersect(poly1, poly2)
 }
 
 // Vérifie intersection de segments avec tolérance numérique
@@ -341,7 +390,7 @@ function segmentsIntersectStrict(seg1: readonly [Point, Point], seg2: readonly [
          gamma > CONSTRAINTS.overlap.tolerance && gamma < (1 - CONSTRAINTS.overlap.tolerance)
 }
 
-// Calcule l'aire d'un polygone (local pour éviter import)
+// Calcule l'aire d'un polygone
 function calculatePolygonArea(polygon: readonly Point[]): number {
   if (polygon.length < 3) return 0
   
@@ -398,112 +447,46 @@ function hasPolygonSelfIntersection(polygon: readonly Point[]): boolean {
   
   return false
 }
-}
 
-function calculatePolygonArea(polygon: ReadonlyArray<Point>): number {
-  let area = 0
-  for (let i = 0; i < polygon.length; i++) {
-    const j = (i + 1) % polygon.length
-    area += polygon[i].x * polygon[j].y
-    area -= polygon[j].x * polygon[i].y
-  }
-  return Math.abs(area) / 2
-}
-
-function doPolygonsOverlap(poly1: ReadonlyArray<Point>, poly2: ReadonlyArray<Point>): boolean {
-  // Check if any edges intersect
-  for (let i = 0; i < poly1.length; i++) {
-    const a1 = poly1[i]
-    const a2 = poly1[(i + 1) % poly1.length]
-    
-    for (let j = 0; j < poly2.length; j++) {
-      const b1 = poly2[j]
-      const b2 = poly2[(j + 1) % poly2.length]
-      
-      if (segmentsIntersect(a1, a2, b1, b2)) {
-        return true
-      }
-    }
-  }
-  
-  // Check if one polygon is inside the other
-  if (isPointInPolygon(poly1[0], poly2) || isPointInPolygon(poly2[0], poly1)) {
-    return true
-  }
-  
-  return false
-}
-
-function isPointInPolygon(point: Point, polygon: ReadonlyArray<Point>): boolean {
-  let inside = false
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x, yi = polygon[i].y
-    const xj = polygon[j].x, yj = polygon[j].y
-    
-    if (((yi > point.y) !== (yj > point.y)) &&
-        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
-      inside = !inside
-    }
-  }
-  return inside
-}
-
-function getArtworkBounds(artwork: Artwork): Bounds {
-  const size = artwork.size || [1, 1]
+// Calcule les limites d'une œuvre d'art
+function getArtworkBounds(artwork: Artwork): { min: Point; max: Point } {
+  const [width, height] = artwork.size || [1, 1]
   return {
-    minX: artwork.xy[0],
-    minY: artwork.xy[1],
-    maxX: artwork.xy[0] + size[0],
-    maxY: artwork.xy[1] + size[1]
+    min: { x: artwork.xy[0], y: artwork.xy[1] },
+    max: { x: artwork.xy[0] + width, y: artwork.xy[1] + height }
   }
 }
 
-function isArtworkInRoom(bounds: Bounds, room: Room): boolean {
+// Vérifie si une œuvre est dans une pièce
+function isArtworkInRoom(artworkBounds: { min: Point; max: Point }, room: Room): boolean {
+  // Tous les coins de l'œuvre doivent être dans la pièce
   const corners = [
-    { x: bounds.minX, y: bounds.minY },
-    { x: bounds.maxX, y: bounds.minY },
-    { x: bounds.maxX, y: bounds.maxY },
-    { x: bounds.minX, y: bounds.maxY }
+    artworkBounds.min,
+    { x: artworkBounds.max.x, y: artworkBounds.min.y },
+    artworkBounds.max,
+    { x: artworkBounds.min.x, y: artworkBounds.max.y }
   ]
   
   return corners.every(corner => isPointInPolygon(corner, room.polygon))
 }
 
-function findWallForSegment(
-  segment: readonly [Point, Point],
-  rooms: ReadonlyArray<Room>
-): { room: Room; wallIndex: number } | null {
-  const midpoint = {
-    x: (segment[0].x + segment[1].x) / 2,
-    y: (segment[0].y + segment[1].y) / 2
-  }
+// Test point dans polygone (local)
+function isPointInPolygon(point: Point, polygon: readonly Point[]): boolean {
+  if (polygon.length < 3) return false
   
-  for (const room of rooms) {
-    for (let i = 0; i < room.polygon.length; i++) {
-      const start = room.polygon[i]
-      const end = room.polygon[(i + 1) % room.polygon.length]
-      
-      const distToWall = distancePointToSegment(midpoint, start, end)
-      if (distToWall < VALIDATION.roomOverlapTolerance) {
-        return { room, wallIndex: i }
-      }
+  let inside = false
+  const { x, y } = point
+  
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x
+    const yi = polygon[i].y
+    const xj = polygon[j].x
+    const yj = polygon[j].y
+    
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      inside = !inside
     }
   }
   
-  return null
-}
-
-function distancePointToSegment(point: Point, start: Point, end: Point): number {
-  const dx = end.x - start.x
-  const dy = end.y - start.y
-  
-  if (dx === 0 && dy === 0) {
-    return Math.hypot(point.x - start.x, point.y - start.y)
-  }
-  
-  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)))
-  const projX = start.x + t * dx
-  const projY = start.y + t * dy
-  
-  return Math.hypot(point.x - projX, point.y - projY)
+  return inside
 }

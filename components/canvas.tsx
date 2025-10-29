@@ -32,6 +32,9 @@ import {
   findRoomWallSnapPoint,
   updateWallsAttachedToRoom,
   WALL_THICKNESS,
+  projectPointOnWallSegment,
+  calculateElementSegmentOnWall,
+  findParentWall,
 } from "@/lib/walls"
 import { 
   GRID_SIZE, 
@@ -42,16 +45,48 @@ import {
   ENDPOINT_RADIUS,
   VERTEX_HIT_RADIUS,
   ENDPOINT_HIT_RADIUS,
-  LINE_HIT_THRESHOLD 
+  LINE_HIT_THRESHOLD,
+  CONSTRAINTS,
+  VISUAL_FEEDBACK
 } from "@/lib/constants"
 import { useRenderOptimization, useThrottle } from "@/lib/hooks"
 import { useKeyboardShortcuts, getInteractionCursor, calculateSmoothZoom } from "@/lib/interactions"
-import { validateRoom, validateArtwork, validateDoor, validateVerticalLink } from "@/lib/validation"
+import { validateRoom, validateArtwork, validateDoor, validateVerticalLink, validateRoomGeometry, validateArtworkPlacement } from "@/lib/validation-pro"
+import { quickCoherenceCheck } from "@/lib/global-coherence"
 import { ContextMenu } from "./context-menu"
 
 // Fonction utilitaire pour vérifier si un élément est sélectionné
 const isElementSelected = (elementId: string, elementType: string, selectedElements: ReadonlyArray<SelectionInfo>) => {
   return selectedElements.some(sel => sel.id === elementId && sel.type === elementType)
+}
+
+// Fonctions utilitaires pour feedback visuel unifié
+const getValidationColor = (isValid: boolean, opacity: number = 1): string => {
+  const baseColor = isValid ? VISUAL_FEEDBACK.colors.valid : VISUAL_FEEDBACK.colors.invalid
+  const rgbMatch = baseColor.match(/^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i)
+  if (rgbMatch) {
+    const r = parseInt(rgbMatch[1], 16)
+    const g = parseInt(rgbMatch[2], 16)
+    const b = parseInt(rgbMatch[3], 16)
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`
+  }
+  return baseColor
+}
+
+const getCreationPreviewColor = (isValid: boolean, opacity: number = VISUAL_FEEDBACK.opacity.preview): string => {
+  return getValidationColor(isValid, opacity)
+}
+
+const getActionColor = (action: 'creating' | 'moving' | 'resizing', opacity: number = 1): string => {
+  const baseColor = VISUAL_FEEDBACK.colors[action]
+  const rgbMatch = baseColor.match(/^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i)
+  if (rgbMatch) {
+    const r = parseInt(rgbMatch[1], 16)
+    const g = parseInt(rgbMatch[2], 16)
+    const b = parseInt(rgbMatch[3], 16)
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`
+  }
+  return baseColor
 }
 
 interface CanvasProps {
@@ -162,6 +197,10 @@ export function Canvas({
   } | null>(null)
 
   const [multiSelectMode, setMultiSelectMode] = useState(false)
+  const [coherenceStatus, setCoherenceStatus] = useState<{
+    isValid: boolean
+    issuesCount: number
+  }>({ isValid: true, issuesCount: 0 })
 
   const GRID_SIZE = 40
   const MAJOR_GRID_INTERVAL = 5
@@ -808,8 +847,21 @@ export function Canvas({
             testPolygon = createArcPolygon(startPoint, point)
           }
 
-          const overlaps = rectangleOverlapsRooms(testPolygon, currentFloor.rooms)
-          setIsValidPlacement(!overlaps)
+          // VALIDATION STRICTE ANTI-SUPERPOSITION
+          const tempRoom = {
+            id: 'temp-room',
+            name: 'Temporary Room',
+            polygon: testPolygon
+          }
+          
+          // Utiliser notre nouveau système de validation strict
+          const validationResult = validateRoomGeometry(tempRoom, {
+            floor: currentFloor,
+            strictMode: true,
+            allowWarnings: false
+          })
+          
+          setIsValidPlacement(validationResult.valid)
         }
       } else if (tool === "artwork") {
         if (startPoint && point) {
@@ -975,10 +1027,10 @@ export function Canvas({
         ctx.rect(topLeft.x, topLeft.y, width, height)
       }
 
-      ctx.fillStyle = isValidPlacement ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)"
+      ctx.fillStyle = getCreationPreviewColor(isValidPlacement, 0.2)
       ctx.fill()
-      ctx.strokeStyle = isValidPlacement ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"
-      ctx.lineWidth = 2
+      ctx.strokeStyle = getValidationColor(isValidPlacement)
+      ctx.lineWidth = VISUAL_FEEDBACK.stroke.previewThickness
       ctx.stroke()
     }
 
@@ -1023,13 +1075,13 @@ export function Canvas({
       }
 
       // Contour du polygone
-      ctx.strokeStyle = isValidPlacement ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"
-      ctx.lineWidth = 2
+      ctx.strokeStyle = getValidationColor(isValidPlacement)
+      ctx.lineWidth = VISUAL_FEEDBACK.stroke.previewThickness
       ctx.stroke()
 
       // Si le polygone est fermé, ajouter un remplissage léger
       if (isClosing) {
-        ctx.fillStyle = isValidPlacement ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)"
+        ctx.fillStyle = getCreationPreviewColor(isValidPlacement, 0.15)
         ctx.fill()
       }
 
@@ -1038,7 +1090,7 @@ export function Canvas({
         const screenPoint = worldToScreen(point.x * GRID_SIZE, point.y * GRID_SIZE)
         ctx.beginPath()
         ctx.arc(screenPoint.x, screenPoint.y, 3 * state.zoom, 0, Math.PI * 2)
-        ctx.fillStyle = "rgb(34, 197, 94)"
+        ctx.fillStyle = VISUAL_FEEDBACK.colors.valid
         ctx.fill()
         ctx.strokeStyle = "white"
         ctx.lineWidth = 1
@@ -1056,14 +1108,14 @@ export function Canvas({
       ctx.beginPath()
       ctx.moveTo(start.x, start.y)
       ctx.lineTo(end.x, end.y)
-      ctx.strokeStyle = creationPreview.valid ? "rgba(34, 197, 94, 0.6)" : "rgba(239, 68, 68, 0.6)"
+      ctx.strokeStyle = getCreationPreviewColor(creationPreview.valid, 0.6)
       ctx.lineWidth = 8 * state.zoom
       ctx.stroke()
 
       ctx.beginPath()
       ctx.arc(start.x, start.y, 4 * state.zoom, 0, Math.PI * 2)
       ctx.arc(end.x, end.y, 4 * state.zoom, 0, Math.PI * 2)
-      ctx.fillStyle = creationPreview.valid ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"
+      ctx.fillStyle = getValidationColor(creationPreview.valid)
       ctx.fill()
     }
 
@@ -1094,11 +1146,15 @@ export function Canvas({
         ctx.lineTo(p4.x, p4.y)
         ctx.closePath()
         
-        ctx.fillStyle = creationPreview.valid ? "rgba(55, 65, 81, 0.4)" : "rgba(239, 68, 68, 0.4)"
+        ctx.fillStyle = creationPreview.valid 
+          ? getCreationPreviewColor(true, 0.4)
+          : getCreationPreviewColor(false, 0.4)
         ctx.fill()
         
-        ctx.strokeStyle = creationPreview.valid ? "rgba(55, 65, 81, 0.8)" : "rgba(239, 68, 68, 0.8)"
-        ctx.lineWidth = 1
+        ctx.strokeStyle = creationPreview.valid 
+          ? getValidationColor(true, 0.8)
+          : getValidationColor(false, 0.8)
+        ctx.lineWidth = VISUAL_FEEDBACK.stroke.previewThickness
         ctx.stroke()
       }
 
@@ -1106,7 +1162,7 @@ export function Canvas({
       ctx.beginPath()
       ctx.arc(start.x, start.y, 4 * state.zoom, 0, Math.PI * 2)
       ctx.arc(end.x, end.y, 4 * state.zoom, 0, Math.PI * 2)
-      ctx.fillStyle = creationPreview.valid ? "rgb(55, 65, 81)" : "rgb(239, 68, 68)"
+      ctx.fillStyle = getValidationColor(creationPreview.valid)
       ctx.fill()
     }
 
@@ -1156,10 +1212,10 @@ export function Canvas({
       const hoverScreen = worldToScreen(hoveredPoint.x * GRID_SIZE, hoveredPoint.y * GRID_SIZE)
       ctx.beginPath()
       ctx.arc(hoverScreen.x, hoverScreen.y, 4, 0, Math.PI * 2)
-      ctx.fillStyle = isValidPlacement ? "rgba(34, 197, 94, 0.5)" : "rgba(239, 68, 68, 0.5)"
+      ctx.fillStyle = getCreationPreviewColor(isValidPlacement, 0.5)
       ctx.fill()
-      ctx.strokeStyle = isValidPlacement ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"
-      ctx.lineWidth = 2
+      ctx.strokeStyle = getValidationColor(isValidPlacement)
+      ctx.lineWidth = VISUAL_FEEDBACK.stroke.previewThickness
       ctx.stroke()
     }
   }, [
@@ -1471,13 +1527,50 @@ export function Canvas({
               doors: floor.doors.map((door) => {
                 if (door.id !== draggedElement.id) return door
 
+                // Mode glissement intelligent sur mur parent
+                const parentWall = findParentWall(door.segment, floor.walls)
+                
+                if (parentWall) {
+                  // Glissement le long du mur parent
+                  const projectedCenter = projectPointOnWallSegment(
+                    gridPos,
+                    parentWall.segment,
+                    door.width,
+                    CONSTRAINTS.door.minClearance
+                  )
+                  
+                  if (projectedCenter) {
+                    // Calculer le nouveau segment centré sur la projection
+                    const newSegment = calculateElementSegmentOnWall(
+                      projectedCenter,
+                      parentWall.segment,
+                      door.width
+                    )
+                    
+                    if (newSegment) {
+                      // Validation du placement
+                      const occupied = isWallSegmentOccupied(
+                        newSegment[0],
+                        newSegment[1],
+                        floor.doors.filter((d) => d.id !== door.id),
+                        floor.verticalLinks,
+                        floor.artworks,
+                      )
+                      setIsValidPlacement(!occupied)
+                      
+                      return { ...door, segment: newSegment }
+                    }
+                  }
+                }
+                
+                // Fallback: déplacement libre d'extrémité
                 const newSegment: [Point, Point] =
                   draggedElement.endpoint === "start" ? [gridPos, door.segment[1]] : [door.segment[0], gridPos]
 
                 const width = Math.hypot(newSegment[1].x - newSegment[0].x, newSegment[1].y - newSegment[0].y)
 
-                // Vérifier la taille minimum (1 grid = 1 unité)
-                const isMinSizeValid = width >= 1.0
+                // Vérifier la taille minimum
+                const isMinSizeValid = width >= CONSTRAINTS.door.minWidth
 
                 const occupied = isWallSegmentOccupied(
                   newSegment[0],
@@ -1497,13 +1590,50 @@ export function Canvas({
               verticalLinks: floor.verticalLinks.map((link) => {
                 if (link.id !== draggedElement.id) return link
 
+                // Mode glissement intelligent sur mur parent
+                const parentWall = findParentWall(link.segment, floor.walls)
+                
+                if (parentWall) {
+                  // Glissement le long du mur parent
+                  const projectedCenter = projectPointOnWallSegment(
+                    gridPos,
+                    parentWall.segment,
+                    link.width,
+                    CONSTRAINTS.verticalLink.minClearance
+                  )
+                  
+                  if (projectedCenter) {
+                    // Calculer le nouveau segment centré sur la projection
+                    const newSegment = calculateElementSegmentOnWall(
+                      projectedCenter,
+                      parentWall.segment,
+                      link.width
+                    )
+                    
+                    if (newSegment) {
+                      // Validation du placement
+                      const occupied = isWallSegmentOccupied(
+                        newSegment[0],
+                        newSegment[1],
+                        floor.doors,
+                        floor.verticalLinks.filter((l) => l.id !== link.id),
+                        floor.artworks,
+                      )
+                      setIsValidPlacement(!occupied)
+                      
+                      return { ...link, segment: newSegment }
+                    }
+                  }
+                }
+
+                // Fallback: déplacement libre d'extrémité
                 const newSegment: [Point, Point] =
                   draggedElement.endpoint === "start" ? [gridPos, link.segment[1]] : [link.segment[0], gridPos]
 
                 const width = Math.hypot(newSegment[1].x - newSegment[0].x, newSegment[1].y - newSegment[0].y)
 
-                // Vérifier la taille minimum (1 grid = 1 unité)
-                const isMinSizeValid = width >= 1.0
+                // Vérifier la taille minimum
+                const isMinSizeValid = width >= CONSTRAINTS.verticalLink.minWidth
 
                 const occupied = isWallSegmentOccupied(
                   newSegment[0],
@@ -2077,13 +2207,28 @@ export function Canvas({
           const distance = Math.hypot(gridPos.x - firstPoint.x, gridPos.y - firstPoint.y)
 
           if (distance < 0.3) {
-            const newRoom: Room = {
+            // Créer la pièce temporaire pour validation
+            const tempRoom: Room = {
               id: `room-${Date.now()}`,
               polygon: state.currentPolygon,
             }
 
+            // Validation stricte avec système professionnel
+            const validationResult = validateRoomGeometry(tempRoom, {
+              floor: currentFloor,
+              strictMode: true
+            })
+
+            // Si validation échoue, afficher l'erreur et ne pas créer
+            if (!validationResult.valid) {
+              console.warn("Création de pièce polygonale bloquée:", validationResult.message)
+              // TODO: Afficher feedback visuel d'erreur
+              return
+            }
+
+            // Si validation réussit, créer la pièce
             const newFloors = state.floors.map((floor) =>
-              floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
+              floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, tempRoom] } : floor,
             )
 
             finalizeAction({
@@ -2462,8 +2607,22 @@ export function Canvas({
       const worldPos = screenToWorld(e.clientX, e.clientY)
       const gridPos = snapToGrid(worldPos, GRID_SIZE)
 
+      // Vérification distance minimum de drag pour éviter création accidentelle
+      const dragDistance = Math.hypot(
+        gridPos.x - drawStartPoint.x,
+        gridPos.y - drawStartPoint.y
+      )
+      
+      if (dragDistance < CONSTRAINTS.creation.minDragDistance) {
+        console.warn("Distance de drag insuffisante pour créer une forme:", dragDistance)
+        setIsDragging(false)
+        setDrawStartPoint(null)
+        setCreationPreview(null)
+        return
+      }
+
       if (state.selectedTool === "rectangle") {
-        const newRoom: Room = {
+        const tempRoom: Room = {
           id: `room-${Date.now()}`,
           polygon: [
             drawStartPoint,
@@ -2473,8 +2632,24 @@ export function Canvas({
           ],
         }
 
+        // Validation stricte avec système professionnel
+        const validationResult = validateRoomGeometry(tempRoom, {
+          floor: currentFloor,
+          strictMode: true
+        })
+
+        // Si validation échoue, bloquer la création
+        if (!validationResult.valid) {
+          console.warn("Création de pièce rectangulaire bloquée:", validationResult.message)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
+
+        // Si validation réussit, créer la pièce
         const newFloors = state.floors.map((floor) =>
-          floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
+          floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, tempRoom] } : floor,
         )
 
         finalizeAction({ floors: newFloors }, "Créer pièce rectangulaire")
@@ -2482,39 +2657,87 @@ export function Canvas({
         const radius = Math.max(Math.abs(gridPos.x - drawStartPoint.x), Math.abs(gridPos.y - drawStartPoint.y))
         const polygon = createCirclePolygon(drawStartPoint, radius)
 
-        const newRoom: Room = {
+        const tempRoom: Room = {
           id: `room-${Date.now()}`,
           polygon,
         }
 
+        // Validation stricte avec système professionnel
+        const validationResult = validateRoomGeometry(tempRoom, {
+          floor: currentFloor,
+          strictMode: true
+        })
+
+        // Si validation échoue, bloquer la création
+        if (!validationResult.valid) {
+          console.warn("Création de pièce circulaire bloquée:", validationResult.message)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
+
+        // Si validation réussit, créer la pièce
         const newFloors = state.floors.map((floor) =>
-          floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
+          floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, tempRoom] } : floor,
         )
 
         smartUpdate({ floors: newFloors }, 'final', "Créer pièce circulaire")
       } else if (state.selectedTool === "triangle") {
         const polygon = createTrianglePolygon(drawStartPoint, gridPos)
 
-        const newRoom: Room = {
+        const tempRoom: Room = {
           id: `room-${Date.now()}`,
           polygon,
         }
 
+        // Validation stricte avec système professionnel
+        const validationResult = validateRoomGeometry(tempRoom, {
+          floor: currentFloor,
+          strictMode: true
+        })
+
+        // Si validation échoue, bloquer la création
+        if (!validationResult.valid) {
+          console.warn("Création de pièce triangulaire bloquée:", validationResult.message)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
+
+        // Si validation réussit, créer la pièce
         const newFloors = state.floors.map((floor) =>
-          floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
+          floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, tempRoom] } : floor,
         )
 
         smartUpdate({ floors: newFloors }, 'final', "Créer pièce triangulaire")
       } else if (state.selectedTool === "arc") {
         const polygon = createArcPolygon(drawStartPoint, gridPos)
 
-        const newRoom: Room = {
+        const tempRoom: Room = {
           id: `room-${Date.now()}`,
           polygon,
         }
 
+        // Validation stricte avec système professionnel
+        const validationResult = validateRoomGeometry(tempRoom, {
+          floor: currentFloor,
+          strictMode: true
+        })
+
+        // Si validation échoue, bloquer la création
+        if (!validationResult.valid) {
+          console.warn("Création de pièce arc bloquée:", validationResult.message)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
+
+        // Si validation réussit, créer la pièce
         const newFloors = state.floors.map((floor) =>
-          floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, newRoom] } : floor,
+          floor.id === state.currentFloorId ? { ...floor, rooms: [...floor.rooms, tempRoom] } : floor,
         )
 
         smartUpdate({ floors: newFloors }, 'final', "Créer pièce arc")
@@ -2524,7 +2747,19 @@ export function Canvas({
         const width = Math.abs(gridPos.x - drawStartPoint.x)
         const height = Math.abs(gridPos.y - drawStartPoint.y)
 
-        const newArtwork: Artwork = {
+        // Validation taille minimum œuvre d'art
+        if (width < CONSTRAINTS.artwork.minWidth || height < CONSTRAINTS.artwork.minHeight) {
+          console.warn("Œuvre d'art trop petite:", { width, height }, "< minimum:", { 
+            minWidth: CONSTRAINTS.artwork.minWidth, 
+            minHeight: CONSTRAINTS.artwork.minHeight 
+          })
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
+
+        const tempArtwork: Artwork = {
           id: `artwork-${Date.now()}`,
           xy: [minX, minY],
           size: [width, height],
@@ -2532,25 +2767,61 @@ export function Canvas({
           pdf_id: "",
         }
 
+        // Validation stricte placement œuvre d'art
+        const validationResult = validateArtworkPlacement(tempArtwork, {
+          floor: currentFloor,
+          strictMode: true
+        })
+
+        if (!validationResult.valid) {
+          console.warn("Placement œuvre d'art invalide:", validationResult.message)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
+
         const newFloors = state.floors.map((floor) =>
-          floor.id === state.currentFloorId ? { ...floor, artworks: [...floor.artworks, newArtwork] } : floor,
+          floor.id === state.currentFloorId ? { ...floor, artworks: [...floor.artworks, tempArtwork] } : floor,
         )
 
         finalizeAction({ floors: newFloors }, "Créer œuvre d'art")
       } else if (state.selectedTool === "door" && wallSegmentSnap && creationPreview) {
-        const newDoor: Door = {
+        const doorWidth = Math.hypot(
+          creationPreview.end.x - creationPreview.start.x,
+          creationPreview.end.y - creationPreview.start.y,
+        )
+
+        // Validation taille minimum porte
+        if (doorWidth < CONSTRAINTS.door.minWidth) {
+          console.warn("Porte trop petite:", doorWidth, "< minimum", CONSTRAINTS.door.minWidth)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
+
+        const tempDoor: Door = {
           id: `door-${Date.now()}`,
           room_a: "",
           room_b: "",
           segment: [creationPreview.start, creationPreview.end],
-          width: Math.hypot(
-            creationPreview.end.x - creationPreview.start.x,
-            creationPreview.end.y - creationPreview.start.y,
-          ),
+          width: doorWidth,
+        }
+
+        // Validation stricte porte
+        const validationResult = validateDoor(tempDoor)
+
+        if (!validationResult.valid) {
+          console.warn("Porte invalide:", validationResult.message)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
         }
 
         const newFloors = state.floors.map((floor) =>
-          floor.id === state.currentFloorId ? { ...floor, doors: [...floor.doors, newDoor] } : floor,
+          floor.id === state.currentFloorId ? { ...floor, doors: [...floor.doors, tempDoor] } : floor,
         )
 
         finalizeAction({ floors: newFloors }, "Créer porte")
@@ -2559,20 +2830,42 @@ export function Canvas({
         wallSegmentSnap &&
         creationPreview
       ) {
-        const newLink: VerticalLink = {
+        const linkWidth = Math.hypot(
+          creationPreview.end.x - creationPreview.start.x,
+          creationPreview.end.y - creationPreview.start.y,
+        )
+
+        // Validation taille minimum liaison verticale
+        if (linkWidth < CONSTRAINTS.verticalLink.minWidth) {
+          console.warn("Liaison verticale trop petite:", linkWidth, "< minimum", CONSTRAINTS.verticalLink.minWidth)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
+
+        const tempLink: VerticalLink = {
           id: `${state.selectedTool}-${Date.now()}`,
           type: state.selectedTool,
           segment: [creationPreview.start, creationPreview.end],
-          width: Math.hypot(
-            creationPreview.end.x - creationPreview.start.x,
-            creationPreview.end.y - creationPreview.start.y,
-          ),
+          width: linkWidth,
           direction: "both",
           to_floor: "",
         }
 
+        // Validation stricte liaison verticale
+        const validationResult = validateVerticalLink(tempLink)
+
+        if (!validationResult.valid) {
+          console.warn("Liaison verticale invalide:", validationResult.message)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
+
         const newFloors = state.floors.map((floor) =>
-          floor.id === state.currentFloorId ? { ...floor, verticalLinks: [...floor.verticalLinks, newLink] } : floor,
+          floor.id === state.currentFloorId ? { ...floor, verticalLinks: [...floor.verticalLinks, tempLink] } : floor,
         )
 
         const actionName = state.selectedTool === "stairs" ? "Créer escalier" : "Créer ascenseur"
@@ -2584,6 +2877,20 @@ export function Canvas({
         
         const actualStart = startSnap ? startSnap.snapPoint : drawStartPoint
         const actualEnd = endSnap ? endSnap.snapPoint : hoveredPoint
+        
+        // Validation taille minimum du mur
+        const wallLength = Math.hypot(
+          actualEnd.x - actualStart.x,
+          actualEnd.y - actualStart.y
+        )
+        
+        if (wallLength < CONSTRAINTS.wall.minLength) {
+          console.warn("Mur trop court:", wallLength, "< minimum", CONSTRAINTS.wall.minLength)
+          setIsDragging(false)
+          setDrawStartPoint(null)
+          setCreationPreview(null)
+          return
+        }
         
         const newWall = createWallInRoom(actualStart, actualEnd, currentFloor)
         
@@ -2704,6 +3011,18 @@ export function Canvas({
     render()
   }, [render])
 
+  // Vérification de cohérence globale en temps réel
+  useEffect(() => {
+    const checkCoherence = () => {
+      const status = quickCoherenceCheck(currentFloor)
+      setCoherenceStatus(status)
+    }
+
+    // Vérification avec debounce pour éviter les calculs excessifs
+    const timeoutId = setTimeout(checkCoherence, 300)
+    return () => clearTimeout(timeoutId)
+  }, [currentFloor])
+
   useEffect(() => {
     const animate = () => {
       render()
@@ -2747,6 +3066,39 @@ export function Canvas({
           onNavigateToFloor={onNavigateToFloor}
         />
       )}
+
+      {/* Indicateur de cohérence globale */}
+      <div className="absolute top-4 right-4 z-10">
+        <div 
+          className={`
+            px-3 py-2 rounded-lg shadow-lg text-sm font-medium
+            ${coherenceStatus.isValid 
+              ? 'bg-green-100 text-green-800 border border-green-200' 
+              : 'bg-red-100 text-red-800 border border-red-200'
+            }
+          `}
+          title={
+            coherenceStatus.isValid 
+              ? 'Plan cohérent - Aucun problème détecté'
+              : `${coherenceStatus.issuesCount} problème(s) de cohérence détecté(s)`
+          }
+        >
+          <div className="flex items-center gap-2">
+            <div 
+              className={`
+                w-2 h-2 rounded-full
+                ${coherenceStatus.isValid ? 'bg-green-500' : 'bg-red-500'}
+              `}
+            />
+            <span>
+              {coherenceStatus.isValid 
+                ? 'Cohérent' 
+                : `${coherenceStatus.issuesCount} erreur${coherenceStatus.issuesCount > 1 ? 's' : ''}`
+              }
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

@@ -66,7 +66,10 @@ export function findRoomContainingSegment(start: Point, end: Point, floor: Floor
   }
   
   // Vérifier quelques points intermédiaires pour s'assurer que le segment ne sort pas de la pièce
-  const steps = 5
+  // Utiliser moins de points de contrôle pour les segments courts (typiquement sur les bords)
+  const segmentLength = Math.hypot(end.x - start.x, end.y - start.y)
+  const steps = Math.max(3, Math.min(8, Math.floor(segmentLength * 2))) // Adaptatif selon la longueur
+  
   for (let i = 1; i < steps; i++) {
     const t = i / steps
     const intermediate = {
@@ -188,7 +191,7 @@ export function findRoomWallSnapPoint(
       // Si la projection n'est pas trop proche d'un vertex déjà détecté
       const tooCloseToVertex = room.polygon.some(v => {
         const vertexDist = Math.hypot(projectedPoint.x - v.x, projectedPoint.y - v.y)
-        return vertexDist < 0.05 // Très petite tolérance pour éviter doublons
+        return vertexDist < 0.01 // Réduire la tolérance pour permettre plus de snap près des bords
       })
 
       if (!tooCloseToVertex && distance <= snapDistance && (!closestSnap || distance < closestSnap.distance)) {
@@ -214,12 +217,26 @@ export function findRoomWallSnapPoint(
   return null
 }
 
-// Vérifie si un point est dans un polygone (ray casting algorithm)
+// Vérifie si un point est dans un polygone ou sur ses bords (ray casting algorithm amélioré)
 function isPointInPolygon(point: Point, polygon: readonly Point[]): boolean {
   if (polygon.length < 3) return false
   
-  let inside = false
   const { x, y } = point
+  const epsilon = 1e-9 // Tolérance pour les calculs de précision
+  
+  // D'abord vérifier si le point est sur un bord du polygone
+  for (let i = 0; i < polygon.length; i++) {
+    const j = (i + 1) % polygon.length
+    
+    // Vérifier si le point est sur le segment [i,j]
+    const dist = distancePointToSegment(point, polygon[i], polygon[j])
+    if (dist < epsilon) {
+      return true // Point sur la frontière = considéré comme à l'intérieur
+    }
+  }
+  
+  // Si pas sur la frontière, utiliser l'algorithme ray casting standard
+  let inside = false
   
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const xi = polygon[i].x
@@ -537,4 +554,186 @@ export function updateWallsAttachedToRoom(
   })
   
   return { updatedWalls, invalidWalls }
+}
+
+/**
+ * SYSTÈME DE GLISSEMENT D'ÉLÉMENTS SUR MURS
+ * Permet aux portes et escaliers de coulisser le long de leur mur parent
+ */
+
+// Projette un point sur un segment de mur en respectant les contraintes
+export function projectPointOnWallSegment(
+  point: Point,
+  wallSegment: readonly [Point, Point],
+  elementWidth: number,
+  minClearance: number = 0.1
+): Point | null {
+  const [start, end] = wallSegment
+  
+  // Vecteur du mur
+  const wallVector = {
+    x: end.x - start.x,
+    y: end.y - start.y
+  }
+  
+  // Longueur du mur
+  const wallLength = Math.hypot(wallVector.x, wallVector.y)
+  
+  // Vérifier que l'élément peut tenir sur le mur
+  if (elementWidth + 2 * minClearance > wallLength) {
+    return null // Élément trop grand pour ce mur
+  }
+  
+  // Vecteur unitaire du mur
+  const wallUnit = {
+    x: wallVector.x / wallLength,
+    y: wallVector.y / wallLength
+  }
+  
+  // Vecteur du début du mur au point
+  const toPoint = {
+    x: point.x - start.x,
+    y: point.y - start.y
+  }
+  
+  // Projection scalaire
+  let t = toPoint.x * wallUnit.x + toPoint.y * wallUnit.y
+  
+  // Contraindre dans les limites du mur avec clearance
+  const minT = minClearance + elementWidth / 2
+  const maxT = wallLength - minClearance - elementWidth / 2
+  
+  t = Math.max(minT, Math.min(maxT, t))
+  
+  // Point projeté
+  return {
+    x: start.x + t * wallUnit.x,
+    y: start.y + t * wallUnit.y
+  }
+}
+
+// Calcule les points de début et fin d'un élément centré sur une position
+export function calculateElementSegmentOnWall(
+  centerPoint: Point,
+  wallSegment: readonly [Point, Point],
+  elementWidth: number
+): [Point, Point] | null {
+  const [start, end] = wallSegment
+  
+  // Vecteur du mur
+  const wallVector = {
+    x: end.x - start.x,
+    y: end.y - start.y
+  }
+  
+  // Longueur du mur
+  const wallLength = Math.hypot(wallVector.x, wallVector.y)
+  
+  if (wallLength === 0) return null
+  
+  // Vecteur unitaire du mur
+  const wallUnit = {
+    x: wallVector.x / wallLength,
+    y: wallVector.y / wallLength
+  }
+  
+  // Demi-largeur de l'élément
+  const halfWidth = elementWidth / 2
+  
+  // Points de début et fin de l'élément
+  const elementStart = {
+    x: centerPoint.x - halfWidth * wallUnit.x,
+    y: centerPoint.y - halfWidth * wallUnit.y
+  }
+  
+  const elementEnd = {
+    x: centerPoint.x + halfWidth * wallUnit.x,
+    y: centerPoint.y + halfWidth * wallUnit.y
+  }
+  
+  return [elementStart, elementEnd]
+}
+
+// Trouve le mur parent d'un élément (porte ou liaison verticale)
+export function findParentWall(
+  elementSegment: readonly [Point, Point],
+  walls: readonly Wall[],
+  tolerance: number = 0.1
+): Wall | null {
+  const [elemStart, elemEnd] = elementSegment
+  const elemCenter = {
+    x: (elemStart.x + elemEnd.x) / 2,
+    y: (elemStart.y + elemEnd.y) / 2
+  }
+  
+  for (const wall of walls) {
+    const [wallStart, wallEnd] = wall.segment
+    
+    // Vérifier si le centre de l'élément est proche du mur
+    const projectedPoint = projectPointOnSegment(elemCenter, wall.segment)
+    const distance = Math.hypot(
+      elemCenter.x - projectedPoint.x,
+      elemCenter.y - projectedPoint.y
+    )
+    
+    if (distance <= tolerance) {
+      // Vérifier que l'élément est bien aligné avec le mur
+      const wallVector = {
+        x: wallEnd.x - wallStart.x,
+        y: wallEnd.y - wallStart.y
+      }
+      const elemVector = {
+        x: elemEnd.x - elemStart.x,
+        y: elemEnd.y - elemStart.y
+      }
+      
+      // Normaliser les vecteurs
+      const wallLength = Math.hypot(wallVector.x, wallVector.y)
+      const elemLength = Math.hypot(elemVector.x, elemVector.y)
+      
+      if (wallLength === 0 || elemLength === 0) continue
+      
+      const wallUnit = { x: wallVector.x / wallLength, y: wallVector.y / wallLength }
+      const elemUnit = { x: elemVector.x / elemLength, y: elemVector.y / elemLength }
+      
+      // Produit scalaire pour vérifier l'alignement
+      const alignment = Math.abs(wallUnit.x * elemUnit.x + wallUnit.y * elemUnit.y)
+      
+      if (alignment > 0.9) { // Quasi-parallèles
+        return wall
+      }
+    }
+  }
+  
+  return null
+}
+
+// Fonction utilitaire pour projeter un point sur un segment
+function projectPointOnSegment(point: Point, segment: readonly [Point, Point]): Point {
+  const [start, end] = segment
+  
+  const segmentVector = {
+    x: end.x - start.x,
+    y: end.y - start.y
+  }
+  
+  const toPoint = {
+    x: point.x - start.x,
+    y: point.y - start.y
+  }
+  
+  const segmentLengthSquared = segmentVector.x * segmentVector.x + segmentVector.y * segmentVector.y
+  
+  if (segmentLengthSquared === 0) {
+    return start
+  }
+  
+  const t = Math.max(0, Math.min(1, 
+    (toPoint.x * segmentVector.x + toPoint.y * segmentVector.y) / segmentLengthSquared
+  ))
+  
+  return {
+    x: start.x + t * segmentVector.x,
+    y: start.y + t * segmentVector.y
+  }
 }

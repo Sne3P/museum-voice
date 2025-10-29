@@ -1,9 +1,11 @@
 /**
- * Système de suppression en cascade pour l'éditeur de musée
- * Gère automatiquement les dépendances entre éléments
+ * SYSTÈME DE SUPPRESSION EN CASCADE PROFESSIONNEL
+ * Gère automatiquement les dépendances entre éléments avec règles strictes
+ * Principe: Aucun élément ne peut exister sans son parent logique
  */
 
 import type { Floor, Room, Wall, Door, Artwork, Escalator, Elevator, VerticalLink } from './types'
+import { CONSTRAINTS, ERROR_MESSAGES } from './constants'
 
 // Types pour les résultats de suppression
 export interface DeletionResult {
@@ -20,6 +22,7 @@ export interface DeletionResult {
   }
   affectedFloors: string[]
   message?: string
+  orphanedElements?: Array<{ id: string; type: string; reason: string }>
 }
 
 export interface DeletionPlan {
@@ -32,12 +35,40 @@ export interface DeletionPlan {
     type: string
     reason: string
     dependsOn: string
+    priority: number // Ordre de suppression (0 = en premier)
   }>
   affectedFloors: string[]
   warnings: string[]
+  criticalWarnings: string[] // Avertissements critiques
+  estimatedImpact: {
+    totalElements: number
+    roomsAffected: number
+    floorsAffected: number
+  }
 }
 
-// Analyse les dépendances avant suppression
+// RÈGLES STRICTES DE DÉPENDANCE HIÉRARCHIQUE
+const DEPENDENCY_RULES = {
+  // Quand une pièce est supprimée, TOUT ce qui est dedans doit être supprimé
+  room: {
+    cascadeTypes: ['wall', 'door', 'artwork', 'escalator', 'elevator', 'verticalLink'],
+    reason: 'Élément orphelin: ne peut exister sans pièce parente'
+  },
+  
+  // Quand un étage est supprimé, TOUT ce qui est dessus doit être supprimé  
+  floor: {
+    cascadeTypes: ['room', 'wall', 'door', 'artwork', 'escalator', 'elevator', 'verticalLink'],
+    reason: 'Élément orphelin: ne peut exister sans étage parent'
+  },
+  
+  // Les murs peuvent avoir des éléments attachés
+  wall: {
+    cascadeTypes: ['door', 'escalator', 'elevator', 'verticalLink'],
+    reason: 'Élément attaché: ne peut exister sans mur de support'
+  }
+} as const
+
+// Analyse les dépendances avant suppression avec règles strictes
 export function analyzeDeletionPlan(
   elementId: string,
   elementType: 'room' | 'wall' | 'door' | 'artwork' | 'escalator' | 'elevator' | 'floor',
@@ -47,119 +78,259 @@ export function analyzeDeletionPlan(
     primaryElement: { id: elementId, type: elementType },
     cascadeElements: [],
     affectedFloors: [],
-    warnings: []
+    warnings: [],
+    criticalWarnings: [],
+    estimatedImpact: {
+      totalElements: 1,
+      roomsAffected: 0,
+      floorsAffected: 0
+    }
   }
 
+  // Analyser selon le type d'élément
   switch (elementType) {
     case 'room':
-      analyzeRoomDeletion(elementId, floors, plan)
+      analyzeRoomDeletionStrict(elementId, floors, plan)
       break
     case 'wall':
-      analyzeWallDeletion(elementId, floors, plan)
+      analyzeWallDeletionStrict(elementId, floors, plan)
       break
     case 'floor':
-      analyzeFloorDeletion(elementId, floors, plan)
+      analyzeFloorDeletionStrict(elementId, floors, plan)
       break
     case 'escalator':
-      analyzeEscalatorDeletion(elementId, floors, plan)
-      break
     case 'elevator':
-      analyzeElevatorDeletion(elementId, floors, plan)
-      break
     case 'door':
-      analyzeDoorDeletion(elementId, floors, plan)
-      break
     case 'artwork':
-      analyzeArtworkDeletion(elementId, floors, plan)
+      // Éléments simples sans cascade complexe
+      analyzeSimpleElementDeletion(elementId, elementType, floors, plan)
       break
   }
+
+  // Calculer l'impact estimé
+  plan.estimatedImpact.totalElements = 1 + plan.cascadeElements.length
+  plan.estimatedImpact.roomsAffected = plan.cascadeElements.filter(e => e.type === 'room').length
+  plan.estimatedImpact.floorsAffected = plan.affectedFloors.length
 
   return plan
 }
 
-// Analyse de suppression d'une pièce
-function analyzeRoomDeletion(roomId: string, floors: Floor[], plan: DeletionPlan): void {
+// === ANALYSE STRICTE SUPPRESSION PIÈCE ===
+function analyzeRoomDeletionStrict(roomId: string, floors: Floor[], plan: DeletionPlan): void {
   floors.forEach(floor => {
-    // Trouve la pièce
     const room = floor.rooms.find(r => r.id === roomId)
     if (!room) return
 
     plan.affectedFloors.push(floor.id)
 
-    // Murs de la pièce
+    // RÈGLE STRICTE: Tout ce qui est dans la pièce DOIT être supprimé
+    
+    // 1. Murs intérieurs de la pièce (priorité 0 - en premier)
     floor.walls.forEach(wall => {
       if (wall.roomId === roomId) {
         plan.cascadeElements.push({
           id: wall.id,
           type: 'wall',
-          reason: 'Mur intérieur de la pièce supprimée',
-          dependsOn: roomId
+          reason: DEPENDENCY_RULES.room.reason,
+          dependsOn: roomId,
+          priority: 0
         })
       }
     })
 
-    // Portes connectées à la pièce
+    // 2. Portes dans/sur la pièce (priorité 1)
     floor.doors.forEach(door => {
-      if (door.room_a === roomId || door.room_b === roomId) {
+      if (isElementInRoom(door, room) || isElementOnRoomWall(door, room)) {
         plan.cascadeElements.push({
           id: door.id,
           type: 'door',
-          reason: 'Porte connectée à la pièce supprimée',
-          dependsOn: roomId
+          reason: DEPENDENCY_RULES.room.reason,
+          dependsOn: roomId,
+          priority: 1
         })
       }
     })
 
-    // Œuvres d'art dans la pièce
+    // 3. Œuvres d'art dans la pièce (priorité 1)
     floor.artworks.forEach(artwork => {
       if (isArtworkInRoom(artwork, room)) {
         plan.cascadeElements.push({
           id: artwork.id,
           type: 'artwork',
-          reason: 'Œuvre située dans la pièce supprimée',
-          dependsOn: roomId
+          reason: DEPENDENCY_RULES.room.reason,
+          dependsOn: roomId,
+          priority: 1
         })
       }
     })
 
-    // Escaliers dans la pièce
+    // 4. Escaliers/Ascenseurs dans la pièce (priorité 1)
     floor.escalators.forEach(escalator => {
-      if (isEscalatorInRoom(escalator, room)) {
+      if (isElementInRoom(escalator, room)) {
         plan.cascadeElements.push({
           id: escalator.id,
           type: 'escalator',
-          reason: 'Escalier situé dans la pièce supprimée',
-          dependsOn: roomId
+          reason: DEPENDENCY_RULES.room.reason,
+          dependsOn: roomId,
+          priority: 1
         })
-
-        // Avertissement pour les connexions entre étages
-        plan.warnings.push(`L'escalier vers l'étage "${escalator.toFloorId}" sera supprimé`)
+        
+        plan.criticalWarnings.push(`ATTENTION: Escalier vers étage "${escalator.toFloorId}" sera supprimé`)
       }
     })
 
-    // Ascenseurs dans la pièce
     floor.elevators.forEach(elevator => {
-      if (isElevatorInRoom(elevator, room)) {
+      if (isElementInRoom(elevator, room)) {
         plan.cascadeElements.push({
           id: elevator.id,
           type: 'elevator',
-          reason: 'Ascenseur situé dans la pièce supprimée',
-          dependsOn: roomId
+          reason: DEPENDENCY_RULES.room.reason,
+          dependsOn: roomId,
+          priority: 1
         })
+        
+        plan.criticalWarnings.push(`ATTENTION: Ascenseur connecté à ${elevator.connectedFloorIds.length} étages sera supprimé`)
+      }
+    })
 
-        // Avertissement pour les connexions multiples
-        if (elevator.connectedFloorIds.length > 2) {
-          plan.warnings.push(`L'ascenseur connecté à ${elevator.connectedFloorIds.length} étages sera supprimé`)
-        }
+    // 5. Liens verticaux dans la pièce (priorité 1)
+    floor.verticalLinks.forEach(link => {
+      if (isElementInRoom(link, room)) {
+        plan.cascadeElements.push({
+          id: link.id,
+          type: 'verticalLink',
+          reason: DEPENDENCY_RULES.room.reason,
+          dependsOn: roomId,
+          priority: 1
+        })
       }
     })
   })
 }
 
-// Analyse de suppression d'un mur
-function analyzeWallDeletion(wallId: string, floors: Floor[], plan: DeletionPlan): void {
+// === ANALYSE STRICTE SUPPRESSION MUR ===
+function analyzeWallDeletionStrict(wallId: string, floors: Floor[], plan: DeletionPlan): void {
   floors.forEach(floor => {
     const wall = floor.walls.find(w => w.id === wallId)
+    if (!wall) return
+
+    plan.affectedFloors.push(floor.id)
+
+    // RÈGLE STRICTE: Tout élément attaché au mur DOIT être supprimé
+    
+    // Portes attachées au mur
+    floor.doors.forEach(door => {
+      if (isElementOnWall(door, wall)) {
+        plan.cascadeElements.push({
+          id: door.id,
+          type: 'door',
+          reason: DEPENDENCY_RULES.wall.reason,
+          dependsOn: wallId,
+          priority: 0
+        })
+      }
+    })
+
+    // Escaliers/Ascenseurs attachés au mur
+    floor.escalators.forEach(escalator => {
+      if (isElementOnWall(escalator, wall)) {
+        plan.cascadeElements.push({
+          id: escalator.id,
+          type: 'escalator',
+          reason: DEPENDENCY_RULES.wall.reason,
+          dependsOn: wallId,
+          priority: 0
+        })
+      }
+    })
+
+    floor.elevators.forEach(elevator => {
+      if (isElementOnWall(elevator, wall)) {
+        plan.cascadeElements.push({
+          id: elevator.id,
+          type: 'elevator',
+          reason: DEPENDENCY_RULES.wall.reason,
+          dependsOn: wallId,
+          priority: 0
+        })
+      }
+    })
+
+    // Liens verticaux attachés au mur
+    floor.verticalLinks.forEach(link => {
+      if (isElementOnWall(link, wall)) {
+        plan.cascadeElements.push({
+          id: link.id,
+          type: 'verticalLink',
+          reason: DEPENDENCY_RULES.wall.reason,
+          dependsOn: wallId,
+          priority: 0
+        })
+      }
+    })
+  })
+}
+
+// === ANALYSE STRICTE SUPPRESSION ÉTAGE ===
+function analyzeFloorDeletionStrict(floorId: string, floors: Floor[], plan: DeletionPlan): void {
+  const floor = floors.find(f => f.id === floorId)
+  if (!floor) return
+
+  plan.affectedFloors.push(floorId)
+  
+  // RÈGLE STRICTE: Tout ce qui est sur l'étage DOIT être supprimé
+  
+  // Priorité 0: Pièces (et leur cascade)
+  floor.rooms.forEach(room => {
+    plan.cascadeElements.push({
+      id: room.id,
+      type: 'room',
+      reason: DEPENDENCY_RULES.floor.reason,
+      dependsOn: floorId,
+      priority: 0
+    })
+    
+    // Cascade récursive de la pièce
+    analyzeRoomDeletionStrict(room.id, [floor], plan)
+  })
+
+  // Les autres éléments seront supprimés via la cascade des pièces
+  plan.criticalWarnings.push(`ATTENTION: Suppression complète de l'étage "${floor.name}" et tous ses éléments`)
+}
+
+// === ANALYSE SIMPLE ÉLÉMENTS ===
+function analyzeSimpleElementDeletion(
+  elementId: string, 
+  elementType: string, 
+  floors: Floor[], 
+  plan: DeletionPlan
+): void {
+  // Pour les éléments simples (artwork, door, escalator, elevator)
+  // Pas de cascade complexe, juste vérifier les dépendances
+  
+  floors.forEach(floor => {
+    let found = false
+    
+    switch (elementType) {
+      case 'artwork':
+        found = floor.artworks.some(a => a.id === elementId)
+        break
+      case 'door':
+        found = floor.doors.some(d => d.id === elementId)
+        break
+      case 'escalator':
+        found = floor.escalators.some(e => e.id === elementId)
+        break
+      case 'elevator':
+        found = floor.elevators.some(e => e.id === elementId)
+        break
+    }
+    
+    if (found) {
+      plan.affectedFloors.push(floor.id)
+    }
+  })
+}
     if (!wall) return
 
     plan.affectedFloors.push(floor.id)
@@ -176,177 +347,113 @@ function analyzeWallDeletion(wallId: string, floors: Floor[], plan: DeletionPlan
       }
     })
 
-    // Œuvres accrochées au mur
-    floor.artworks.forEach(artwork => {
-      if (isArtworkOnWall(artwork, wall)) {
-        plan.cascadeElements.push({
-          id: artwork.id,
-          type: 'artwork',
-          reason: 'Œuvre accrochée au mur supprimé',
-          dependsOn: wallId
-        })
-      }
-    })
+}
 
-    // Avertissement pour murs porteurs
-    if (wall.isLoadBearing) {
-      plan.warnings.push('ATTENTION: Ce mur est porteur, sa suppression peut affecter la structure')
+// === FONCTIONS UTILITAIRES POUR TESTS DE POSITION ===
+
+// Vérifie si un élément est dans une pièce (position géométrique)
+function isElementInRoom(element: { xy?: [number, number]; segment?: [Point, Point] }, room: Room): boolean {
+  if (element.xy) {
+    // Élément ponctuel (artwork, escalator, elevator)
+    return isPointInPolygon({ x: element.xy[0], y: element.xy[1] }, room.polygon)
+  }
+  
+  if (element.segment) {
+    // Élément linéaire (door, link) - vérifier que le milieu est dans la pièce
+    const midpoint = {
+      x: (element.segment[0].x + element.segment[1].x) / 2,
+      y: (element.segment[0].y + element.segment[1].y) / 2
     }
-  })
+    return isPointInPolygon(midpoint, room.polygon)
+  }
+  
+  return false
 }
 
-// Analyse de suppression d'un étage
-function analyzeFloorDeletion(floorId: string, floors: Floor[], plan: DeletionPlan): void {
-  const floor = floors.find(f => f.id === floorId)
-  if (!floor) return
-
-  plan.affectedFloors.push(floorId)
-
-  // Tous les éléments de l'étage
-  floor.rooms.forEach(room => {
-    plan.cascadeElements.push({
-      id: room.id,
-      type: 'room',
-      reason: 'Pièce située sur l\'étage supprimé',
-      dependsOn: floorId
-    })
-  })
-
-  floor.walls.forEach(wall => {
-    plan.cascadeElements.push({
-      id: wall.id,
-      type: 'wall',
-      reason: 'Mur situé sur l\'étage supprimé',
-      dependsOn: floorId
-    })
-  })
-
-  floor.doors.forEach(door => {
-    plan.cascadeElements.push({
-      id: door.id,
-      type: 'door',
-      reason: 'Porte située sur l\'étage supprimé',
-      dependsOn: floorId
-    })
-  })
-
-  floor.artworks.forEach(artwork => {
-    plan.cascadeElements.push({
-      id: artwork.id,
-      type: 'artwork',
-      reason: 'Œuvre située sur l\'étage supprimé',
-      dependsOn: floorId
-    })
-  })
-
-  // Escaliers et ascenseurs connectés
-  floors.forEach(otherFloor => {
-    if (otherFloor.id === floorId) return
-
-    // Trouve les escaliers qui mènent à cet étage
-    otherFloor.escalators.forEach(escalator => {
-      if (escalator.toFloorId === floorId) {
-        plan.cascadeElements.push({
-          id: escalator.id,
-          type: 'escalator',
-          reason: 'Escalier menant vers l\'étage supprimé',
-          dependsOn: floorId
-        })
-        plan.affectedFloors.push(otherFloor.id)
-      }
-    })
-
-    // Ascenseurs connectés
-    otherFloor.elevators.forEach(elevator => {
-      if (elevator.connectedFloorIds.includes(floorId)) {
-        if (elevator.connectedFloorIds.length <= 2) {
-          // Supprime l'ascenseur s'il ne dessert plus qu'un étage
-          plan.cascadeElements.push({
-            id: elevator.id,
-            type: 'elevator',
-            reason: 'Ascenseur ne dessert plus assez d\'étages',
-            dependsOn: floorId
-          })
-        } else {
-          // Met à jour l'ascenseur pour retirer cet étage
-          plan.warnings.push(`L'ascenseur "${elevator.id}" sera mis à jour pour ne plus desservir cet étage`)
-        }
-        plan.affectedFloors.push(otherFloor.id)
-      }
-    })
-  })
-}
-
-// Analyse de suppression d'un escalier
-function analyzeEscalatorDeletion(escalatorId: string, floors: Floor[], plan: DeletionPlan): void {
-  floors.forEach(floor => {
-    const escalator = floor.escalators.find(e => e.id === escalatorId)
-    if (!escalator) return
-
-    plan.affectedFloors.push(floor.id)
-
-    // Trouve l'escalier correspondant sur l'autre étage
-    const targetFloor = floors.find(f => f.id === escalator.toFloorId)
-    if (targetFloor) {
-      const reverseEscalator = targetFloor.escalators.find(e => 
-        e.fromFloorId === escalator.toFloorId && e.toFloorId === escalator.fromFloorId
-      )
-      
-      if (reverseEscalator) {
-        plan.cascadeElements.push({
-          id: reverseEscalator.id,
-          type: 'escalator',
-          reason: 'Escalier de retour correspondant',
-          dependsOn: escalatorId
-        })
-        plan.affectedFloors.push(targetFloor.id)
-      }
+// Vérifie si un élément est sur le mur d'une pièce
+function isElementOnRoomWall(element: { segment?: [Point, Point] }, room: Room): boolean {
+  if (!element.segment) return false
+  
+  // Vérifier si le segment de l'élément est sur un mur de la pièce
+  for (let i = 0; i < room.polygon.length; i++) {
+    const wallStart = room.polygon[i]
+    const wallEnd = room.polygon[(i + 1) % room.polygon.length]
+    
+    if (isSegmentOnWall(element.segment, [wallStart, wallEnd])) {
+      return true
     }
-  })
+  }
+  
+  return false
 }
 
-// Analyse de suppression d'un ascenseur
-function analyzeElevatorDeletion(elevatorId: string, floors: Floor[], plan: DeletionPlan): void {
-  floors.forEach(floor => {
-    const elevator = floor.elevators.find(e => e.id === elevatorId)
-    if (!elevator) return
-
-    plan.affectedFloors.push(floor.id)
-
-    // L'ascenseur existe sur tous les étages connectés
-    elevator.connectedFloorIds.forEach(connectedFloorId => {
-      if (connectedFloorId !== floor.id) {
-        plan.affectedFloors.push(connectedFloorId)
-      }
-    })
-
-    plan.warnings.push(`Ascenseur connecté à ${elevator.connectedFloorIds.length} étages`)
-  })
+// Vérifie si un élément est attaché à un mur spécifique
+function isElementOnWall(element: { segment?: [Point, Point] }, wall: Wall): boolean {
+  if (!element.segment) return false
+  return isSegmentOnWall(element.segment, wall.segment)
 }
 
-// Analyse de suppression d'une porte
-function analyzeDoorDeletion(doorId: string, floors: Floor[], plan: DeletionPlan): void {
-  floors.forEach(floor => {
-    const door = floor.doors.find(d => d.id === doorId)
-    if (door) {
-      plan.affectedFloors.push(floor.id)
-      // Les portes n'ont généralement pas de dépendances
+// Vérifie si un segment est sur un mur (avec tolérance)
+function isSegmentOnWall(elementSegment: [Point, Point], wallSegment: [Point, Point]): boolean {
+  const tolerance = CONSTRAINTS.overlap.tolerance
+  
+  // Vérifier si les deux points de l'élément sont proches du mur
+  const dist1 = distancePointToSegment(elementSegment[0], wallSegment)
+  const dist2 = distancePointToSegment(elementSegment[1], wallSegment)
+  
+  return dist1 < tolerance && dist2 < tolerance
+}
+
+// Calcule la distance d'un point à un segment
+function distancePointToSegment(point: Point, segment: [Point, Point]): number {
+  const [start, end] = segment
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const lengthSquared = dx * dx + dy * dy
+  
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y)
+  }
+  
+  const t = Math.max(0, Math.min(1, 
+    ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared
+  ))
+  
+  const projection = {
+    x: start.x + t * dx,
+    y: start.y + t * dy
+  }
+  
+  return Math.hypot(point.x - projection.x, point.y - projection.y)
+}
+
+// Test point dans polygone (copie locale)
+function isPointInPolygon(point: Point, polygon: readonly Point[]): boolean {
+  if (polygon.length < 3) return false
+  
+  let inside = false
+  const { x, y } = point
+  
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x
+    const yi = polygon[i].y
+    const xj = polygon[j].x
+    const yj = polygon[j].y
+    
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      inside = !inside
     }
-  })
+  }
+  
+  return inside
 }
 
-// Analyse de suppression d'une œuvre
-function analyzeArtworkDeletion(artworkId: string, floors: Floor[], plan: DeletionPlan): void {
-  floors.forEach(floor => {
-    const artwork = floor.artworks.find(a => a.id === artworkId)
-    if (artwork) {
-      plan.affectedFloors.push(floor.id)
-      // Les œuvres n'ont généralement pas de dépendances
-    }
-  })
+// Compatibilité avec ancien code
+function isArtworkInRoom(artwork: Artwork, room: Room): boolean {
+  return isElementInRoom(artwork, room)
 }
 
-// Exécute la suppression en cascade
+// === EXÉCUTION DE LA SUPPRESSION EN CASCADE ===
 export function executeCascadeDeletion(
   plan: DeletionPlan,
   floors: Floor[]
@@ -355,6 +462,81 @@ export function executeCascadeDeletion(
     success: true,
     deletedElements: {
       rooms: [],
+      walls: [],
+      doors: [],
+      artworks: [],
+      escalators: [],
+      elevators: [],
+      verticalLinks: [],
+      floors: []
+    },
+    affectedFloors: [...plan.affectedFloors],
+    message: `Suppression en cascade: ${plan.estimatedImpact.totalElements} éléments supprimés`
+  }
+
+  try {
+    // Trier les éléments par priorité (0 = en premier)
+    const sortedElements = [...plan.cascadeElements].sort((a, b) => a.priority - b.priority)
+    
+    // Supprimer l'élément principal
+    switch (plan.primaryElement.type) {
+      case 'room':
+        result.deletedElements.rooms.push(plan.primaryElement.id)
+        break
+      case 'wall':
+        result.deletedElements.walls.push(plan.primaryElement.id)
+        break
+      case 'door':
+        result.deletedElements.doors.push(plan.primaryElement.id)
+        break
+      case 'artwork':
+        result.deletedElements.artworks.push(plan.primaryElement.id)
+        break
+      case 'escalator':
+        result.deletedElements.escalators.push(plan.primaryElement.id)
+        break
+      case 'elevator':
+        result.deletedElements.elevators.push(plan.primaryElement.id)
+        break
+      case 'floor':
+        result.deletedElements.floors.push(plan.primaryElement.id)
+        break
+    }
+    
+    // Supprimer les éléments en cascade
+    sortedElements.forEach(element => {
+      switch (element.type) {
+        case 'room':
+          result.deletedElements.rooms.push(element.id)
+          break
+        case 'wall':
+          result.deletedElements.walls.push(element.id)
+          break
+        case 'door':
+          result.deletedElements.doors.push(element.id)
+          break
+        case 'artwork':
+          result.deletedElements.artworks.push(element.id)
+          break
+        case 'escalator':
+          result.deletedElements.escalators.push(element.id)
+          break
+        case 'elevator':
+          result.deletedElements.elevators.push(element.id)
+          break
+        case 'verticalLink':
+          result.deletedElements.verticalLinks.push(element.id)
+          break
+      }
+    })
+    
+  } catch (error) {
+    result.success = false
+    result.message = `Erreur lors de la suppression: ${error}`
+  }
+
+  return result
+}
       walls: [],
       doors: [],
       artworks: [],
