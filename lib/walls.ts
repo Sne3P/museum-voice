@@ -6,6 +6,7 @@
 import type { Point, Wall, Room, Floor } from './types'
 import { GRID_SIZE } from './constants'
 import { v4 as uuidv4 } from 'uuid'
+import { isPointInPolygon, distanceToSegment, segmentsIntersect } from './geometry'
 
 // Épaisseur standard des murs (en unités de grille)
 export const WALL_THICKNESS = {
@@ -55,13 +56,13 @@ export function createWallInRoom(
 
 // Trouve la pièce qui contient un point
 export function findRoomContainingPoint(point: Point, floor: Floor): Room | null {
-  return floor.rooms.find(room => isPointInPolygon(point, room.polygon)) || null
+  return floor.rooms.find(room => isPointInPolygonWithBorder(point, room.polygon)) || null
 }
 
 // Trouve la pièce qui contient un segment entier (les deux extrémités et des points intermédiaires)
 export function findRoomContainingSegment(start: Point, end: Point, floor: Floor): Room | null {
   const room = findRoomContainingPoint(start, floor)
-  if (!room || !isPointInPolygon(end, room.polygon)) {
+  if (!room || !isPointInPolygonWithBorder(end, room.polygon)) {
     return null
   }
   
@@ -76,7 +77,7 @@ export function findRoomContainingSegment(start: Point, end: Point, floor: Floor
       x: start.x + (end.x - start.x) * t,
       y: start.y + (end.y - start.y) * t
     }
-    if (!isPointInPolygon(intermediate, room.polygon)) {
+    if (!isPointInPolygonWithBorder(intermediate, room.polygon)) {
       return null
     }
   }
@@ -99,7 +100,7 @@ export function findElementsAttachedToWall(
       y: (door.segment[0].y + door.segment[1].y) / 2
     }
     
-    const distanceToWall = distancePointToSegment(doorMidpoint, wall.segment[0], wall.segment[1])
+    const distanceToWall = distanceToSegment(doorMidpoint, wall.segment[0], wall.segment[1])
     if (distanceToWall <= tolerance) {
       attachedElements.push({ type: 'door', id: door.id, element: door })
     }
@@ -112,7 +113,7 @@ export function findElementsAttachedToWall(
       y: (link.segment[0].y + link.segment[1].y) / 2
     }
     
-    const distanceToWall = distancePointToSegment(linkMidpoint, wall.segment[0], wall.segment[1])
+    const distanceToWall = distanceToSegment(linkMidpoint, wall.segment[0], wall.segment[1])
     if (distanceToWall <= tolerance) {
       attachedElements.push({ type: 'verticalLink', id: link.id, element: link })
     }
@@ -121,25 +122,7 @@ export function findElementsAttachedToWall(
   return attachedElements
 }
 
-// Fonction utilitaire pour calculer la distance d'un point à un segment
-function distancePointToSegment(point: Point, segmentStart: Point, segmentEnd: Point): number {
-  const dx = segmentEnd.x - segmentStart.x
-  const dy = segmentEnd.y - segmentStart.y
-  const lengthSquared = dx * dx + dy * dy
 
-  if (lengthSquared === 0) {
-    return Math.hypot(point.x - segmentStart.x, point.y - segmentStart.y)
-  }
-
-  const t = Math.max(0, Math.min(1, 
-    ((point.x - segmentStart.x) * dx + (point.y - segmentStart.y) * dy) / lengthSquared
-  ))
-
-  const projectionX = segmentStart.x + t * dx
-  const projectionY = segmentStart.y + t * dy
-
-  return Math.hypot(point.x - projectionX, point.y - projectionY)
-}
 
 // Trouve le point de snap le plus proche sur les murs de pièce
 export function findRoomWallSnapPoint(
@@ -218,7 +201,7 @@ export function findRoomWallSnapPoint(
 }
 
 // Vérifie si un point est dans un polygone ou sur ses bords (ray casting algorithm amélioré)
-function isPointInPolygon(point: Point, polygon: readonly Point[]): boolean {
+function isPointInPolygonWithBorder(point: Point, polygon: readonly Point[]): boolean {
   if (polygon.length < 3) return false
   
   const { x, y } = point
@@ -229,7 +212,7 @@ function isPointInPolygon(point: Point, polygon: readonly Point[]): boolean {
     const j = (i + 1) % polygon.length
     
     // Vérifier si le point est sur le segment [i,j]
-    const dist = distancePointToSegment(point, polygon[i], polygon[j])
+    const dist = distanceToSegment(point, polygon[i], polygon[j])
     if (dist < epsilon) {
       return true // Point sur la frontière = considéré comme à l'intérieur
     }
@@ -257,11 +240,11 @@ export function findIntersectingWalls(
   segment: readonly [Point, Point],
   walls: readonly Wall[]
 ): Wall[] {
-  return walls.filter(wall => segmentsIntersect(segment, wall.segment))
+  return walls.filter(wall => segmentArraysIntersect(segment, wall.segment))
 }
 
 // Vérifie si deux segments se croisent
-function segmentsIntersect(
+function segmentArraysIntersect(
   seg1: readonly [Point, Point],
   seg2: readonly [Point, Point]
 ): boolean {
@@ -464,7 +447,7 @@ export function updateWallsAttachedToRoom(
       const oldSegmentStart = vertex
       const oldSegmentEnd = oldRoom.polygon[nextIndex]
       
-      const distance = distancePointToSegment(startPoint, oldSegmentStart, oldSegmentEnd)
+      const distance = distanceToSegment(startPoint, oldSegmentStart, oldSegmentEnd)
       if (distance <= tolerance) {
         // Ce point était snappé sur ce segment - le projeter sur le nouveau segment correspondant
         if (index < newRoom.polygon.length) {
@@ -501,7 +484,7 @@ export function updateWallsAttachedToRoom(
       const oldSegmentStart = vertex
       const oldSegmentEnd = oldRoom.polygon[nextIndex]
       
-      const distance = distancePointToSegment(endPoint, oldSegmentStart, oldSegmentEnd)
+      const distance = distanceToSegment(endPoint, oldSegmentStart, oldSegmentEnd)
       if (distance <= tolerance) {
         // Ce point était snappé sur ce segment
         if (index < newRoom.polygon.length) {

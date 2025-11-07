@@ -58,7 +58,7 @@ import {
 } from "@/lib/constants"
 import { useRenderOptimization, useThrottle } from "@/lib/hooks"
 import { useKeyboardShortcuts, getInteractionCursor, calculateSmoothZoom } from "@/lib/interactions"
-import { validateRoom, validateArtwork, validateDoor, validateVerticalLink, validateRoomGeometry, validateArtworkPlacement } from "@/lib/validation-pro"
+import { validateRoom, validateArtwork, validateDoor, validateVerticalLink, validateRoomGeometry, validateArtworkPlacement } from "@/lib/validation"
 import { quickCoherenceCheck } from "@/lib/global-coherence"
 import { findSnapPoints, type SnapPoint } from "@/lib/snap"
 import { ContextMenu } from "./context-menu"
@@ -2593,17 +2593,22 @@ export function Canvas({
               polygon: cleanedPolygon,
             }
 
-            // Validation intelligente avec feedback amélioré
+            // Validation intelligente avec gestion des avertissements
             const validationResult = validateRoomGeometry(tempRoom, {
               floor: currentFloor,
-              strictMode: false // Mode plus tolérant pour les polygones libres
+              strictMode: false, // Mode tolérant pour polygones libres
+              allowWarnings: true // Permettre les avertissements
             })
 
-            // Si validation échoue, afficher l'erreur et ne pas créer
-            if (!validationResult.valid) {
-              console.warn("Création de pièce polygonale bloquée:", validationResult.message)
-              // TODO: Afficher feedback visuel d'erreur
+            // Bloquer seulement les erreurs critiques, pas les avertissements
+            if (!validationResult.valid && validationResult.severity === 'error') {
+              console.warn("Création de pièce bloquée (erreur critique):", validationResult.message)
               return
+            }
+
+            // Afficher les avertissements sans bloquer
+            if (validationResult.severity === 'warning') {
+              console.info("Avertissement création pièce:", validationResult.message)
             }
 
             // Si validation réussit, créer la pièce
@@ -3040,19 +3045,25 @@ export function Canvas({
           ],
         }
 
-        // Validation stricte avec système professionnel
+        // Validation intelligente pour rectangles
         const validationResult = validateRoomGeometry(tempRoom, {
           floor: currentFloor,
-          strictMode: true
+          strictMode: false, // Plus tolérant
+          allowWarnings: true
         })
 
-        // Si validation échoue, bloquer la création
-        if (!validationResult.valid) {
-          console.warn("Création de pièce rectangulaire bloquée:", validationResult.message)
+        // Bloquer seulement les erreurs critiques
+        if (!validationResult.valid && validationResult.severity === 'error') {
+          console.warn("Création rectangulaire bloquée (erreur critique):", validationResult.message)
           setIsDragging(false)
           setDrawStartPoint(null)
           setCreationPreview(null)
           return
+        }
+
+        // Log des avertissements sans bloquer
+        if (validationResult.severity === 'warning') {
+          console.info("Avertissement rectangle:", validationResult.message)
         }
 
         // Si validation réussit, créer la pièce
@@ -3070,19 +3081,24 @@ export function Canvas({
           polygon,
         }
 
-        // Validation stricte avec système professionnel
+        // Validation intelligente pour cercles
         const validationResult = validateRoomGeometry(tempRoom, {
           floor: currentFloor,
-          strictMode: true
+          strictMode: false,
+          allowWarnings: true
         })
 
-        // Si validation échoue, bloquer la création
-        if (!validationResult.valid) {
-          console.warn("Création de pièce circulaire bloquée:", validationResult.message)
+        // Bloquer seulement erreurs critiques
+        if (!validationResult.valid && validationResult.severity === 'error') {
+          console.warn("Création circulaire bloquée (erreur critique):", validationResult.message)
           setIsDragging(false)
           setDrawStartPoint(null)
           setCreationPreview(null)
           return
+        }
+
+        if (validationResult.severity === 'warning') {
+          console.info("Avertissement cercle:", validationResult.message)
         }
 
         // Si validation réussit, créer la pièce
@@ -3099,19 +3115,24 @@ export function Canvas({
           polygon,
         }
 
-        // Validation stricte avec système professionnel
+        // Validation intelligente pour triangles
         const validationResult = validateRoomGeometry(tempRoom, {
           floor: currentFloor,
-          strictMode: true
+          strictMode: false,
+          allowWarnings: true
         })
 
-        // Si validation échoue, bloquer la création
-        if (!validationResult.valid) {
-          console.warn("Création de pièce triangulaire bloquée:", validationResult.message)
+        // Bloquer seulement erreurs critiques
+        if (!validationResult.valid && validationResult.severity === 'error') {
+          console.warn("Création triangulaire bloquée (erreur critique):", validationResult.message)
           setIsDragging(false)
           setDrawStartPoint(null)
           setCreationPreview(null)
           return
+        }
+
+        if (validationResult.severity === 'warning') {
+          console.info("Avertissement triangle:", validationResult.message)
         }
 
         // Si validation réussit, créer la pièce
@@ -3128,19 +3149,24 @@ export function Canvas({
           polygon,
         }
 
-        // Validation stricte avec système professionnel
+        // Validation intelligente pour arcs
         const validationResult = validateRoomGeometry(tempRoom, {
           floor: currentFloor,
-          strictMode: true
+          strictMode: false,
+          allowWarnings: true
         })
 
-        // Si validation échoue, bloquer la création
-        if (!validationResult.valid) {
-          console.warn("Création de pièce arc bloquée:", validationResult.message)
+        // Bloquer seulement erreurs critiques
+        if (!validationResult.valid && validationResult.severity === 'error') {
+          console.warn("Création arc bloquée (erreur critique):", validationResult.message)
           setIsDragging(false)
           setDrawStartPoint(null)
           setCreationPreview(null)
           return
+        }
+
+        if (validationResult.severity === 'warning') {
+          console.info("Avertissement arc:", validationResult.message)
         }
 
         // Si validation réussit, créer la pièce
@@ -3175,13 +3201,15 @@ export function Canvas({
           pdf_id: "",
         }
 
-        // Validation stricte placement œuvre d'art
+        // Validation intelligente placement œuvre d'art
         const validationResult = validateArtworkPlacement(tempArtwork, {
           floor: currentFloor,
-          strictMode: true
+          strictMode: false,
+          allowWarnings: true
         })
 
-        if (!validationResult.valid) {
+        // Bloquer seulement erreurs critiques
+        if (!validationResult.valid && validationResult.severity === 'error') {
           console.warn("Placement œuvre d'art invalide:", validationResult.message)
           setIsDragging(false)
           setDrawStartPoint(null)

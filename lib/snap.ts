@@ -1,39 +1,100 @@
 /**
- * Système de snap intelligent pour l'éditeur de plan de musée
- * Gère le snap entre éléments, contraintes géométriques et alignements
+ * SYSTÈME DE SNAP ULTRA-INTELLIGENT & PROFESSIONNEL
+ * Snap contextuel entre tous éléments : points, segments, intersections
+ * Coordination parfaite avec contraintes et validation
  */
 
-import type { Point, Room, Wall, Door, VerticalLink, Floor } from './types'
-import { GRID_SIZE } from './constants'
+import type { Point, Room, Wall, Door, VerticalLink, Floor, Artwork } from './types'
+import { GRID_SIZE, SNAP_THRESHOLD } from './constants'
+import { distanceToSegment, segmentsIntersect } from './geometry'
 
 export interface SnapPoint {
   readonly point: Point
-  readonly type: 'vertex' | 'wall' | 'grid' | 'perpendicular' | 'parallel'
+  readonly type: 'vertex' | 'segment' | 'intersection' | 'grid' | 'midpoint' | 'perpendicular'
   readonly elementId?: string
+  readonly elementType?: 'room' | 'wall' | 'door' | 'verticalLink' | 'artwork'
+  readonly segmentIndex?: number
   readonly priority: number // Plus élevé = plus prioritaire
   readonly distance: number
+  readonly metadata?: {
+    readonly isCorner?: boolean
+    readonly isEndpoint?: boolean
+    readonly segmentStart?: Point
+    readonly segmentEnd?: Point
+  }
+}
+
+export interface SnapContext {
+  readonly elementType?: string
+  readonly excludeIds?: string[]
+  readonly currentElement?: any
+  readonly preferredTypes?: string[]
+  readonly allowSelfSnap?: boolean
+  readonly snapToGrid?: boolean
+  readonly snapToElements?: boolean
+  readonly snapToIntersections?: boolean
 }
 
 export interface SnapResult {
   readonly snappedPoint: Point
   readonly snapPoints: readonly SnapPoint[]
   readonly hasSnap: boolean
+  readonly primarySnap?: SnapPoint
 }
 
-// Trouve tous les points de snap disponibles avec intelligence contextuelle
+/**
+ * SYSTÈME DE SNAP ULTRA-INTELLIGENT
+ * Trouve TOUS les points de snap possibles selon le contexte
+ */
 export function findSnapPoints(
   targetPoint: Point,
   floor: Floor,
   maxDistance: number = 0.5,
-  context?: { elementType?: string; excludeIds?: string[]; preferredTypes?: string[] }
+  context: SnapContext = {}
 ): SnapPoint[] {
   const snapPoints: SnapPoint[] = []
-  const excludeIds = context?.excludeIds || []
+  const excludeIds = context.excludeIds || []
   
-  // Snap à la grille (priorité faible, toujours disponible)
+  // === 1. SNAP À LA GRILLE (priorité de base) ===
+  if (context.snapToGrid !== false) {
+    addGridSnapPoints(targetPoint, snapPoints, maxDistance)
+  }
+  
+  // === 2. SNAP AUX ÉLÉMENTS (priorité haute) ===
+  if (context.snapToElements !== false) {
+    // Snap aux pièces (vertices + segments)
+    addRoomSnapPoints(targetPoint, floor.rooms, snapPoints, maxDistance, excludeIds)
+    
+    // Snap aux murs intérieurs (endpoints + segments)
+    addWallSnapPoints(targetPoint, floor.walls, snapPoints, maxDistance, excludeIds)
+    
+    // Snap aux portes (endpoints + segments)
+    addDoorSnapPoints(targetPoint, floor.doors, snapPoints, maxDistance, excludeIds)
+    
+    // Snap aux liens verticaux (endpoints + segments)
+    addVerticalLinkSnapPoints(targetPoint, floor.verticalLinks, snapPoints, maxDistance, excludeIds)
+    
+    // Snap aux œuvres d'art (coins + milieux)
+    addArtworkSnapPoints(targetPoint, floor.artworks, snapPoints, maxDistance, excludeIds)
+  }
+  
+  // === 3. SNAP AUX INTERSECTIONS (priorité ultra-haute) ===
+  if (context.snapToIntersections !== false) {
+    addIntersectionSnapPoints(targetPoint, floor, snapPoints, maxDistance, excludeIds)
+  }
+  
+  // Trier par priorité puis par distance
+  return snapPoints
+    .sort((a, b) => b.priority - a.priority || a.distance - b.distance)
+    .slice(0, 10) // Limiter pour performance
+}
+
+// === SNAP À LA GRILLE ===
+function addGridSnapPoints(targetPoint: Point, snapPoints: SnapPoint[], maxDistance: number): void {
   const gridX = Math.round(targetPoint.x)
   const gridY = Math.round(targetPoint.y)
   const gridDistance = Math.hypot(targetPoint.x - gridX, targetPoint.y - gridY)
+  
   if (gridDistance <= maxDistance) {
     snapPoints.push({
       point: { x: gridX, y: gridY },
@@ -42,11 +103,20 @@ export function findSnapPoints(
       distance: gridDistance
     })
   }
+}
 
-  // Snap aux vertices des pièces (priorité très haute)
-  floor.rooms.forEach(room => {
+// === SNAP AUX PIÈCES ===
+function addRoomSnapPoints(
+  targetPoint: Point, 
+  rooms: readonly Room[], 
+  snapPoints: SnapPoint[], 
+  maxDistance: number,
+  excludeIds: string[]
+): void {
+  rooms.forEach(room => {
     if (excludeIds.includes(room.id)) return
     
+    // Snap aux vertices (priorité très haute)
     room.polygon.forEach((vertex, index) => {
       const distance = Math.hypot(targetPoint.x - vertex.x, targetPoint.y - vertex.y)
       if (distance <= maxDistance) {
@@ -54,168 +124,285 @@ export function findSnapPoints(
           point: { ...vertex },
           type: 'vertex',
           elementId: room.id,
+          elementType: 'room',
+          segmentIndex: index,
           priority: 15,
-          distance
+          distance,
+          metadata: { isCorner: true }
         })
       }
     })
     
-    // Snap aux segments des pièces (murs extérieurs)
+    // Snap aux segments des pièces (murs extérieurs) 
     room.polygon.forEach((vertex, index) => {
       const nextVertex = room.polygon[(index + 1) % room.polygon.length]
-      const snapToSegment = snapPointToLineSegment(targetPoint, vertex, nextVertex)
-      const distance = Math.hypot(targetPoint.x - snapToSegment.x, targetPoint.y - snapToSegment.y)
+      const segmentPoint = getClosestPointOnSegment(targetPoint, vertex, nextVertex)
+      const distance = Math.hypot(targetPoint.x - segmentPoint.x, targetPoint.y - segmentPoint.y)
       
       if (distance <= maxDistance && distance > 0.01) { // Éviter doublons avec vertices
         snapPoints.push({
-          point: snapToSegment,
-          type: 'wall',
+          point: segmentPoint,
+          type: 'segment',
           elementId: room.id,
+          elementType: 'room', 
+          segmentIndex: index,
           priority: 12,
-          distance
+          distance,
+          metadata: {
+            segmentStart: vertex,
+            segmentEnd: nextVertex
+          }
         })
       }
     })
   })
+}
 
-  // Snap aux murs intérieurs (priorité haute)
-  floor.walls.forEach(wall => {
+// === SNAP AUX MURS INTÉRIEURS ===
+function addWallSnapPoints(
+  targetPoint: Point,
+  walls: readonly Wall[],
+  snapPoints: SnapPoint[],
+  maxDistance: number,
+  excludeIds: string[]
+): void {
+  walls.forEach(wall => {
     if (excludeIds.includes(wall.id)) return
     
-    // Points d'extrémité des murs
-    const endpoints = [wall.segment[0], wall.segment[1]]
-    endpoints.forEach(endpoint => {
+    // Snap aux endpoints des murs
+    [wall.segment[0], wall.segment[1]].forEach((endpoint, index) => {
       const distance = Math.hypot(targetPoint.x - endpoint.x, targetPoint.y - endpoint.y)
       if (distance <= maxDistance) {
         snapPoints.push({
           point: { ...endpoint },
           type: 'vertex',
           elementId: wall.id,
+          elementType: 'wall',
           priority: 14,
-          distance
+          distance,
+          metadata: { isEndpoint: true }
         })
       }
     })
     
-    // Segment du mur
-    const snapToWall = snapPointToLineSegment(targetPoint, wall.segment[0], wall.segment[1])
-    const distance = Math.hypot(targetPoint.x - snapToWall.x, targetPoint.y - snapToWall.y)
+    // Snap au segment du mur
+    const segmentPoint = getClosestPointOnSegment(targetPoint, wall.segment[0], wall.segment[1])
+    const distance = Math.hypot(targetPoint.x - segmentPoint.x, targetPoint.y - segmentPoint.y)
+    
     if (distance <= maxDistance && distance > 0.01) {
       snapPoints.push({
-        point: snapToWall,
-        type: 'wall',
+        point: segmentPoint,
+        type: 'segment',
         elementId: wall.id,
-        priority: 10,
-        distance
+        elementType: 'wall',
+        priority: 11,
+        distance,
+        metadata: {
+          segmentStart: wall.segment[0],
+          segmentEnd: wall.segment[1]
+        }
       })
     }
   })
+}
 
-  // Snap aux portes (points d'extrémité)
-  floor.doors.forEach(door => {
+// === SNAP AUX PORTES ===
+function addDoorSnapPoints(
+  targetPoint: Point,
+  doors: readonly Door[],
+  snapPoints: SnapPoint[],
+  maxDistance: number,
+  excludeIds: string[]
+): void {
+  doors.forEach(door => {
     if (excludeIds.includes(door.id)) return
     
-    const endpoints = [door.segment[0], door.segment[1]]
-    endpoints.forEach(endpoint => {
+    // Snap aux endpoints des portes
+    [door.segment[0], door.segment[1]].forEach((endpoint, index) => {
       const distance = Math.hypot(targetPoint.x - endpoint.x, targetPoint.y - endpoint.y)
       if (distance <= maxDistance) {
         snapPoints.push({
           point: { ...endpoint },
           type: 'vertex',
           elementId: door.id,
-          priority: 8,
-          distance
+          elementType: 'door',
+          priority: 13,
+          distance,
+          metadata: { isEndpoint: true }
         })
       }
     })
   })
+}
 
-  // Snap aux liens verticaux (points d'extrémité)
-  floor.verticalLinks.forEach(link => {
+// === SNAP AUX LIENS VERTICAUX ===
+function addVerticalLinkSnapPoints(
+  targetPoint: Point,
+  verticalLinks: readonly VerticalLink[],
+  snapPoints: SnapPoint[],
+  maxDistance: number,
+  excludeIds: string[]
+): void {
+  verticalLinks.forEach(link => {
     if (excludeIds.includes(link.id)) return
     
-    const endpoints = [link.segment[0], link.segment[1]]
-    endpoints.forEach(endpoint => {
+    // Snap aux endpoints des liens verticaux
+    [link.segment[0], link.segment[1]].forEach((endpoint, index) => {
       const distance = Math.hypot(targetPoint.x - endpoint.x, targetPoint.y - endpoint.y)
       if (distance <= maxDistance) {
         snapPoints.push({
           point: { ...endpoint },
           type: 'vertex',
           elementId: link.id,
-          priority: 8,
-          distance
+          elementType: 'verticalLink',
+          priority: 13,
+          distance,
+          metadata: { isEndpoint: true }
         })
       }
     })
   })
+}
 
-  // Snap aux intersections (priorité maximale)
-  const intersections = findIntersections(floor, maxDistance, targetPoint)
-  intersections.forEach(intersection => {
-    snapPoints.push({
-      point: intersection.point,
-      type: 'vertex',
-      elementId: 'intersection',
-      priority: 20,
-      distance: intersection.distance
+// === SNAP AUX ŒUVRES D'ART ===
+function addArtworkSnapPoints(
+  targetPoint: Point,
+  artworks: readonly Artwork[],
+  snapPoints: SnapPoint[],
+  maxDistance: number,
+  excludeIds: string[]
+): void {
+  artworks.forEach(artwork => {
+    if (excludeIds.includes(artwork.id)) return
+    
+    const [x, y] = artwork.xy
+    const [width, height] = artwork.size || [0, 0]
+    
+    // Coins de l'œuvre d'art
+    const corners = [
+      { x, y }, // top-left
+      { x: x + width, y }, // top-right
+      { x: x + width, y: y + height }, // bottom-right
+      { x, y: y + height } // bottom-left
+    ]
+    
+    corners.forEach((corner, index) => {
+      const distance = Math.hypot(targetPoint.x - corner.x, targetPoint.y - corner.y)
+      if (distance <= maxDistance) {
+        snapPoints.push({
+          point: corner,
+          type: 'vertex',
+          elementId: artwork.id,
+          elementType: 'artwork',
+          priority: 10,
+          distance,
+          metadata: { isCorner: true }
+        })
+      }
     })
-  })
-
-  // Trier par priorité puis par distance
-  return snapPoints.sort((a, b) => {
-    if (a.priority !== b.priority) return b.priority - a.priority
-    return a.distance - b.distance
   })
 }
 
-// Trouve les intersections entre éléments
-function findIntersections(
+// === SNAP AUX INTERSECTIONS ===
+function addIntersectionSnapPoints(
+  targetPoint: Point,
   floor: Floor,
+  snapPoints: SnapPoint[],
   maxDistance: number,
-  targetPoint: Point
-): Array<{ point: Point; distance: number }> {
-  const intersections: Array<{ point: Point; distance: number }> = []
+  excludeIds: string[]
+): void {
+  // Trouve toutes les intersections entre segments
+  const allSegments = getAllSegments(floor)
   
-  // Intersections entre murs intérieurs
-  for (let i = 0; i < floor.walls.length; i++) {
-    for (let j = i + 1; j < floor.walls.length; j++) {
-      const intersection = lineSegmentsIntersection(
-        floor.walls[i].segment[0], floor.walls[i].segment[1],
-        floor.walls[j].segment[0], floor.walls[j].segment[1]
+  for (let i = 0; i < allSegments.length; i++) {
+    for (let j = i + 1; j < allSegments.length; j++) {
+      const seg1 = allSegments[i]
+      const seg2 = allSegments[j]
+      
+      // Éviter auto-intersection
+      if (seg1.elementId === seg2.elementId) continue
+      if (excludeIds.includes(seg1.elementId) || excludeIds.includes(seg2.elementId)) continue
+      
+      const intersection = getLineIntersection(
+        seg1.start, seg1.end,
+        seg2.start, seg2.end
       )
       
       if (intersection) {
         const distance = Math.hypot(targetPoint.x - intersection.x, targetPoint.y - intersection.y)
         if (distance <= maxDistance) {
-          intersections.push({ point: intersection, distance })
+          snapPoints.push({
+            point: intersection,
+            type: 'intersection',
+            priority: 20, // Priorité ultra-haute
+            distance
+          })
         }
       }
     }
   }
-  
-  return intersections
 }
 
-// Calcule l'intersection entre deux segments de ligne
-function lineSegmentsIntersection(
-  p1: Point, p2: Point,
-  p3: Point, p4: Point
-): Point | null {
-  const x1 = p1.x, y1 = p1.y
-  const x2 = p2.x, y2 = p2.y
-  const x3 = p3.x, y3 = p3.y
-  const x4 = p4.x, y4 = p4.y
+// === UTILITAIRES GÉOMÉTRIQUES ===
+function getClosestPointOnSegment(point: Point, segStart: Point, segEnd: Point): Point {
+  const dx = segEnd.x - segStart.x
+  const dy = segEnd.y - segStart.y
   
-  const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+  if (dx === 0 && dy === 0) {
+    return { ...segStart } // Segment dégénéré
+  }
+  
+  const t = Math.max(0, Math.min(1, 
+    ((point.x - segStart.x) * dx + (point.y - segStart.y) * dy) / (dx * dx + dy * dy)
+  ))
+  
+  return {
+    x: segStart.x + t * dx,
+    y: segStart.y + t * dy
+  }
+}
+
+function getAllSegments(floor: Floor): Array<{ start: Point; end: Point; elementId: string; elementType: string }> {
+  const segments: Array<{ start: Point; end: Point; elementId: string; elementType: string }> = []
+  
+  // Segments des pièces
+  floor.rooms.forEach(room => {
+    room.polygon.forEach((vertex, index) => {
+      const nextVertex = room.polygon[(index + 1) % room.polygon.length]
+      segments.push({
+        start: vertex,
+        end: nextVertex,
+        elementId: room.id,
+        elementType: 'room'
+      })
+    })
+  })
+  
+  // Segments des murs
+  floor.walls.forEach(wall => {
+    segments.push({
+      start: wall.segment[0],
+      end: wall.segment[1],
+      elementId: wall.id,
+      elementType: 'wall'
+    })
+  })
+  
+  return segments
+}
+
+function getLineIntersection(p1: Point, p2: Point, p3: Point, p4: Point): Point | null {
+  const denom = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x)
+  
   if (Math.abs(denom) < 1e-10) return null // Lignes parallèles
   
-  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
-  const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom
+  const t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / denom
+  const u = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x)) / denom
   
   if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
     return {
-      x: x1 + t * (x2 - x1),
-      y: y1 + t * (y2 - y1)
+      x: p1.x + t * (p2.x - p1.x),
+      y: p1.y + t * (p2.y - p1.y)
     }
   }
   

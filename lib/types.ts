@@ -209,3 +209,24 @@ export interface RenderLayer {
   readonly dirty: boolean
   readonly lastRender: number
 }
+
+// === VALIDATION TYPES ===
+export interface ExtendedValidationResult extends ValidationResult {
+  severity: 'error' | 'warning' | 'info'
+  code: string
+  affectedElements?: string[]
+  suggestedActions?: string[]
+  visualFeedback?: {
+    color: string
+    opacity: number
+    strokeWidth: number
+    highlight?: boolean
+  }
+}
+
+export interface ValidationContext {
+  floor: Floor
+  excludeIds?: string[]
+  strictMode?: boolean
+  allowWarnings?: boolean
+}

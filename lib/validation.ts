@@ -1,32 +1,13 @@
-import type { Point, Room, Artwork, Door, VerticalLink, ValidationResult, Bounds, Floor, Wall } from './types'
+import type { Point, Room, Artwork, Door, VerticalLink, ValidationResult, Bounds, Floor, Wall, ExtendedValidationResult, ValidationContext } from './types'
 import { CONSTRAINTS, ERROR_MESSAGES, VISUAL_FEEDBACK } from './constants'
-import { calculatePolygonAreaInMeters, calculateBounds, polygonsIntersect } from './geometry'
+import { calculatePolygonAreaInMeters, calculateBounds, polygonsIntersect, segmentsIntersect, distanceToSegment } from './geometry'
 
 /**
  * SYSTÈME DE VALIDATION PROFESSIONNEL ULTRA-STRICT
  * Contraintes rigoureuses pour un éditeur CAO de niveau professionnel
  */
 
-// === TYPES POUR VALIDATION AVANCÉE ===
-export interface ExtendedValidationResult extends ValidationResult {
-  severity: 'error' | 'warning' | 'info'
-  code: string
-  affectedElements?: string[]
-  suggestedActions?: string[]
-  visualFeedback?: {
-    color: string
-    opacity: number
-    strokeWidth: number
-    highlight?: boolean
-  }
-}
 
-export interface ValidationContext {
-  floor: Floor
-  excludeIds?: string[]
-  strictMode?: boolean
-  allowWarnings?: boolean
-}
 
 // === VALIDATION DES PIÈCES (ULTRA-STRICT) ===
 export function validateRoomGeometry(room: Room, context?: ValidationContext): ExtendedValidationResult {
@@ -252,7 +233,7 @@ export function validateWallPlacementStrict(wall: Wall, context: ValidationConte
   }
   
   // 2. Vérifier que le segment entier est dans UNE SEULE pièce
-  const containingRoom = findRoomContainingSegment(wall.segment[0], wall.segment[1], context.floor)
+  const containingRoom = findRoomContainingWallSegment(wall.segment[0], wall.segment[1], context.floor.rooms)
   
   if (!containingRoom) {
     return {
@@ -310,20 +291,100 @@ export function validateWallPlacementStrict(wall: Wall, context: ValidationConte
 
 // === FONCTIONS UTILITAIRES STRICTES ===
 
-// Vérifie les intersections de polygones avec tolérance ultra-faible
+// Vérifie UNIQUEMENT les superpositions de surface (pas le simple contact)
 function doPolygonsIntersectStrict(poly1: readonly Point[], poly2: readonly Point[]): boolean {
-  // D'abord vérifier chevauchement de surface (pas juste contact)
-  if (polygonsIntersect(poly1, poly2)) {
-    // Vérifier si c'est juste un contact ponctuel ou une vraie intersection
-    const area1 = Math.abs(calculatePolygonArea(poly1))
-    const area2 = Math.abs(calculatePolygonArea(poly2))
-    
-    // Calculer l'aire d'intersection approximative
-    // Si significative par rapport aux pièces, c'est un vrai chevauchement
-    return true // Pour l'instant, tout contact = intersection
+  // 1. Test rapide des boîtes englobantes
+  const box1 = getBoundingBox(poly1)
+  const box2 = getBoundingBox(poly2)
+  
+  if (!boundingBoxesOverlap(box1, box2)) {
+    return false // Pas de contact du tout
   }
   
-  return false
+  // 2. Détecter uniquement les vraies superpositions de surface
+  return hasActualSurfaceOverlap(poly1, poly2)
+}
+
+// Nouvelle fonction pour détecter uniquement les vraies superpositions
+function hasActualSurfaceOverlap(poly1: readonly Point[], poly2: readonly Point[]): boolean {
+  const tolerance = CONSTRAINTS.overlap.tolerance
+  
+  // Test 1: Points de poly1 strictement à l'intérieur de poly2
+  let pointsInside = 0
+  for (const point of poly1) {
+    if (isPointStrictlyInsidePolygon(point, poly2, tolerance)) {
+      pointsInside++
+    }
+  }
+  
+  // Test 2: Points de poly2 strictement à l'intérieur de poly1  
+  for (const point of poly2) {
+    if (isPointStrictlyInsidePolygon(point, poly1, tolerance)) {
+      pointsInside++
+    }
+  }
+  
+  // Test 3: Intersection de segments qui se croisent réellement (pas aux extrémités)
+  let hasRealCrossing = false
+  for (let i = 0; i < poly1.length; i++) {
+    const seg1: [Point, Point] = [poly1[i], poly1[(i + 1) % poly1.length]]
+    
+    for (let j = 0; j < poly2.length; j++) {
+      const seg2: [Point, Point] = [poly2[j], poly2[(j + 1) % poly2.length]]
+      
+      if (segmentsIntersectInternally(seg1, seg2, tolerance)) {
+        hasRealCrossing = true
+        break
+      }
+    }
+    if (hasRealCrossing) break
+  }
+  
+  // Superposition détectée si : 
+  // - Au moins 2 points d'un polygone sont dans l'autre (vraie superposition)
+  // - OU il y a des croisements internes de segments
+  return pointsInside >= 2 || hasRealCrossing
+}
+
+// Point strictement à l'intérieur (pas sur le bord)
+function isPointStrictlyInsidePolygon(point: Point, polygon: readonly Point[], tolerance: number): boolean {
+  let inside = false
+  const n = polygon.length
+  
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const pi = polygon[i]
+    const pj = polygon[j]
+    
+    // Test point-dans-polygone amélioré avec tolérance
+    if (((pi.y > point.y + tolerance) !== (pj.y > point.y + tolerance)) &&
+        (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x - tolerance)) {
+      inside = !inside
+    }
+  }
+  
+  return inside
+}
+
+// Intersection de segments en excluant les contacts aux extrémités
+function segmentsIntersectInternally(seg1: readonly [Point, Point], seg2: readonly [Point, Point], tolerance: number): boolean {
+  const [a1, a2] = seg1
+  const [b1, b2] = seg2
+  
+  const det = (a2.x - a1.x) * (b2.y - b1.y) - (b2.x - b1.x) * (a2.y - a1.y)
+  if (Math.abs(det) < tolerance) return false // Segments parallèles
+  
+  const lambda = ((b2.y - b1.y) * (b1.x - a1.x) + (b1.x - b2.x) * (b1.y - a1.y)) / det
+  const gamma = ((a1.y - a2.y) * (b1.x - a1.x) + (a2.x - a1.x) * (b1.y - a1.y)) / det
+  
+  // Intersection INTERNE uniquement (pas aux extrémités)
+  return lambda > tolerance && lambda < (1 - tolerance) && 
+         gamma > tolerance && gamma < (1 - tolerance)
+}
+
+// Vérification de chevauchement des boîtes englobantes
+function boundingBoxesOverlap(box1: { min: Point; max: Point }, box2: { min: Point; max: Point }): boolean {
+  return !(box1.max.x < box2.min.x || box2.max.x < box1.min.x || 
+           box1.max.y < box2.min.y || box2.max.y < box1.min.y)
 }
 
 // Vérifie intersection de segments avec tolérance numérique
@@ -398,17 +459,6 @@ function hasPolygonSelfIntersection(polygon: readonly Point[]): boolean {
   }
   
   return false
-}
-}
-
-function calculatePolygonArea(polygon: ReadonlyArray<Point>): number {
-  let area = 0
-  for (let i = 0; i < polygon.length; i++) {
-    const j = (i + 1) % polygon.length
-    area += polygon[i].x * polygon[j].y
-    area -= polygon[j].x * polygon[i].y
-  }
-  return Math.abs(area) / 2
 }
 
 function doPolygonsOverlap(poly1: ReadonlyArray<Point>, poly2: ReadonlyArray<Point>): boolean {
@@ -485,7 +535,7 @@ function findWallForSegment(
       const end = room.polygon[(i + 1) % room.polygon.length]
       
       const distToWall = distancePointToSegment(midpoint, start, end)
-      if (distToWall < VALIDATION.roomOverlapTolerance) {
+      if (distToWall < CONSTRAINTS.overlap.tolerance) {
         return { room, wallIndex: i }
       }
     }
@@ -508,3 +558,75 @@ function distancePointToSegment(point: Point, start: Point, end: Point): number 
   
   return Math.hypot(point.x - projX, point.y - projY)
 }
+
+// Utilitaire pour trouver la pièce contenant un segment de mur
+function findRoomContainingWallSegment(start: Point, end: Point, rooms: readonly Room[]): Room | null {
+  const midpoint = { 
+    x: (start.x + end.x) / 2, 
+    y: (start.y + end.y) / 2 
+  }
+  
+  for (const room of rooms) {
+    if (isPointStrictlyInsidePolygon(midpoint, room.polygon, CONSTRAINTS.overlap.tolerance)) {
+      return room
+    }
+  }
+  
+  return null
+}
+
+// === FONCTIONS DE VALIDATION SUPPLÉMENTAIRES ===
+
+function validateDoorGeometry(door: Door, context?: ValidationContext): ExtendedValidationResult {
+  // Validation basique pour les portes
+  const width = Math.hypot(
+    door.segment[1].x - door.segment[0].x, 
+    door.segment[1].y - door.segment[0].y
+  )
+  
+  if (width < CONSTRAINTS.door.minWidth) {
+    return {
+      valid: false,
+      severity: 'error',
+      code: 'DOOR_TOO_NARROW',
+      message: `Porte trop étroite: ${width.toFixed(2)}m < ${CONSTRAINTS.door.minWidth}m`,
+      visualFeedback: {
+        color: VISUAL_FEEDBACK.colors.invalid,
+        opacity: 0.8,
+        strokeWidth: 3
+      }
+    }
+  }
+  
+  return { valid: true, severity: 'info', code: 'DOOR_VALID', message: 'Porte valide' }
+}
+
+function validateVerticalLinkGeometry(link: VerticalLink, context?: ValidationContext): ExtendedValidationResult {
+  // Validation basique pour les liens verticaux
+  const width = Math.hypot(
+    link.segment[1].x - link.segment[0].x, 
+    link.segment[1].y - link.segment[0].y
+  )
+  
+  if (width < CONSTRAINTS.verticalLink.minWidth) {
+    return {
+      valid: false,
+      severity: 'error',
+      code: 'LINK_TOO_NARROW', 
+      message: `Lien vertical trop étroit: ${width.toFixed(2)}m < ${CONSTRAINTS.verticalLink.minWidth}m`,
+      visualFeedback: {
+        color: VISUAL_FEEDBACK.colors.invalid,
+        opacity: 0.8,
+        strokeWidth: 3
+      }
+    }
+  }
+  
+  return { valid: true, severity: 'info', code: 'LINK_VALID', message: 'Lien vertical valide' }
+}
+
+// === EXPORTATIONS COMPATIBILITÉ ===
+export const validateRoom = validateRoomGeometry
+export const validateArtwork = validateArtworkPlacement  
+export const validateDoor = validateDoorGeometry
+export const validateVerticalLink = validateVerticalLinkGeometry

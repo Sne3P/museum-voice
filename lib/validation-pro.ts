@@ -1,4 +1,4 @@
-import type { Point, Room, Artwork, Door, VerticalLink, ValidationResult, Floor, Wall } from './types'
+import type { Point, Room, Artwork, Door, VerticalLink, ValidationResult, Floor, Wall, ExtendedValidationResult, ValidationContext } from './types'
 import { CONSTRAINTS, ERROR_MESSAGES, VISUAL_FEEDBACK } from './constants'
 import { polygonsIntersect } from './geometry'
 import { findRoomContainingSegment, findRoomContainingPoint } from './walls'
@@ -8,26 +8,7 @@ import { findRoomContainingSegment, findRoomContainingPoint } from './walls'
  * Contraintes rigoureuses pour un éditeur CAO de niveau professionnel
  */
 
-// === TYPES POUR VALIDATION AVANCÉE ===
-export interface ExtendedValidationResult extends ValidationResult {
-  severity: 'error' | 'warning' | 'info'
-  code: string
-  affectedElements?: string[]
-  suggestedActions?: string[]
-  visualFeedback?: {
-    color: string
-    opacity: number
-    strokeWidth: number
-    highlight?: boolean
-  }
-}
 
-export interface ValidationContext {
-  floor: Floor
-  excludeIds?: string[]
-  strictMode?: boolean
-  allowWarnings?: boolean
-}
 
 // === VALIDATION DES PIÈCES (ULTRA-STRICT) ===
 export function validateRoomGeometry(room: Room, context?: ValidationContext): ExtendedValidationResult {

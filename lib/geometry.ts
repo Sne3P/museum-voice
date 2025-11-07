@@ -677,28 +677,7 @@ function edgesOverlap(p1: Point, p2: Point, q1: Point, q2: Point): boolean {
   return t1 <= 1 && t2 >= 0 && (t2 - t1) > 0.01 // Overlap with minimum length
 }
 
-/**
- * Check if polygons are just touching (vertices or edges)
- */
-function areTouching(poly1: ReadonlyArray<Point>, poly2: ReadonlyArray<Point>): boolean {
-  const tolerance = 0.01
-  
-  // Check if any vertex of poly1 is on the boundary of poly2
-  for (const vertex of poly1) {
-    if (isPointOnPolygonBoundary(vertex, poly2, tolerance)) {
-      return true
-    }
-  }
-  
-  // Check if any vertex of poly2 is on the boundary of poly1
-  for (const vertex of poly2) {
-    if (isPointOnPolygonBoundary(vertex, poly1, tolerance)) {
-      return true
-    }
-  }
-  
-  return false
-}
+
 
 /**
  * Check if a point is on the boundary of a polygon
@@ -713,5 +692,32 @@ function isPointOnPolygonBoundary(point: Point, polygon: ReadonlyArray<Point>, t
       return true
     }
   }
+  return false
+}
+
+/**
+ * Check if two polygons are just touching (points in common) without overlapping
+ */
+function areTouching(poly1: ReadonlyArray<Point>, poly2: ReadonlyArray<Point>): boolean {
+  const tolerance = 0.01
+  
+  // Check if any point of poly1 is close to any point of poly2
+  for (const p1 of poly1) {
+    for (const p2 of poly2) {
+      if (Math.hypot(p1.x - p2.x, p1.y - p2.y) < tolerance) {
+        return true
+      }
+    }
+    
+    // Check if point is on edge of other polygon
+    for (let i = 0; i < poly2.length; i++) {
+      const q1 = poly2[i]
+      const q2 = poly2[(i + 1) % poly2.length]
+      if (distanceToSegment(p1, q1, q2) < tolerance) {
+        return true
+      }
+    }
+  }
+  
   return false
 }

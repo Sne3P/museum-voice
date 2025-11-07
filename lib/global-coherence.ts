@@ -4,9 +4,8 @@
  * Garantit l'intégrité complète du modèle de données
  */
 
-import type { Floor, Room, Wall, Door, VerticalLink, Artwork, Point } from './types'
+import type { Floor, Room, Wall, Door, VerticalLink, Artwork, Point, ExtendedValidationResult, ValidationContext } from './types'
 import { CONSTRAINTS, ERROR_MESSAGES } from './constants'
-import type { ExtendedValidationResult, ValidationContext } from './validation-pro'
 import { 
   validateRoomGeometry, 
   validateArtworkPlacement,

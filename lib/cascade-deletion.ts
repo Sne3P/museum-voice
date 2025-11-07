@@ -4,7 +4,7 @@
  * Principe: Aucun élément ne peut exister sans son parent logique
  */
 
-import type { Floor, Room, Wall, Door, Artwork, Escalator, Elevator, VerticalLink } from './types'
+import type { Floor, Room, Wall, Door, Artwork, Escalator, Elevator, VerticalLink, Point } from './types'
 import { CONSTRAINTS, ERROR_MESSAGES } from './constants'
 
 // Types pour les résultats de suppression
@@ -166,7 +166,7 @@ function analyzeRoomDeletionStrict(roomId: string, floors: Floor[], plan: Deleti
 
     // 4. Escaliers/Ascenseurs dans la pièce (priorité 1)
     floor.escalators.forEach(escalator => {
-      if (isElementInRoom(escalator, room)) {
+      if (isEscalatorInRoom(escalator, room)) {
         plan.cascadeElements.push({
           id: escalator.id,
           type: 'escalator',
@@ -180,7 +180,7 @@ function analyzeRoomDeletionStrict(roomId: string, floors: Floor[], plan: Deleti
     })
 
     floor.elevators.forEach(elevator => {
-      if (isElementInRoom(elevator, room)) {
+      if (isElevatorInRoom(elevator, room)) {
         plan.cascadeElements.push({
           id: elevator.id,
           type: 'elevator',
@@ -233,7 +233,7 @@ function analyzeWallDeletionStrict(wallId: string, floors: Floor[], plan: Deleti
 
     // Escaliers/Ascenseurs attachés au mur
     floor.escalators.forEach(escalator => {
-      if (isElementOnWall(escalator, wall)) {
+      if (isEscalatorOnWall(escalator, wall)) {
         plan.cascadeElements.push({
           id: escalator.id,
           type: 'escalator',
@@ -245,7 +245,7 @@ function analyzeWallDeletionStrict(wallId: string, floors: Floor[], plan: Deleti
     })
 
     floor.elevators.forEach(elevator => {
-      if (isElementOnWall(elevator, wall)) {
+      if (isElevatorOnWall(elevator, wall)) {
         plan.cascadeElements.push({
           id: elevator.id,
           type: 'elevator',
@@ -331,28 +331,11 @@ function analyzeSimpleElementDeletion(
     }
   })
 }
-    if (!wall) return
-
-    plan.affectedFloors.push(floor.id)
-
-    // Portes sur ce mur
-    floor.doors.forEach(door => {
-      if (isDoorOnWall(door, wall)) {
-        plan.cascadeElements.push({
-          id: door.id,
-          type: 'door',
-          reason: 'Porte située sur le mur supprimé',
-          dependsOn: wallId
-        })
-      }
-    })
-
-}
 
 // === FONCTIONS UTILITAIRES POUR TESTS DE POSITION ===
 
 // Vérifie si un élément est dans une pièce (position géométrique)
-function isElementInRoom(element: { xy?: [number, number]; segment?: [Point, Point] }, room: Room): boolean {
+function isElementInRoom(element: { xy?: readonly [number, number]; segment?: readonly [Point, Point] }, room: Room): boolean {
   if (element.xy) {
     // Élément ponctuel (artwork, escalator, elevator)
     return isPointInPolygon({ x: element.xy[0], y: element.xy[1] }, room.polygon)
@@ -371,7 +354,7 @@ function isElementInRoom(element: { xy?: [number, number]; segment?: [Point, Poi
 }
 
 // Vérifie si un élément est sur le mur d'une pièce
-function isElementOnRoomWall(element: { segment?: [Point, Point] }, room: Room): boolean {
+function isElementOnRoomWall(element: { segment?: readonly [Point, Point] }, room: Room): boolean {
   if (!element.segment) return false
   
   // Vérifier si le segment de l'élément est sur un mur de la pièce
@@ -388,13 +371,13 @@ function isElementOnRoomWall(element: { segment?: [Point, Point] }, room: Room):
 }
 
 // Vérifie si un élément est attaché à un mur spécifique
-function isElementOnWall(element: { segment?: [Point, Point] }, wall: Wall): boolean {
+function isElementOnWall(element: { segment?: readonly [Point, Point] }, wall: Wall): boolean {
   if (!element.segment) return false
   return isSegmentOnWall(element.segment, wall.segment)
 }
 
 // Vérifie si un segment est sur un mur (avec tolérance)
-function isSegmentOnWall(elementSegment: [Point, Point], wallSegment: [Point, Point]): boolean {
+function isSegmentOnWall(elementSegment: readonly [Point, Point], wallSegment: readonly [Point, Point]): boolean {
   const tolerance = CONSTRAINTS.overlap.tolerance
   
   // Vérifier si les deux points de l'élément sont proches du mur
@@ -405,7 +388,7 @@ function isSegmentOnWall(elementSegment: [Point, Point], wallSegment: [Point, Po
 }
 
 // Calcule la distance d'un point à un segment
-function distancePointToSegment(point: Point, segment: [Point, Point]): number {
+function distancePointToSegment(point: Point, segment: readonly [Point, Point]): number {
   const [start, end] = segment
   const dx = end.x - start.x
   const dy = end.y - start.y
@@ -446,6 +429,34 @@ function isPointInPolygon(point: Point, polygon: readonly Point[]): boolean {
   }
   
   return inside
+}
+
+// Fonctions spécialisées pour chaque type d'élément
+function isEscalatorInRoom(escalator: Escalator, room: Room): boolean {
+  // Un escalator est dans une pièce si son centre est dans le polygone
+  const center = {
+    x: (escalator.startPosition.x + escalator.endPosition.x) / 2,
+    y: (escalator.startPosition.y + escalator.endPosition.y) / 2
+  }
+  return isPointInPolygon(center, room.polygon)
+}
+
+function isElevatorInRoom(elevator: Elevator, room: Room): boolean {
+  return isPointInPolygon(elevator.position, room.polygon)
+}
+
+function isEscalatorOnWall(escalator: Escalator, wall: Wall): boolean {
+  // Un escalator est sur un mur si ses points de départ/arrivée sont proches du mur
+  const dist1 = distancePointToSegment(escalator.startPosition, wall.segment)
+  const dist2 = distancePointToSegment(escalator.endPosition, wall.segment)
+  const tolerance = CONSTRAINTS.overlap.tolerance
+  
+  return dist1 < tolerance || dist2 < tolerance
+}
+
+function isElevatorOnWall(elevator: Elevator, wall: Wall): boolean {
+  const distance = distancePointToSegment(elevator.position, wall.segment)
+  return distance < CONSTRAINTS.overlap.tolerance
 }
 
 // Compatibilité avec ancien code
@@ -537,136 +548,4 @@ export function executeCascadeDeletion(
 
   return result
 }
-      walls: [],
-      doors: [],
-      artworks: [],
-      escalators: [],
-      elevators: [],
-      verticalLinks: [],
-      floors: []
-    },
-    affectedFloors: [...plan.affectedFloors]
-  }
 
-  try {
-    // Supprime l'élément principal
-    result.deletedElements[`${plan.primaryElement.type}s` as keyof typeof result.deletedElements].push(plan.primaryElement.id)
-
-    // Supprime les éléments en cascade
-    plan.cascadeElements.forEach(element => {
-      const key = `${element.type}s` as keyof typeof result.deletedElements
-      if (key in result.deletedElements) {
-        (result.deletedElements[key] as string[]).push(element.id)
-      }
-    })
-
-    result.message = `Suppression réussie: ${plan.cascadeElements.length + 1} éléments supprimés`
-  } catch (error) {
-    result.success = false
-    result.message = `Erreur lors de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
-  }
-
-  return result
-}
-
-// Fonctions utilitaires de détection de position
-
-function isArtworkInRoom(artwork: Artwork, room: Room): boolean {
-  const [x, y] = artwork.xy
-  return isPointInPolygon({ x, y }, room.polygon)
-}
-
-function isEscalatorInRoom(escalator: Escalator, room: Room): boolean {
-  const midPoint = {
-    x: (escalator.startPosition.x + escalator.endPosition.x) / 2,
-    y: (escalator.startPosition.y + escalator.endPosition.y) / 2
-  }
-  return isPointInPolygon(midPoint, room.polygon)
-}
-
-function isElevatorInRoom(elevator: Elevator, room: Room): boolean {
-  return isPointInPolygon(elevator.position, room.polygon)
-}
-
-function isDoorOnWall(door: Door, wall: Wall): boolean {
-  // Vérifie si la porte est sur le segment du mur
-  const [doorStart, doorEnd] = door.segment
-  const [wallStart, wallEnd] = wall.segment
-  
-  // Vérifie si les points de la porte sont sur la ligne du mur
-  return isPointOnLineSegment(doorStart, wallStart, wallEnd) ||
-         isPointOnLineSegment(doorEnd, wallStart, wallEnd)
-}
-
-function isArtworkOnWall(artwork: Artwork, wall: Wall): boolean {
-  const [x, y] = artwork.xy
-  const artworkPoint = { x, y }
-  const [wallStart, wallEnd] = wall.segment
-  
-  // Calcule la distance du point à la ligne du mur
-  const distance = distancePointToLineSegment(artworkPoint, wallStart, wallEnd)
-  
-  // Considère que l'œuvre est sur le mur si elle est très proche
-  return distance < 0.5 // 50cm de tolérance
-}
-
-function isPointInPolygon(point: { x: number; y: number }, polygon: readonly { x: number; y: number }[]): boolean {
-  if (polygon.length < 3) return false
-  
-  let inside = false
-  const { x, y } = point
-  
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x
-    const yi = polygon[i].y
-    const xj = polygon[j].x
-    const yj = polygon[j].y
-    
-    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
-      inside = !inside
-    }
-  }
-  
-  return inside
-}
-
-function isPointOnLineSegment(
-  point: { x: number; y: number },
-  lineStart: { x: number; y: number },
-  lineEnd: { x: number; y: number },
-  tolerance: number = 0.1
-): boolean {
-  const distance = distancePointToLineSegment(point, lineStart, lineEnd)
-  return distance <= tolerance
-}
-
-function distancePointToLineSegment(
-  point: { x: number; y: number },
-  lineStart: { x: number; y: number },
-  lineEnd: { x: number; y: number }
-): number {
-  const A = point.x - lineStart.x
-  const B = point.y - lineStart.y
-  const C = lineEnd.x - lineStart.x
-  const D = lineEnd.y - lineStart.y
-  
-  const dot = A * C + B * D
-  const lenSq = C * C + D * D
-  
-  if (lenSq === 0) {
-    // La ligne est un point
-    return Math.hypot(A, B)
-  }
-  
-  let param = dot / lenSq
-  
-  if (param < 0) {
-    return Math.hypot(A, B)
-  } else if (param > 1) {
-    return Math.hypot(point.x - lineEnd.x, point.y - lineEnd.y)
-  } else {
-    const closestX = lineStart.x + param * C
-    const closestY = lineStart.y + param * D
-    return Math.hypot(point.x - closestX, point.y - closestY)
-  }
-}

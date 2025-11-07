@@ -24,7 +24,7 @@ export function ExportDialog({ state, onClose }: ExportDialogProps) {
         id: door.id,
         room_a: door.room_a,
         room_b: door.room_b,
-        xy: door.xy,
+        segment: door.segment,
       })),
       artworks: floor.artworks.map((artwork) => ({
         id: artwork.id,
@@ -36,7 +36,7 @@ export function ExportDialog({ state, onClose }: ExportDialogProps) {
       vertical_links: floor.verticalLinks.map((link) => ({
         id: link.id,
         type: link.type,
-        xy: link.xy,
+        segment: link.segment,
         to_floor: link.to_floor,
       })),
     })),
