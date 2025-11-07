@@ -234,60 +234,80 @@ export const VALIDATION = {
   roomOverlapTolerance: 0.01, // For floating point comparison
 } as const
 
-// === CONTRAINTES PROFESSIONNELLES STRICTES ===
+// === CONTRAINTES PROFESSIONNELLES INTELLIGENTES ===
 export const CONSTRAINTS = {
-  // Tailles minimales absolues
+  // Tailles minimales flexibles
   room: {
-    minArea: 2.0, // unités carrées minimum pour une pièce
-    minWidth: 1.0, // largeur minimum
-    minHeight: 1.0, // hauteur minimum
-    minPerimeter: 4.0, // périmètre minimum
+    minArea: 1.0, // réduit pour plus de flexibilité
+    minWidth: 0.5, // réduit pour permettre couloirs
+    minHeight: 0.5, // réduit pour permettre couloirs
+    minPerimeter: 2.0, // réduit pour plus de flexibilité
+    maxAspectRatio: 10.0, // éviter les formes trop étirées
   },
   
   wall: {
-    minLength: 0.3, // longueur minimum d'un mur intérieur
-    maxLength: 50.0, // longueur maximum raisonnable
-    minDistanceFromEdge: 0.1, // distance minimum du bord de pièce
+    minLength: 0.2, // réduit pour plus de flexibilité
+    maxLength: 100.0, // augmenté pour les grandes structures
+    minDistanceFromEdge: 0.05, // réduit pour permettre murs près des bords
+    snapTolerance: 0.4, // tolérance de snap pour les murs
   },
   
   artwork: {
-    minWidth: 0.2, // largeur minimum d'une œuvre
-    minHeight: 0.2, // hauteur minimum
-    maxWidth: 15.0, // largeur maximum
-    maxHeight: 15.0, // hauteur maximum
-    minDistanceFromWall: 0.1, // distance minimum du mur
+    minWidth: 0.1, // réduit pour petites œuvres
+    minHeight: 0.1, // réduit pour petites œuvres
+    maxWidth: 20.0, // augmenté pour grandes installations
+    maxHeight: 20.0, // augmenté pour grandes installations
+    minDistanceFromWall: 0.05, // réduit pour plus de flexibilité
   },
   
   door: {
-    minWidth: 0.4, // largeur minimum d'une porte
-    maxWidth: 8.0, // largeur maximum
-    minClearance: 0.2, // espace libre minimum autour
+    minWidth: 0.3, // réduit légèrement
+    maxWidth: 12.0, // augmenté pour grandes ouvertures
+    minClearance: 0.1, // réduit pour plus de flexibilité
+    snapTolerance: 0.3, // tolérance de snap pour portes
   },
   
   verticalLink: {
-    minWidth: 0.5, // largeur minimum escalier/ascenseur
-    maxWidth: 10.0, // largeur maximum
-    minClearance: 0.3, // espace libre minimum
+    minWidth: 0.4, // réduit légèrement
+    maxWidth: 15.0, // augmenté pour grandes installations
+    minClearance: 0.15, // réduit pour plus de flexibilité
+    snapTolerance: 0.3, // tolérance de snap pour liens
   },
   
-  // Contraintes de chevauchement
+  // Contraintes de chevauchement intelligentes
   overlap: {
-    tolerance: 1e-6, // tolérance numérique ultra-strict
-    bufferZone: 0.05, // zone tampon entre éléments
+    tolerance: 1e-3, // moins strict pour éviter blocages
+    bufferZone: 0.02, // réduit pour permettre formes adjacentes
+    allowTouching: true, // permettre les formes qui se touchent
+    allowSharedEdges: true, // permettre partage d'arêtes
   },
   
-  // Contraintes de création
+  // Contraintes de création flexibles
   creation: {
-    minDragDistance: 0.3, // distance minimum pour valider une création
-    snapTolerance: 0.3, // tolérance de snap
-    gridSnapForce: true, // forcer le snap à la grille
+    minDragDistance: 0.2, // réduit pour plus de réactivité
+    snapTolerance: 0.4, // augmenté pour snap plus facile
+    gridSnapForce: false, // optionnel selon contexte
+    intelligentSnap: true, // nouveau: snap intelligent contextuel
   },
   
-  // Contraintes de déplacement
+  // Contraintes de déplacement intelligentes
   movement: {
-    maintainAspectRatio: false, // pour redimensionnement
-    preserveWallConnections: true, // préserver connexions lors déplacement
-    allowPartialOverlap: false, // interdire tout chevauchement partiel
+    maintainAspectRatio: false, 
+    preserveWallConnections: true,
+    allowPartialOverlap: false,
+    smartCollisionDetection: true, // nouveau: détection intelligente
+    adaptiveSnap: true, // nouveau: snap adaptatif selon contexte
+  },
+  
+  // Nouvelles contraintes pour snap intelligent
+  snap: {
+    maxDistance: 0.5, // distance maximum de snap
+    priorityVertex: 15, // priorité haute pour vertices
+    priorityWall: 10, // priorité moyenne pour murs
+    priorityGrid: 5, // priorité basse pour grille
+    priorityIntersection: 20, // priorité très haute pour intersections
+    magnetism: 0.8, // force du magnétisme (0-1)
+    cascadeSnap: true, // snap en cascade (un élément snapé influence les autres)
   }
 } as const
 

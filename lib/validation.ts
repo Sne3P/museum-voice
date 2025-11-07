@@ -1,6 +1,6 @@
 import type { Point, Room, Artwork, Door, VerticalLink, ValidationResult, Bounds, Floor, Wall } from './types'
 import { CONSTRAINTS, ERROR_MESSAGES, VISUAL_FEEDBACK } from './constants'
-import { calculatePolygonArea, getBoundingBox, polygonsIntersect } from './geometry'
+import { calculatePolygonAreaInMeters, calculateBounds, polygonsIntersect } from './geometry'
 
 /**
  * SYSTÈME DE VALIDATION PROFESSIONNEL ULTRA-STRICT
@@ -66,27 +66,28 @@ export function validateRoomGeometry(room: Room, context?: ValidationContext): E
     }
   }
   
-  // 3. Contraintes de taille minimum - STRICT
-  const area = Math.abs(calculatePolygonArea(polygon))
+  // 3. Contraintes de taille minimum - FLEXIBLE
+  const area = calculatePolygonAreaInMeters(polygon)
   if (area < CONSTRAINTS.room.minArea) {
+    // Warning au lieu d'erreur pour plus de flexibilité
     return {
-      valid: false,
-      severity: 'error',
-      code: 'ROOM_TOO_SMALL_AREA',
-      message: ERROR_MESSAGES.room.tooSmall.replace('{minArea}', CONSTRAINTS.room.minArea.toString()),
-      suggestions: ['Agrandissez la pièce', 'Vérifiez que les dimensions sont correctes'],
+      valid: true, // Changé de false à true
+      severity: 'warning', // Changé d'error à warning
+      code: 'ROOM_SMALL_AREA',
+      message: `Pièce petite (${area.toFixed(2)} m²). Minimum recommandé: ${CONSTRAINTS.room.minArea} m²`,
+      suggestions: ['Considérez agrandir la pièce si possible'],
       visualFeedback: {
         color: VISUAL_FEEDBACK.colors.warning,
-        opacity: 0.5,
-        strokeWidth: 3
+        opacity: 0.3, // Plus transparent
+        strokeWidth: 2 // Plus fin
       }
     }
   }
   
   // 4. Vérifier dimensions minimum (largeur/hauteur)
-  const bounds = getBoundingBox(polygon)
-  const width = bounds.max.x - bounds.min.x
-  const height = bounds.max.y - bounds.min.y
+  const bounds = calculateBounds(polygon)
+  const width = bounds.maxX - bounds.minX
+  const height = bounds.maxY - bounds.minY
   
   if (width < CONSTRAINTS.room.minWidth) {
     return {

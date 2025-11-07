@@ -201,34 +201,60 @@ export function createCirclePolygon(center: Point, radius: number, segments = GE
 }
 
 export function createTrianglePolygon(p1: Point, p2: Point): Point[] {
-  const width = p2.x - p1.x
-  const height = p2.y - p1.y
+  // Calculer les coordonnées min/max pour éviter les déformations
+  const minX = Math.min(p1.x, p2.x)
+  const maxX = Math.max(p1.x, p2.x)
+  const minY = Math.min(p1.y, p2.y)
+  const maxY = Math.max(p1.y, p2.y)
+  
+  const width = maxX - minX
+  const height = maxY - minY
 
-  // Create equilateral-ish triangle
+  // Créer un triangle isocèle plus équilibré
+  const centerX = minX + width / 2
+  
   return [
-    { x: p1.x + width / 2, y: p1.y }, // top
-    { x: p2.x, y: p2.y }, // bottom right
-    { x: p1.x, y: p2.y }, // bottom left
+    { x: centerX, y: minY }, // sommet au centre-haut
+    { x: maxX, y: maxY }, // coin bas-droit  
+    { x: minX, y: maxY }, // coin bas-gauche
   ]
 }
 
 export function createArcPolygon(center: Point, endPoint: Point, segments = GEOMETRY.arcSegments): Point[] {
-  const radius = Math.max(Math.abs(endPoint.x - center.x), Math.abs(endPoint.y - center.y))
+  // Utiliser la distance euclidienne pour un rayon plus naturel
+  const radius = Math.hypot(endPoint.x - center.x, endPoint.y - center.y)
   const points: Point[] = []
 
-  // Create a 3/4 circle arc (270 degrees)
-  const startAngle = 0
-  const endAngle = (3 * Math.PI) / 2
+  // Créer un arc plus fluide avec plus de segments pour les grandes formes
+  const adaptiveSegments = Math.max(segments, Math.floor(radius / 2))
+  
+  // Arc de 3/4 de cercle (270 degrés) avec début dynamique basé sur la direction
+  const baseAngle = Math.atan2(endPoint.y - center.y, endPoint.x - center.x)
+  const startAngle = baseAngle
+  const endAngle = baseAngle + (3 * Math.PI) / 2
 
-  for (let i = 0; i <= segments; i++) {
-    const angle = startAngle + (endAngle - startAngle) * (i / segments)
+  for (let i = 0; i <= adaptiveSegments; i++) {
+    const angle = startAngle + (endAngle - startAngle) * (i / adaptiveSegments)
+    const x = center.x + Math.cos(angle) * radius
+    const y = center.y + Math.sin(angle) * radius
+    
     points.push({
-      x: Math.round(center.x + Math.cos(angle) * radius),
-      y: Math.round(center.y + Math.sin(angle) * radius),
+      x: Math.round(x * 10) / 10, // Précision sub-grid pour plus de fluidité
+      y: Math.round(y * 10) / 10,
     })
   }
 
-  // Close the arc by connecting back to center
+  // Fermer l'arc en se reconnectant au centre avec une courbe lisse
+  const lastPoint = points[points.length - 1]
+  const midX = (lastPoint.x + center.x) / 2
+  const midY = (lastPoint.y + center.y) / 2
+  
+  // Ajouter un point intermédiaire pour une fermeture plus douce
+  points.push({
+    x: Math.round(midX * 10) / 10,
+    y: Math.round(midY * 10) / 10,
+  })
+  
   points.push(center)
   return points
 }
@@ -571,4 +597,121 @@ export function getPerpendicularDirection(start: Point, end: Point): Point {
     x: -dy / length,
     y: dx / length
   }
+}
+
+/**
+ * Improved overlap detection that allows touching and shared edges
+ */
+export function checkPolygonsOverlapIntelligent(
+  poly1: ReadonlyArray<Point>,
+  poly2: ReadonlyArray<Point>,
+  allowTouching: boolean = true
+): { overlapping: boolean; touching: boolean; sharedEdge: boolean } {
+  // Check if polygons are identical (shared edges)
+  if (poly1.length === poly2.length) {
+    const samePoints = poly1.every(p1 => 
+      poly2.some(p2 => Math.hypot(p1.x - p2.x, p1.y - p2.y) < 0.01)
+    )
+    if (samePoints) {
+      return { overlapping: false, touching: true, sharedEdge: true }
+    }
+  }
+
+  // Check for shared edges
+  let hasSharedEdge = false
+  for (let i = 0; i < poly1.length; i++) {
+    const p1 = poly1[i]
+    const p2 = poly1[(i + 1) % poly1.length]
+    
+    for (let j = 0; j < poly2.length; j++) {
+      const q1 = poly2[j]
+      const q2 = poly2[(j + 1) % poly2.length]
+      
+      if (edgesOverlap(p1, p2, q1, q2)) {
+        hasSharedEdge = true
+        break
+      }
+    }
+    if (hasSharedEdge) break
+  }
+
+  // Standard overlap test
+  const standardOverlap = polygonsIntersect(poly1, poly2)
+  
+  // If allowing touching, only reject true interior overlap
+  if (allowTouching && (hasSharedEdge || areTouching(poly1, poly2))) {
+    return { 
+      overlapping: false, 
+      touching: true, 
+      sharedEdge: hasSharedEdge 
+    }
+  }
+
+  return { 
+    overlapping: standardOverlap, 
+    touching: false, 
+    sharedEdge: hasSharedEdge 
+  }
+}
+
+/**
+ * Check if two edges overlap (share a portion)
+ */
+function edgesOverlap(p1: Point, p2: Point, q1: Point, q2: Point): boolean {
+  // Check if edges are collinear and overlapping
+  const cross1 = (q1.x - p1.x) * (p2.y - p1.y) - (q1.y - p1.y) * (p2.x - p1.x)
+  const cross2 = (q2.x - p1.x) * (p2.y - p1.y) - (q2.y - p1.y) * (p2.x - p1.x)
+  
+  if (Math.abs(cross1) > 0.01 || Math.abs(cross2) > 0.01) return false
+  
+  // Edges are collinear, check for overlap
+  const t1 = Math.min(
+    ((q1.x - p1.x) * (p2.x - p1.x) + (q1.y - p1.y) * (p2.y - p1.y)) / ((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2),
+    ((q2.x - p1.x) * (p2.x - p1.x) + (q2.y - p1.y) * (p2.y - p1.y)) / ((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2)
+  )
+  const t2 = Math.max(
+    ((q1.x - p1.x) * (p2.x - p1.x) + (q1.y - p1.y) * (p2.y - p1.y)) / ((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2),
+    ((q2.x - p1.x) * (p2.x - p1.x) + (q2.y - p1.y) * (p2.y - p1.y)) / ((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2)
+  )
+  
+  return t1 <= 1 && t2 >= 0 && (t2 - t1) > 0.01 // Overlap with minimum length
+}
+
+/**
+ * Check if polygons are just touching (vertices or edges)
+ */
+function areTouching(poly1: ReadonlyArray<Point>, poly2: ReadonlyArray<Point>): boolean {
+  const tolerance = 0.01
+  
+  // Check if any vertex of poly1 is on the boundary of poly2
+  for (const vertex of poly1) {
+    if (isPointOnPolygonBoundary(vertex, poly2, tolerance)) {
+      return true
+    }
+  }
+  
+  // Check if any vertex of poly2 is on the boundary of poly1
+  for (const vertex of poly2) {
+    if (isPointOnPolygonBoundary(vertex, poly1, tolerance)) {
+      return true
+    }
+  }
+  
+  return false
+}
+
+/**
+ * Check if a point is on the boundary of a polygon
+ */
+function isPointOnPolygonBoundary(point: Point, polygon: ReadonlyArray<Point>, tolerance: number = 0.01): boolean {
+  for (let i = 0; i < polygon.length; i++) {
+    const p1 = polygon[i]
+    const p2 = polygon[(i + 1) % polygon.length]
+    
+    const dist = distanceToSegment(point, p1, p2)
+    if (dist <= tolerance) {
+      return true
+    }
+  }
+  return false
 }

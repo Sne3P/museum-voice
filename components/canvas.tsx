@@ -25,6 +25,7 @@ import {
   getSegmentMidpoint,
   getPerpendicularDirection,
   getPolygonCenter,
+  checkPolygonsOverlapIntelligent,
 } from "@/lib/geometry"
 import {
   createWall,
@@ -59,6 +60,7 @@ import { useRenderOptimization, useThrottle } from "@/lib/hooks"
 import { useKeyboardShortcuts, getInteractionCursor, calculateSmoothZoom } from "@/lib/interactions"
 import { validateRoom, validateArtwork, validateDoor, validateVerticalLink, validateRoomGeometry, validateArtworkPlacement } from "@/lib/validation-pro"
 import { quickCoherenceCheck } from "@/lib/global-coherence"
+import { findSnapPoints, type SnapPoint } from "@/lib/snap"
 import { ContextMenu } from "./context-menu"
 
 // Fonction utilitaire pour vérifier si un élément est sélectionné
@@ -1183,17 +1185,22 @@ export function Canvas({
       ctx.beginPath()
 
       if (state.selectedTool === "rectangle") {
-        const topLeft = worldToScreen(drawStartPoint.x * GRID_SIZE, drawStartPoint.y * GRID_SIZE)
-        const bottomRight = worldToScreen(hoveredPoint.x * GRID_SIZE, hoveredPoint.y * GRID_SIZE)
+        // Calculer les coordonnées correctement pour éviter les déformations
+        const minX = Math.min(drawStartPoint.x, hoveredPoint.x)
+        const maxX = Math.max(drawStartPoint.x, hoveredPoint.x)
+        const minY = Math.min(drawStartPoint.y, hoveredPoint.y)
+        const maxY = Math.max(drawStartPoint.y, hoveredPoint.y)
+        
+        const topLeft = worldToScreen(minX * GRID_SIZE, minY * GRID_SIZE)
+        const bottomRight = worldToScreen(maxX * GRID_SIZE, maxY * GRID_SIZE)
         const width = bottomRight.x - topLeft.x
         const height = bottomRight.y - topLeft.y
         ctx.rect(topLeft.x, topLeft.y, width, height)
       } else if (state.selectedTool === "circle") {
         const center = worldToScreen(drawStartPoint.x * GRID_SIZE, drawStartPoint.y * GRID_SIZE)
-        const radius =
-          Math.max(Math.abs(hoveredPoint.x - drawStartPoint.x), Math.abs(hoveredPoint.y - drawStartPoint.y)) *
-          GRID_SIZE *
-          state.zoom
+        // Utiliser la distance euclidienne pour un cercle plus naturel
+        const radiusInGrid = Math.hypot(hoveredPoint.x - drawStartPoint.x, hoveredPoint.y - drawStartPoint.y)
+        const radius = radiusInGrid * GRID_SIZE * state.zoom
         ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
       } else if (state.selectedTool === "arc") {
         const polygon = createArcPolygon(drawStartPoint, hoveredPoint)
@@ -1252,25 +1259,50 @@ export function Canvas({
           hoveredPoint.y - state.currentPolygon[0].y,
         )
 
-        if (distanceToFirst < 0.3 && state.currentPolygon.length >= 3) {
+        // Zone de fermeture plus tolérante et visuel amélioré
+        const closeThreshold = 0.5
+        if (distanceToFirst < closeThreshold && state.currentPolygon.length >= 3) {
           ctx.lineTo(firstPoint.x, firstPoint.y)
           ctx.closePath()
           isClosing = true
 
-          // Remplissage du polygone en cours de finalisation
-          ctx.fillStyle = isValidPlacement ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)"
+          // Remplissage avec dégradé subtil pour le polygone en cours de finalisation
+          ctx.fillStyle = isValidPlacement ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)"
           ctx.fill()
 
-          // Indicateur de fermeture plus petit
+          // Indicateur de fermeture avec pulsation visuelle
+          const pulseRadius = 6 + Math.sin(Date.now() / 200) * 2
           ctx.beginPath()
-          ctx.arc(firstPoint.x, firstPoint.y, 6 * state.zoom, 0, Math.PI * 2)
-          ctx.fillStyle = "rgba(34, 197, 94, 0.4)"
+          ctx.arc(firstPoint.x, firstPoint.y, pulseRadius * state.zoom, 0, Math.PI * 2)
+          ctx.fillStyle = "rgba(34, 197, 94, 0.6)"
           ctx.fill()
-          ctx.strokeStyle = "rgb(34, 197, 94)"
-          ctx.lineWidth = 2
+          ctx.strokeStyle = "rgb(255, 255, 255)"
+          ctx.lineWidth = 2 * state.zoom
           ctx.stroke()
+          
+          // Cercle extérieur pour indiquer la zone de fermeture
+          ctx.beginPath()
+          ctx.arc(firstPoint.x, firstPoint.y, closeThreshold * GRID_SIZE * state.zoom, 0, Math.PI * 2)
+          ctx.strokeStyle = "rgba(34, 197, 94, 0.3)"
+          ctx.lineWidth = 1 * state.zoom
+          ctx.setLineDash([5 * state.zoom, 5 * state.zoom])
+          ctx.stroke()
+          ctx.setLineDash([])
         } else {
+          // Ligne de prévisualisation plus fluide avec courbe lisse
+          const lastPoint = state.currentPolygon[state.currentPolygon.length - 1]
+          const lastScreen = worldToScreen(lastPoint.x * GRID_SIZE, lastPoint.y * GRID_SIZE)
+          
+          // Utiliser une courbe de Bézier pour une ligne plus douce
+          const midX = (lastScreen.x + hoverScreen.x) / 2
+          const midY = (lastScreen.y + hoverScreen.y) / 2
+          
+          ctx.strokeStyle = "rgba(100, 116, 139, 0.6)"
+          ctx.lineWidth = 2 * state.zoom
+          ctx.setLineDash([10 * state.zoom, 5 * state.zoom])
           ctx.lineTo(hoverScreen.x, hoverScreen.y)
+          ctx.stroke()
+          ctx.setLineDash([])
         }
       }
 
@@ -1285,15 +1317,43 @@ export function Canvas({
         ctx.fill()
       }
 
-      // Points du polygone plus petits
-      state.currentPolygon.forEach((point) => {
+      // Points du polygone avec design amélioré
+      state.currentPolygon.forEach((point, index) => {
         const screenPoint = worldToScreen(point.x * GRID_SIZE, point.y * GRID_SIZE)
+        
+        // Point principal
         ctx.beginPath()
-        ctx.arc(screenPoint.x, screenPoint.y, 3 * state.zoom, 0, Math.PI * 2)
-        ctx.fillStyle = VISUAL_FEEDBACK.colors.valid
-        ctx.fill()
-        ctx.strokeStyle = "white"
-        ctx.lineWidth = 1
+        const radius = index === 0 ? 5 * state.zoom : 4 * state.zoom // Premier point plus grand
+        ctx.arc(screenPoint.x, screenPoint.y, radius, 0, Math.PI * 2)
+        
+        if (index === 0) {
+          // Premier point avec style distinctif
+          ctx.fillStyle = "rgba(34, 197, 94, 0.8)"
+          ctx.fill()
+          ctx.strokeStyle = "white"
+          ctx.lineWidth = 2 * state.zoom
+          ctx.stroke()
+          
+          // Numéro sur le premier point
+          ctx.fillStyle = "white"
+          ctx.font = `${10 * state.zoom}px system-ui`
+          ctx.textAlign = "center"
+          ctx.textBaseline = "middle"
+          ctx.fillText("1", screenPoint.x, screenPoint.y)
+        } else {
+          // Autres points avec gradient subtil
+          ctx.fillStyle = "rgba(59, 130, 246, 0.8)"
+          ctx.fill()
+          ctx.strokeStyle = "white"
+          ctx.lineWidth = 1.5 * state.zoom
+          ctx.stroke()
+        }
+        
+        // Halo de sélection pour une meilleure visibilité
+        ctx.beginPath()
+        ctx.arc(screenPoint.x, screenPoint.y, radius + 2 * state.zoom, 0, Math.PI * 2)
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"
+        ctx.lineWidth = 1 * state.zoom
         ctx.stroke()
       })
     }
@@ -1537,6 +1597,24 @@ export function Canvas({
 
       const worldPos = screenToWorld(e.clientX, e.clientY)
       let gridPos = snapToGrid(worldPos, GRID_SIZE)
+      
+      // Snap intelligent selon le contexte - CORRECTION: gridPos est déjà en coordonnées grid
+      if (state.selectedTool === "room" || state.selectedTool === "wall") {
+        const snapPoints = findSnapPoints(
+          gridPos, 
+          currentFloor, 
+          0.4,
+          { 
+            elementType: state.selectedTool,
+            preferredTypes: ['vertex', 'wall']
+          }
+        )
+        
+        if (snapPoints.length > 0) {
+          // Le point snappé est déjà en coordonnées grid
+          gridPos = snapPoints[0].point
+        }
+      }
 
       if (selectionBox && state.selectedTool === "select") {
         setSelectionBox({
@@ -1557,8 +1635,12 @@ export function Canvas({
             y: p.y + deltaY,
           }))
 
-          const overlaps = currentFloor.rooms.some((r) => r.id !== room.id && polygonsIntersect(newPolygon, r.polygon))
-          setIsValidPlacement(!overlaps)
+          const overlap = currentFloor.rooms.some((r) => {
+            if (r.id === room.id) return false
+            const overlapCheck = checkPolygonsOverlapIntelligent(newPolygon, r.polygon, true)
+            return overlapCheck.overlapping // Permet touching et shared edges
+          })
+          setIsValidPlacement(!overlap)
 
           const newFloors = state.floors.map((floor) => {
             if (floor.id !== state.currentFloorId) return floor
@@ -1964,7 +2046,11 @@ export function Canvas({
         const oldVertex = newPolygon[draggedVertex.vertexIndex]
         newPolygon[draggedVertex.vertexIndex] = gridPos
 
-        const overlaps = currentFloor.rooms.some((r) => r.id !== room.id && polygonsIntersect(newPolygon, r.polygon))
+        const overlap = currentFloor.rooms.some((r) => {
+          if (r.id === room.id) return false
+          const overlapCheck = checkPolygonsOverlapIntelligent(newPolygon, r.polygon, true)
+          return overlapCheck.overlapping // Permet touching et shared edges
+        })
         
         // Créer la nouvelle pièce temporaire pour validation
         const newRoom = { ...room, polygon: newPolygon }
@@ -1974,7 +2060,7 @@ export function Canvas({
         const hasInvalidWalls = invalidWalls.length > 0
         
         // La position est valide si pas de chevauchement ET tous les murs restent valides
-        const isValid = !overlaps && !hasInvalidWalls
+        const isValid = !overlap && !hasInvalidWalls
         setIsValidPlacement(isValid)
 
         const newFloors = state.floors.map((floor) => {
@@ -2488,17 +2574,29 @@ export function Canvas({
           const firstPoint = state.currentPolygon[0]
           const distance = Math.hypot(gridPos.x - firstPoint.x, gridPos.y - firstPoint.y)
 
-          if (distance < 0.3) {
-            // Créer la pièce temporaire pour validation
+          // Zone de fermeture plus tolérante et intelligente
+          const closeThreshold = 0.5
+          if (distance < closeThreshold) {
+            // Créer la pièce temporaire pour validation avec géométrie optimisée
+            const optimizedPolygon = [...state.currentPolygon]
+            
+            // Supprimer les points trop proches pour éviter la dégénérescence
+            const cleanedPolygon = optimizedPolygon.filter((point, index) => {
+              if (index === 0) return true
+              const prevPoint = optimizedPolygon[index - 1]
+              const dist = Math.hypot(point.x - prevPoint.x, point.y - prevPoint.y)
+              return dist > 0.1 // Seuil minimum entre points
+            })
+
             const tempRoom: Room = {
               id: `room-${Date.now()}`,
-              polygon: state.currentPolygon,
+              polygon: cleanedPolygon,
             }
 
-            // Validation stricte avec système professionnel
+            // Validation intelligente avec feedback amélioré
             const validationResult = validateRoomGeometry(tempRoom, {
               floor: currentFloor,
-              strictMode: true
+              strictMode: false // Mode plus tolérant pour les polygones libres
             })
 
             // Si validation échoue, afficher l'erreur et ne pas créer
@@ -2521,9 +2619,37 @@ export function Canvas({
           }
         }
 
-        updateState({
-          currentPolygon: [...state.currentPolygon, gridPos],
-        })
+        // Éviter les points en double ou trop proches
+        const lastPoint = state.currentPolygon[state.currentPolygon.length - 1]
+        const minDistance = 0.2 // Distance minimale entre points
+        
+        if (!lastPoint || Math.hypot(gridPos.x - lastPoint.x, gridPos.y - lastPoint.y) >= minDistance) {
+          // Validation préventive - éviter les auto-intersections
+          const newPolygon = [...state.currentPolygon, gridPos]
+          
+          if (newPolygon.length >= 3) {
+            const tempRoom: Room = {
+              id: `temp-validation-${Date.now()}`,
+              polygon: newPolygon,
+            }
+            
+            // Validation légère pour éviter les géométries dégénérées
+            const validationResult = validateRoomGeometry(tempRoom, {
+              floor: currentFloor,
+              strictMode: false
+            })
+            
+            // Si le nouveau point cause des problèmes, ne pas l'ajouter
+            if (!validationResult.valid && validationResult.message?.includes("intersection")) {
+              console.warn("Point rejeté - auto-intersection détectée")
+              return
+            }
+          }
+          
+          updateState({
+            currentPolygon: newPolygon,
+          })
+        }
         return
       }
 
