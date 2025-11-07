@@ -6,7 +6,9 @@ import { Toolbar } from "./toolbar"
 import { FloorTabs } from "./floor-tabs"
 import { PropertiesPanel } from "./properties-panel"
 import { ExportDialog } from "./export-dialog"
-import type { EditorState, Tool, Floor } from "@/lib/types"
+import type { EditorState, Tool, Floor, MeasurementDisplay } from "@/lib/types"
+import { calculatePolygonAreaInMeters, getPolygonCenter } from "@/lib/geometry"
+import { v4 as uuidv4 } from "uuid"
 
 export function MuseumEditor() {
   const [state, setState] = useState<EditorState>({
@@ -36,6 +38,11 @@ export function MuseumEditor() {
     history: [],
     historyIndex: -1,
     contextMenu: null,
+    measurements: {
+      showMeasurements: true,
+      showDynamicMeasurements: true,
+      measurements: [],
+    },
   })
 
   const [showExport, setShowExport] = useState(false)
@@ -78,6 +85,49 @@ export function MuseumEditor() {
     setState((prev) => ({ ...prev, ...updates }))
   }, [])
 
+  // Fonction pour régénérer les mesures des surfaces des pièces
+  const regenerateMeasurements = useCallback((floors: ReadonlyArray<Floor>) => {
+    const measurements: MeasurementDisplay[] = []
+    
+    floors.forEach(floor => {
+      floor.rooms.forEach(room => {
+        const area = calculatePolygonAreaInMeters(room.polygon)
+        const center = getPolygonCenter(room.polygon)
+        
+        measurements.push({
+          id: `area-${room.id}`,
+          type: "area",
+          position: center,
+          value: area,
+          unit: "m²",
+          elementId: room.id,
+        })
+      })
+    })
+    
+    return measurements
+  }, [])
+
+  // Fonction updateState améliorée qui régénère automatiquement les mesures
+  const updateStateWithMeasurements = useCallback((updates: Partial<EditorState>, saveHistory = false, actionDescription?: string) => {
+    const newState = { ...state, ...updates }
+    
+    // Régénérer les mesures si les floors ont changé
+    if (updates.floors) {
+      const newMeasurements = regenerateMeasurements(updates.floors)
+      newState.measurements = {
+        ...state.measurements,
+        measurements: newMeasurements,
+      }
+    }
+    
+    if (saveHistory && updates.floors) {
+      saveToHistory(newState, actionDescription)
+    } else {
+      setState(prev => ({ ...prev, ...newState }))
+    }
+  }, [state, saveToHistory, regenerateMeasurements])
+
   // Ancienne fonction pour compatibilité - maintenant ne sauvegarde QUE si explicitement demandé
   const updateState = useCallback((updates: Partial<EditorState>, saveHistory = false, actionDescription?: string) => {
     if (saveHistory && updates.floors) {
@@ -101,11 +151,11 @@ export function MuseumEditor() {
       escalators: [],
       elevators: [],
     }
-    updateState({
+    updateStateWithMeasurements({
       floors: [...state.floors, newFloor],
       currentFloorId: newFloor.id,
     })
-  }, [state.floors, updateState])
+  }, [state.floors, updateStateWithMeasurements])
 
   const switchFloor = useCallback(
     (floorId: string) => {
@@ -327,6 +377,30 @@ export function MuseumEditor() {
           </div>
 
           <button
+            onClick={() => updateState({
+              measurements: {
+                ...state.measurements,
+                showMeasurements: !state.measurements.showMeasurements,
+              }
+            })}
+            className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
+              state.measurements.showMeasurements
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:bg-muted/80"
+            }`}
+            title="Afficher/Masquer les mesures"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2zM16 8v2m-8 6h8m-8-4h5"
+              />
+            </svg>
+          </button>
+
+          <button
             onClick={recenterView}
             className="rounded bg-muted px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/80"
             title="Recenter view on floor plan"
@@ -363,7 +437,7 @@ export function MuseumEditor() {
 
           <Canvas
             state={state}
-            updateState={updateState}
+            updateState={updateStateWithMeasurements}
             updateStateTemporary={updateStateTemporary}
             saveToHistory={saveToHistory}
             currentFloor={currentFloor}

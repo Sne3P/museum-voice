@@ -21,6 +21,10 @@ import {
   isArtworkInRoom,
   getArtworkResizeHandle,
   calculateBounds,
+  calculateDistanceInMeters,
+  getSegmentMidpoint,
+  getPerpendicularDirection,
+  getPolygonCenter,
 } from "@/lib/geometry"
 import {
   createWall,
@@ -47,7 +51,9 @@ import {
   ENDPOINT_HIT_RADIUS,
   LINE_HIT_THRESHOLD,
   CONSTRAINTS,
-  VISUAL_FEEDBACK
+  VISUAL_FEEDBACK,
+  MEASUREMENT_OFFSET,
+  FONTS
 } from "@/lib/constants"
 import { useRenderOptimization, useThrottle } from "@/lib/hooks"
 import { useKeyboardShortcuts, getInteractionCursor, calculateSmoothZoom } from "@/lib/interactions"
@@ -257,6 +263,109 @@ export function Canvas({
     },
     [state.pan, state.zoom],
   )
+
+  // Fonction pour dessiner les mesures de distances
+  const drawMeasurement = useCallback((
+    ctx: CanvasRenderingContext2D,
+    start: Point,
+    end: Point,
+    distance: number,
+    isDynamic: boolean = false
+  ) => {
+    const startScreen = worldToScreen(start.x * GRID_SIZE, start.y * GRID_SIZE)
+    const endScreen = worldToScreen(end.x * GRID_SIZE, end.y * GRID_SIZE)
+    const midpoint = getSegmentMidpoint(startScreen, endScreen)
+    const perpDirection = getPerpendicularDirection(startScreen, endScreen)
+    
+    // Position du label
+    const labelOffset = MEASUREMENT_OFFSET * state.zoom
+    const labelPos = {
+      x: midpoint.x + perpDirection.x * labelOffset,
+      y: midpoint.y + perpDirection.y * labelOffset
+    }
+    
+    // Texte de mesure
+    const measureText = `${distance.toFixed(2)}m`
+    
+    // Style du texte
+    ctx.font = `${FONTS.measurementSize * state.zoom}px ${FONTS.measurementFamily}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    
+    // Mesure du texte pour le background
+    const textMetrics = ctx.measureText(measureText)
+    const padding = 4 * state.zoom
+    const bgWidth = textMetrics.width + padding * 2
+    const bgHeight = FONTS.measurementSize * state.zoom + padding * 2
+    
+    // Fond semi-transparent
+    ctx.fillStyle = isDynamic ? COLORS.measurementBackground : COLORS.measurementBackground
+    ctx.strokeStyle = COLORS.measurementBorder
+    ctx.lineWidth = 1
+    
+    ctx.fillRect(
+      labelPos.x - bgWidth / 2,
+      labelPos.y - bgHeight / 2,
+      bgWidth,
+      bgHeight
+    )
+    ctx.strokeRect(
+      labelPos.x - bgWidth / 2,
+      labelPos.y - bgHeight / 2,
+      bgWidth,
+      bgHeight
+    )
+    
+    // Texte de mesure
+    ctx.fillStyle = isDynamic ? COLORS.validStroke : COLORS.measurementText
+    ctx.fillText(measureText, labelPos.x, labelPos.y)
+  }, [worldToScreen, state.zoom])
+
+  // Fonction pour dessiner la surface d'une pièce
+  const drawAreaMeasurement = useCallback((
+    ctx: CanvasRenderingContext2D,
+    room: Room,
+    area: number
+  ) => {
+    const center = getPolygonCenter(room.polygon)
+    const centerScreen = worldToScreen(center.x * GRID_SIZE, center.y * GRID_SIZE)
+    
+    // Texte de surface
+    const areaText = `${area.toFixed(2)} m²`
+    
+    // Style du texte
+    ctx.font = `${FONTS.measurementSize * state.zoom}px ${FONTS.measurementFamily}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    
+    // Mesure du texte pour le background
+    const textMetrics = ctx.measureText(areaText)
+    const padding = 6 * state.zoom
+    const bgWidth = textMetrics.width + padding * 2
+    const bgHeight = FONTS.measurementSize * state.zoom + padding * 2
+    
+    // Fond coloré pour les surfaces
+    ctx.fillStyle = COLORS.areaBackground
+    ctx.strokeStyle = COLORS.areaText
+    ctx.lineWidth = 1.5
+    
+    ctx.fillRect(
+      centerScreen.x - bgWidth / 2,
+      centerScreen.y - bgHeight / 2,
+      bgWidth,
+      bgHeight
+    )
+    ctx.strokeRect(
+      centerScreen.x - bgWidth / 2,
+      centerScreen.y - bgHeight / 2,
+      bgWidth,
+      bgHeight
+    )
+    
+    // Texte de surface
+    ctx.fillStyle = COLORS.areaText
+    ctx.fillText(areaText, centerScreen.x, centerScreen.y)
+  }, [worldToScreen, state.zoom])
 
   const drawRoom = useCallback(
     (ctx: CanvasRenderingContext2D, room: Room, isSelected: boolean, isHovered: boolean) => {
@@ -1218,6 +1327,77 @@ export function Canvas({
       ctx.lineWidth = VISUAL_FEEDBACK.stroke.previewThickness
       ctx.stroke()
     }
+
+    // Rendu des mesures dynamiques pendant la création
+    if (state.measurements.showDynamicMeasurements) {
+      // Mesures pendant le tracé d'un polygone
+      if (state.currentPolygon.length > 0) {
+        for (let i = 0; i < state.currentPolygon.length; i++) {
+          const current = state.currentPolygon[i]
+          const next = i === state.currentPolygon.length - 1 && hoveredPoint 
+            ? hoveredPoint 
+            : state.currentPolygon[(i + 1) % state.currentPolygon.length]
+          
+          if (next && (i < state.currentPolygon.length - 1 || hoveredPoint)) {
+            const distance = calculateDistanceInMeters(current, next)
+            drawMeasurement(ctx, current, next, distance, true)
+          }
+        }
+      }
+
+      // Mesures pendant la création de rectangles/artwork
+      if (isDragging && drawStartPoint && hoveredPoint && 
+          (state.selectedTool === "rectangle" || state.selectedTool === "artwork")) {
+        const width = Math.abs(hoveredPoint.x - drawStartPoint.x)
+        const height = Math.abs(hoveredPoint.y - drawStartPoint.y)
+        
+        // Mesure largeur
+        drawMeasurement(ctx, 
+          { x: Math.min(drawStartPoint.x, hoveredPoint.x), y: drawStartPoint.y }, 
+          { x: Math.max(drawStartPoint.x, hoveredPoint.x), y: drawStartPoint.y }, 
+          calculateDistanceInMeters(
+            { x: Math.min(drawStartPoint.x, hoveredPoint.x), y: drawStartPoint.y }, 
+            { x: Math.max(drawStartPoint.x, hoveredPoint.x), y: drawStartPoint.y }
+          ), 
+          true
+        )
+        
+        // Mesure hauteur
+        drawMeasurement(ctx, 
+          { x: hoveredPoint.x, y: Math.min(drawStartPoint.y, hoveredPoint.y) }, 
+          { x: hoveredPoint.x, y: Math.max(drawStartPoint.y, hoveredPoint.y) }, 
+          calculateDistanceInMeters(
+            { x: hoveredPoint.x, y: Math.min(drawStartPoint.y, hoveredPoint.y) }, 
+            { x: hoveredPoint.x, y: Math.max(drawStartPoint.y, hoveredPoint.y) }
+          ), 
+          true
+        )
+      }
+    }
+
+    // Rendu des mesures permanentes
+    if (state.measurements.showMeasurements) {
+      // Mesures des segments des pièces
+      currentFloor.rooms.forEach(room => {
+        if (room.polygon.length >= 3) {
+          // Mesures des côtés
+          for (let i = 0; i < room.polygon.length; i++) {
+            const current = room.polygon[i]
+            const next = room.polygon[(i + 1) % room.polygon.length]
+            const distance = calculateDistanceInMeters(current, next)
+            drawMeasurement(ctx, current, next, distance, false)
+          }
+          
+          // Surface de la pièce au centre
+          const areaFromMeasurements = state.measurements.measurements.find(
+            m => m.elementId === room.id && m.type === "area"
+          )
+          if (areaFromMeasurements) {
+            drawAreaMeasurement(ctx, room, areaFromMeasurements.value)
+          }
+        }
+      })
+    }
   }, [
     state,
     currentFloor,
@@ -1237,8 +1417,10 @@ export function Canvas({
     draggedRoom,
     draggedWall,
     draggedElement,
-    draggedArtwork, // Add to dependencies
-    resizingArtwork, // Add to dependencies
+    draggedArtwork,
+    resizingArtwork,
+    drawMeasurement,
+    drawAreaMeasurement,
   ])
 
   const handleMouseMove = useCallback(
@@ -3061,7 +3243,7 @@ export function Canvas({
           onClose={() => setContextMenu(null)}
           state={state}
           updateState={updateState}
-          saveToHistory={saveToHistory}
+          saveToHistory={saveToHistory || (() => {})}
           currentFloor={currentFloor}
           onNavigateToFloor={onNavigateToFloor}
         />

@@ -1,5 +1,5 @@
 import type { Point, Door, VerticalLink, Artwork, Room } from "./types"
-import { GRID_SIZE, SNAP_THRESHOLD, GEOMETRY } from "./constants"
+import { GRID_SIZE, SNAP_THRESHOLD, GEOMETRY, GRID_TO_METERS, MEASUREMENT_PRECISION } from "./constants"
 
 /**
  * Enhanced geometry utilities for the Museum Floor Plan Editor
@@ -475,4 +475,100 @@ export function getArtworkResizeHandle(
   if (Math.abs(mousePos.y - (y + h)) < threshold && mousePos.x >= x && mousePos.x <= x + w) return "s"
 
   return null
+}
+
+// === MEASUREMENT UTILITIES ===
+
+/**
+ * Convert grid units to meters with specified precision
+ */
+export function gridUnitsToMeters(gridUnits: number): number {
+  return Number((gridUnits * GRID_TO_METERS).toFixed(MEASUREMENT_PRECISION))
+}
+
+/**
+ * Calculate distance between two points in meters
+ */
+export function calculateDistanceInMeters(start: Point, end: Point): number {
+  const gridDistance = Math.hypot(end.x - start.x, end.y - start.y)
+  return gridUnitsToMeters(gridDistance)
+}
+
+/**
+ * Calculate area of a polygon in square meters
+ */
+export function calculatePolygonAreaInMeters(polygon: ReadonlyArray<Point>): number {
+  if (polygon.length < 3) return 0
+  
+  let area = 0
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    area += (polygon[j].x + polygon[i].x) * (polygon[j].y - polygon[i].y)
+  }
+  
+  // Convert from grid units squared to meters squared
+  const gridAreaSquared = Math.abs(area) / 2
+  const metersSquared = gridAreaSquared * GRID_TO_METERS * GRID_TO_METERS
+  
+  return Number(metersSquared.toFixed(MEASUREMENT_PRECISION))
+}
+
+/**
+ * Calculate perimeter of a polygon in meters
+ */
+export function calculatePolygonPerimeterInMeters(polygon: ReadonlyArray<Point>): number {
+  if (polygon.length < 2) return 0
+  
+  let perimeter = 0
+  for (let i = 0; i < polygon.length; i++) {
+    const current = polygon[i]
+    const next = polygon[(i + 1) % polygon.length]
+    perimeter += Math.hypot(next.x - current.x, next.y - current.y)
+  }
+  
+  return gridUnitsToMeters(perimeter)
+}
+
+/**
+ * Get center point of a polygon
+ */
+export function getPolygonCenter(polygon: ReadonlyArray<Point>): Point {
+  if (polygon.length === 0) return { x: 0, y: 0 }
+  
+  let totalX = 0, totalY = 0
+  for (const point of polygon) {
+    totalX += point.x
+    totalY += point.y
+  }
+  
+  return {
+    x: totalX / polygon.length,
+    y: totalY / polygon.length
+  }
+}
+
+/**
+ * Get midpoint of a line segment
+ */
+export function getSegmentMidpoint(start: Point, end: Point): Point {
+  return {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2
+  }
+}
+
+/**
+ * Get perpendicular direction for measurement label placement
+ */
+export function getPerpendicularDirection(start: Point, end: Point): Point {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const length = Math.hypot(dx, dy)
+  
+  if (length === 0) return { x: 0, y: 1 }
+  
+  // Return normalized perpendicular vector
+  return {
+    x: -dy / length,
+    y: dx / length
+  }
 }

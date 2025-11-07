@@ -156,6 +156,21 @@ export interface ContextMenuState {
   readonly elementType?: ElementType
 }
 
+export interface MeasurementDisplay {
+  readonly id: string
+  readonly type: "distance" | "area"
+  readonly position: Point
+  readonly value: number
+  readonly unit: "m" | "m²"
+  readonly elementId?: string // For room area measurements
+}
+
+export interface MeasurementState {
+  readonly showMeasurements: boolean
+  readonly showDynamicMeasurements: boolean
+  readonly measurements: ReadonlyArray<MeasurementDisplay>
+}
+
 export interface EditorState {
   readonly floors: ReadonlyArray<Floor>
   readonly currentFloorId: string
@@ -171,6 +186,7 @@ export interface EditorState {
   readonly history: ReadonlyArray<EditorState>
   readonly historyIndex: number
   readonly contextMenu: ContextMenuState | null
+  readonly measurements: MeasurementState
 }
 
 // Helper types for operations

@@ -10,6 +10,11 @@ export const SNAP_THRESHOLD = 0.8 // Grid units for wall segment snapping
 export const VERTEX_SNAP_THRESHOLD = 0.3 // Grid units for vertex snapping
 export const POLYGON_CLOSE_THRESHOLD = 0.3 // Distance to close polygon
 
+// === MEASUREMENTS ===
+export const GRID_TO_METERS = 0.5 // 1 grid unit = 0.5 meters
+export const MEASUREMENT_PRECISION = 2 // Decimal places for measurements
+export const MEASUREMENT_OFFSET = 20 // Pixels offset from segments for labels
+
 // === ZOOM & PAN ===
 export const MIN_ZOOM = 0.1
 export const MAX_ZOOM = 5.0
@@ -130,6 +135,13 @@ export const COLORS = {
   validStroke: "rgb(34, 197, 94)",
   invalidStroke: "rgb(239, 68, 68)",
   
+  // Measurements
+  measurementText: "#1f2937", // Dark gray for measurement labels
+  measurementBackground: "rgba(255, 255, 255, 0.9)", // Semi-transparent white background
+  measurementBorder: "#9ca3af", // Light gray border for measurement boxes
+  areaText: "#065f46", // Dark green for area measurements
+  areaBackground: "rgba(16, 185, 129, 0.1)", // Light green background for areas
+  
   // Selection
   selectionBox: "rgba(59, 130, 246, 0.1)",
   selectionStroke: "rgb(59, 130, 246)",
@@ -182,8 +194,10 @@ export const RENDER_CONFIG = {
 export const FONTS = {
   iconSize: 14, // Base size, multiplied by zoom
   labelSize: 9,
+  measurementSize: 11, // Size for measurement labels
   iconFamily: "sans-serif",
   labelFamily: "sans-serif",
+  measurementFamily: "monospace", // Monospace for consistent number width
 } as const
 
 // === GEOMETRY ===
