@@ -142,10 +142,10 @@ def add_oeuvre(file_name: str, file_path: str, title: Optional[str] = None,
             conn.close()
             return existing[0]
     
-    # Insérer la nouvelle œuvre avec pdf_link
+    # Insérer la nouvelle œuvre avec pdf_link et room
     cur.execute(
-        "INSERT INTO oeuvres (file_name, file_path, title, description, word_count, artist, pdf_link) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (file_name, file_path, title, description, word_count, artist, pdf_link),
+        "INSERT INTO oeuvres (file_name, file_path, title, description, word_count, artist, pdf_link, room) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (file_name, file_path, title, description, word_count, artist, pdf_link, 1),
     )
     oeuvre_id = cur.lastrowid
     conn.commit()

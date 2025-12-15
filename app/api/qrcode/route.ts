@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     
     // Vérifier l'unicité du token (max 5 tentatives)
     while (!isUnique && attempts < 5) {
-      const existingToken = await getRow('SELECT token FROM qr_codes WHERE token = ?', [token])
+      const existingToken = await getRow('SELECT token FROM qr_code WHERE token = ?', [token])
       
       if (!existingToken) {
         isUnique = true
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     // Insérer le nouveau token dans la base de données
     const result = await runQuery(
-      'INSERT INTO qr_codes (token, created_by, is_used) VALUES (?, ?, 0)',
+      'INSERT INTO qr_code (token, created_by, is_used) VALUES (?, ?, 0)',
       [token, userName]
     )
     
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     // Récupérer les détails du token créé
     const createdToken = await getRow(
-      'SELECT token, created_at FROM qr_codes WHERE id = ?',
+      'SELECT token, created_at FROM qr_code WHERE qr_code_id = ?',
       [result.lastID]
     )
 
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
 
     // Vérifier le token dans la base de données
     const qrData = await getRow(
-      'SELECT token, created_by, created_at, is_used, used_at FROM qr_codes WHERE token = ?',
+      'SELECT token, created_by, created_at, is_used, used_at FROM qr_code WHERE token = ?',
       [token]
     )
 

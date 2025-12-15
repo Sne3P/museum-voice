@@ -7,17 +7,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, QrCode, Download, Copy, RefreshCw } from 'lucide-react'
+import { ArrowLeft, QrCode, Maximize2, X } from 'lucide-react'
 import QRCodeLib from 'qrcode'
 
 export default function QRCodePage() {
   const { isAuthenticated, currentUser, hasPermission } = useAuth()
   const router = useRouter()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const modalCanvasRef = useRef<HTMLCanvasElement>(null)
   const [qrCodeData, setQrCodeData] = useState('')
   const [tokenData, setTokenData] = useState<any>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState('')
+  const [showModal, setShowModal] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated || (!hasPermission('edit_maps') && !hasPermission('manage_accueil') && !hasPermission('view_only'))) {
@@ -52,8 +54,9 @@ export default function QRCodePage() {
       
       // Générer le QR code avec l'URL retournée
       if (canvasRef.current && data.url) {
+        const qrSize = window.innerWidth < 640 ? 300 : 350;
         await QRCodeLib.toCanvas(canvasRef.current, data.url, {
-          width: 300,
+          width: qrSize,
           margin: 2,
           color: {
             dark: '#000000',
@@ -71,24 +74,25 @@ export default function QRCodePage() {
     }
   }
 
-  const downloadQRCode = () => {
-    if (canvasRef.current) {
-      const link = document.createElement('a')
-      link.download = `qrcode-audioguide-${Date.now()}.png`
-      link.href = canvasRef.current.toDataURL()
-      link.click()
-    }
+  const showLargeQRCode = async () => {
+    setShowModal(true)
+    // Attendre que le modal soit rendu
+    setTimeout(async () => {
+      if (modalCanvasRef.current && qrCodeData) {
+        await QRCodeLib.toCanvas(modalCanvasRef.current, qrCodeData, {
+          width: 500,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        })
+      }
+    }, 100)
   }
 
-  const copyToClipboard = async () => {
-    if (qrCodeData) {
-      try {
-        await navigator.clipboard.writeText(qrCodeData)
-        alert('URL copiée dans le presse-papiers!')
-      } catch (error) {
-        console.error('Erreur lors de la copie:', error)
-      }
-    }
+  const closeModal = () => {
+    setShowModal(false)
   }
 
   if (!isAuthenticated) {
@@ -97,49 +101,41 @@ export default function QRCodePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto px-4 py-6 max-w-7xl">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
+        <div className="flex flex-col sm:flex-row items-center justify-between mb-6 sm:mb-8 gap-4">
           <Button 
             variant="outline" 
             onClick={() => router.back()}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 self-start sm:self-center"
           >
             <ArrowLeft className="h-4 w-4" />
             Retour
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Génération de QR Code</h1>
-            <p className="text-gray-600 mt-1">Créer des QR codes pour l'audioguide du musée</p>
+          <div className="text-center flex-1 order-first sm:order-none">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Génération de QR Code</h1>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">Créer des QR codes pour l'audioguide du musée</p>
           </div>
+          <div className="hidden sm:block w-20"></div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
           {/* Paramètres */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card className="w-full">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <QrCode className="h-5 w-5" />
-                Paramètres du QR Code
+                Paramètres du QR Cod
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-sm">
                 Configurez l'URL et les paramètres pour générer le QR code
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">Informations du compte</h4>
-                <div className="text-sm text-blue-800 space-y-1">
-                  <p><strong>Utilisateur:</strong> {currentUser?.name}</p>
-                  <p><strong>Rôle:</strong> {currentUser?.role === 'super_admin' ? 'Admin Principal' : currentUser?.role === 'admin_musee' ? 'Admin Musée' : 'Agent Accueil'}</p>
-                  <p><strong>Identifiant:</strong> {currentUser?.username}</p>
-                </div>
-              </div>
-
+            <CardContent className="space-y-4 pb-6">
               <div className="p-4 bg-green-50 rounded-lg">
                 <h4 className="font-medium text-green-900 mb-2">Fonctionnement</h4>
                 <div className="text-sm text-green-800 space-y-1">
-                  <p>• Chaque QR code génère un token unique stocké en base</p>
+                  <p>• Chaque QR code génère un token unique</p>
                   <p>• Le visiteur accède à l'audioguide via le token</p>
                   <p>• Une fois utilisé, le token devient invalide</p>
                   <p>• Traçabilité complète des accès</p>
@@ -165,54 +161,41 @@ export default function QRCodePage() {
           </Card>
 
           {/* Aperçu et téléchargement */}
-          <Card>
-            <CardHeader>
-              <CardTitle>QR Code Généré</CardTitle>
-              <CardDescription>
+          <Card className="w-full">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg">QR Code Généré</CardTitle>
+              <CardDescription className="text-sm">
                 Aperçu et options de téléchargement
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex justify-center">
-                <div className="p-4 bg-white border-2 border-dashed border-gray-300 rounded-lg">
-                  <canvas
-                    ref={canvasRef}
-                    className={qrCodeData ? 'block' : 'hidden'}
-                  />
+            <CardContent className="space-y-4 pb-6">
+              <div className="flex justify-center w-full overflow-hidden">
+                <div className="p-4 bg-white border-2 border-dashed border-gray-300 rounded-lg w-full max-w-md">
+                  <div className="flex justify-center">
+                    <canvas
+                      ref={canvasRef}
+                      className={qrCodeData ? 'block w-full h-auto max-w-[300px] sm:max-w-[350px]' : 'hidden'}
+                    />
+                  </div>
                   {!qrCodeData && (
-                    <div className="w-[300px] h-[300px] flex items-center justify-center text-gray-400">
-                      <QrCode className="h-16 w-16" />
+                    <div className="w-full aspect-square max-w-[300px] sm:max-w-[350px] mx-auto flex items-center justify-center text-gray-400">
+                      <QrCode className="h-16 w-16 sm:h-20 sm:w-20" />
                     </div>
                   )}
                 </div>
               </div>
 
-              {qrCodeData && tokenData && (
-                <div className="space-y-4">
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm font-medium mb-2">Détails du token:</p>
-                    <div className="text-xs space-y-1">
-                      <p><strong>Token:</strong> <span className="font-mono">{tokenData.token}</span></p>
-                      <p><strong>URL:</strong> <span className="font-mono break-all text-gray-600">{qrCodeData}</span></p>
-                      <p><strong>Créé le:</strong> {new Date(tokenData.createdAt).toLocaleString('fr-FR')}</p>
-                      <p><strong>Statut:</strong> <span className="text-green-600">Actif (non utilisé)</span></p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button onClick={downloadQRCode} className="flex-1">
-                      <Download className="h-4 w-4 mr-2" />
-                      Télécharger PNG
-                    </Button>
-                    <Button onClick={copyToClipboard} variant="outline" className="flex-1">
-                      <Copy className="h-4 w-4 mr-2" />
-                      Copier URL
-                    </Button>
-                  </div>
+              {qrCodeData && (
+                <div className="flex justify-center">
+                  <Button onClick={showLargeQRCode} className="px-4 sm:px-8 text-sm sm:text-base">
+                    <Maximize2 className="h-4 w-4 mr-2" />
+                    <span className="hidden sm:inline">Afficher en Plus Grand</span>
+                    <span className="sm:hidden">Agrandir</span>
+                  </Button>
                 </div>
               )}
 
-              <div className="text-xs text-gray-500 space-y-1">
+              <div className="text-xs text-gray-500 space-y-1 p-3 bg-gray-50 rounded">
                 <p><strong>Utilisation:</strong></p>
                 <p>• Imprimez le QR code sur des supports physiques</p>
                 <p>• Les visiteurs scannent pour accéder à l'audioguide</p>
@@ -221,6 +204,23 @@ export default function QRCodePage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Modal pour afficher le QR code en grand */}
+        {showModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">QR Code - Affichage Grand Format</h3>
+                <Button variant="outline" size="sm" onClick={closeModal}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex justify-center">
+                <canvas ref={modalCanvasRef} className="max-w-full h-auto" />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
