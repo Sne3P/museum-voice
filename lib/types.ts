@@ -38,6 +38,9 @@ export interface Artwork {
   readonly size?: readonly [number, number]
   readonly name?: string
   readonly pdf_id?: string
+  readonly pdfLink?: string
+  readonly tempPdfFile?: File | null
+  readonly tempPdfBase64?: string | null
 }
 
 export interface Door {

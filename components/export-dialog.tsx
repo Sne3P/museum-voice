@@ -10,6 +10,8 @@ interface ExportDialogProps {
 
 export function ExportDialog({ state, onClose }: ExportDialogProps) {
   const [copied, setCopied] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
   const [exportFormat, setExportFormat] = useState<'json' | 'sql' | 'both'>('json')
 
   // Génération d'IDs séquentiels pour les différentes entités
@@ -212,17 +214,34 @@ export function ExportDialog({ state, onClose }: ExportDialogProps) {
   // BLOC "ŒUVRES & CONTENUS"
   // =========
 
+  // Collecte des PDF temporaires
+  const tempPdfs: Array<{ filename: string; base64: string }> = []
+  
   // 4. Oeuvres (données enrichies)
   const oeuvres = state.floors.flatMap((floor, floorIndex) => 
-    floor.artworks.map((artwork, artworkIndex) => ({
-      oeuvre_id: artworkIndex + 1 + floorIndex * 1000, // ID unique
-      title: artwork.name || `Œuvre ${artwork.id}`,
-      artist: "Artiste inconnu", // À enrichir selon vos données
-      description: `Œuvre exposée dans la salle`,
-      image_link: artwork.pdf_id ? `/images/${artwork.pdf_id}.jpg` : null,
-      pdf_link: artwork.pdf_id ? `/pdfs/${artwork.pdf_id}.pdf` : null,
-      room: parseInt(artwork.id.split('_')[1] || '1') // Extraction approximative du numéro de salle
-    }))
+    floor.artworks.map((artwork, artworkIndex) => {
+      // Si l'artwork a un PDF temporaire, l'ajouter à la liste et générer le nom de fichier
+      let finalPdfLink = artwork.pdfLink
+      
+      if (artwork.tempPdfFile && artwork.tempPdfBase64) {
+        const fileName = `artwork_${artwork.id}_${Date.now()}.pdf`
+        tempPdfs.push({
+          filename: fileName,
+          base64: artwork.tempPdfBase64
+        })
+        finalPdfLink = `/uploads/pdfs/${fileName}`
+      }
+      
+      return {
+        oeuvre_id: artworkIndex + 1 + floorIndex * 1000, // ID unique
+        title: artwork.name || `Œuvre ${artwork.id}`,
+        artist: "Artiste inconnu", // À enrichir selon vos données
+        description: `Œuvre exposée dans la salle`,
+        image_link: artwork.pdf_id ? `/images/${artwork.pdf_id}.jpg` : null,
+        pdf_link: finalPdfLink, // Utiliser le lien final (temporaire ou existant)
+        room: parseInt(artwork.id.split('_')[1] || '1') // Extraction approximative du numéro de salle
+      }
+    })
   )
 
   // 5. Chunk (textes liés aux œuvres)
@@ -267,7 +286,7 @@ export function ExportDialog({ state, onClose }: ExportDialogProps) {
     {
       criteria_id: criteriaIdCounter++,
       type: 'DURATION',
-      name: 'Visite courte (15min)',
+      name: 'Visite courte (14min)',
       description: 'Parcours rapide',
       image_link: '/icons/quick.png'
     },
@@ -352,6 +371,9 @@ export function ExportDialog({ state, onClose }: ExportDialogProps) {
       chunks,
       pregenerations
     },
+
+    // PDF temporaires à sauvegarder
+    temp_pdfs: tempPdfs,
 
     // BLOC CRITÈRES & GUIDES
     criterias_guides: {
@@ -593,6 +615,46 @@ CREATE TABLE qr_code (
     URL.revokeObjectURL(url)
   }
 
+  const handleSaveToDatabase = async () => {
+    setSaving(true)
+    setSaveSuccess(false)
+    
+    try {
+      const response = await fetch('/api/save-to-db', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          exportData: exportData
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (response.ok) {
+        setSaveSuccess(true)
+        setTimeout(() => setSaveSuccess(false), 3000)
+        
+        // Afficher le résumé des données insérées
+        if (result.inserted) {
+          const summary = Object.entries(result.inserted)
+            .map(([key, count]) => `${count} ${key}`)
+            .join(', ')
+          console.log(`✅ Données insérées: ${summary}`)
+        }
+      } else {
+        console.error('Erreur lors de la sauvegarde:', result.error)
+        alert(`Erreur PostgreSQL: ${result.error}\n\nDétails: ${result.details || ''}`)
+      }
+    } catch (error) {
+      console.error('Erreur réseau:', error)
+      alert('Erreur de connexion lors de la sauvegarde dans PostgreSQL')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-3xl rounded-lg bg-background p-6 shadow-xl">
@@ -654,6 +716,13 @@ CREATE TABLE qr_code (
         </pre>
 
         <div className="flex gap-2">
+          <button
+            onClick={handleSaveToDatabase}
+            disabled={saving}
+            className="rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? "Sauvegarde PostgreSQL..." : saveSuccess ? "✅ Sauvegardé dans PostgreSQL!" : "💾 Sauvegarder dans PostgreSQL"}
+          </button>
           <button
             onClick={handleCopy}
             className="rounded bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:opacity-90"
