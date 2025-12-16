@@ -3,7 +3,7 @@
  * Affiche les points et segments sélectionnables avec états hover/selected
  */
 
-import type { Point, Room, HoverInfo, SelectionInfo } from '@/core/entities'
+import type { Point, Room, HoverInfo } from '@/core/entities'
 import { worldToCanvas } from '@/core/utils'
 
 interface VertexRenderOptions {

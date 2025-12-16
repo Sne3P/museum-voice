@@ -43,6 +43,53 @@ features/                      # FONCTIONNALITÉS SPÉCIFIQUES
 
 ## 🎯 Règles de Codage STRICTES
 
+### 0. **MAINTENABILITÉ : Composants Principaux Légers** 🚨
+
+**RÈGLE ABSOLUE** : Les composants principaux (Canvas.tsx, MuseumEditor.tsx, etc.) doivent rester **< 200 lignes**
+
+❌ **INTERDIT** :
+```typescript
+// Canvas.tsx avec 500+ lignes de logique inline
+function Canvas() {
+  const handleMouseDown = (e) => {
+    // 50 lignes de logique...
+  }
+  
+  const handleMouseMove = (e) => {
+    // 50 lignes de logique...
+  }
+  
+  const render = () => {
+    // 200 lignes de rendu...
+  }
+  
+  // 300 autres lignes...
+}
+```
+
+✅ **OBLIGATOIRE** (Extraction vers hooks spécialisés) :
+```typescript
+// Canvas.tsx - LÉGER (< 200 lignes)
+function Canvas({ state, updateState, currentFloor }) {
+  // Hooks spécialisés
+  const coordinates = useCanvasCoordinates({ state, canvasRef, updateState })
+  const selection = useCanvasSelection(state, currentFloor.id, updateState)
+  const interaction = useCanvasInteraction({ state, selection, coordinates })
+  const { render } = useCanvasRender({ state, currentFloor, selection })
+  
+  return <canvas onMouseDown={interaction.handleMouseDown} />
+}
+```
+
+**Quand extraire la logique :**
+- ✅ Événements utilisateur → `useCanvasInteraction`
+- ✅ Conversions coordonnées/zoom → `useCanvasCoordinates`
+- ✅ Logique de rendu → `useCanvasRender`
+- ✅ État spécifique → `useState` dans hook dédié
+- ✅ Logique métier complexe → `core/services/`
+
+**Seuil d'extraction** : Si un composant > 200 lignes, **EXTRAIRE** immédiatement
+
 ### 1. **Types & Interfaces** → `core/entities/`
 
 ❌ **INTERDIT** :

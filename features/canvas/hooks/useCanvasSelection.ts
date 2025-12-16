@@ -327,7 +327,7 @@ export function useCanvasSelection(
         selectedElementType: selectedElement.type as any
       }, false)
     }
-  }, [state.selectedElements, updateState, options.multiSelect])
+  }, [state, currentFloorId, updateState, options.multiSelect])
 
   const clearSelection = useCallback(() => {
     updateState({ 
