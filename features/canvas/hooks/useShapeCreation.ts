@@ -109,11 +109,8 @@ export function useShapeCreation({ tool, currentFloor, onComplete }: UseShapeCre
         break
         
       case 'arc': {
-        const startPoint = { 
-          x: state.startPoint.x + (snapped.x - state.startPoint.x), 
-          y: state.startPoint.y 
-        }
-        polygon = createArcPolygon(state.startPoint, startPoint, snapped, GRID_SIZE)
+        // Arc simplifié : start = centre, snapped = point du drag (détermine rayon et direction)
+        polygon = createArcPolygon(state.startPoint, snapped, GRID_SIZE)
         break
       }
       

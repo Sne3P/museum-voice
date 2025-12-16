@@ -20,7 +20,7 @@ import {
 } from "@/features/canvas/utils"
 import { GRID_SIZE } from "@/core/constants"
 import { smartSnap } from "@/core/services"
-import { useShapeCreation } from "@/features/canvas/hooks"
+import { useShapeCreation, useFreeFormCreation } from "@/features/canvas/hooks"
 import { v4 as uuidv4 } from "uuid"
 import { ValidationBadge } from "./components/ValidationBadge"
 
@@ -46,7 +46,7 @@ export function Canvas({
   const [isPanning, setIsPanning] = useState(false)
   const [lastPanPos, setLastPanPos] = useState<Point | null>(null)
   
-  // Hook de création de formes
+  // Hook de création de formes (drag-based: rectangle, circle, triangle, arc)
   const shapeCreation = useShapeCreation({
     tool: state.selectedTool,
     currentFloor,
@@ -66,6 +66,29 @@ export function Canvas({
         
         updateState({ floors: updatedFloors }, true, `Créer ${state.selectedTool}`)
       }
+    }
+  })
+
+  // Hook de création de forme libre (point par point: room)
+  const freeFormCreation = useFreeFormCreation({
+    currentFloor,
+    onComplete: (polygon: Point[]) => {
+      const newRoom = {
+        id: uuidv4(),
+        polygon: polygon
+      }
+      
+      const updatedFloors = state.floors.map(floor =>
+        floor.id === currentFloor.id
+          ? { ...floor, rooms: [...floor.rooms, newRoom] }
+          : floor
+      )
+      
+      updateState({ floors: updatedFloors }, true, 'Créer forme libre')
+    },
+    onCancel: () => {
+      // Optionnel: revenir à l'outil select
+      updateState({ selectedTool: 'select' }, false)
     }
   })
 
@@ -119,11 +142,16 @@ export function Canvas({
       return
     }
     
-    // Créer une forme
+    // Créer une forme géométrique (drag)
     if (e.button === 0 && ['rectangle', 'circle', 'triangle', 'arc'].includes(state.selectedTool)) {
       shapeCreation.startCreation(snapResult.point)
     }
-  }, [state.selectedTool, screenToWorld, currentFloor, shapeCreation])
+
+    // Créer une forme libre (point par point)
+    if (e.button === 0 && state.selectedTool === 'room') {
+      freeFormCreation.addPoint(snapResult.point)
+    }
+  }, [state.selectedTool, screenToWorld, currentFloor, shapeCreation, freeFormCreation])
 
   // Mouse Move
   const handleMouseMove = useCallback((e: MouseEvent<HTMLCanvasElement>) => {
@@ -146,11 +174,16 @@ export function Canvas({
     
     setHoveredPoint(snapResult.point)
     
-    // Mettre à jour la prévisualisation pendant la création
+    // Mettre à jour la prévisualisation pendant la création (drag)
     if (shapeCreation.state.isCreating) {
       shapeCreation.updateCreation(snapResult.point)
     }
-  }, [isPanning, lastPanPos, state.pan, screenToWorld, currentFloor, updateState, shapeCreation])
+
+    // Mettre à jour le hover pour la création forme libre
+    if (freeFormCreation.state.isCreating) {
+      freeFormCreation.updateHover(snapResult.point)
+    }
+  }, [isPanning, lastPanPos, state.pan, screenToWorld, currentFloor, updateState, shapeCreation, freeFormCreation])
 
   // Mouse Up
   const handleMouseUp = useCallback((e: MouseEvent<HTMLCanvasElement>) => {
@@ -205,7 +238,7 @@ export function Canvas({
       drawVerticalLink(ctx, link, state.zoom, state.pan, GRID_SIZE, isSelected, false, false)
     })
 
-    // 3. Prévisualisation de création
+    // 3. Prévisualisation de création (formes géométriques drag)
     if (shapeCreation.state.previewPolygon) {
       drawShapePreview(ctx, {
         polygon: shapeCreation.state.previewPolygon,
@@ -231,14 +264,66 @@ export function Canvas({
       }
     }
 
+    // 3b. Prévisualisation forme libre (point par point)
+    if (freeFormCreation.state.isCreating && freeFormCreation.state.points.length > 0) {
+      const previewPolygon = [...freeFormCreation.state.points]
+      
+      // Ajouter le hover point pour la preview
+      if (freeFormCreation.state.hoverPoint) {
+        previewPolygon.push(freeFormCreation.state.hoverPoint)
+      }
+
+      // Dessiner la preview
+      if (previewPolygon.length >= 2) {
+        drawShapePreview(ctx, {
+          polygon: previewPolygon,
+          isValid: freeFormCreation.state.isValid,
+          validationSeverity: freeFormCreation.state.validationSeverity,
+          zoom: state.zoom,
+          pan: state.pan,
+          showVertices: true,
+          animationPhase: Date.now() / 50
+        })
+      }
+
+      // Dessiner les points existants en plus gros
+      freeFormCreation.state.points.forEach((point, index) => {
+        ctx.save()
+        ctx.translate(point.x * state.zoom + state.pan.x, point.y * state.zoom + state.pan.y)
+        
+        ctx.beginPath()
+        ctx.arc(0, 0, 6, 0, Math.PI * 2)
+        ctx.fillStyle = index === 0 ? '#3b82f6' : '#22c55e' // Bleu pour premier, vert pour autres
+        ctx.fill()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 2
+        ctx.stroke()
+        
+        ctx.restore()
+      })
+
+      // Message de validation
+      if (freeFormCreation.state.validationMessage) {
+        const canvas = canvasRef.current
+        if (canvas) {
+          drawValidationMessage(
+            ctx,
+            freeFormCreation.state.validationMessage,
+            freeFormCreation.state.validationSeverity || 'info',
+            { x: canvas.width / 2, y: 50 }
+          )
+        }
+      }
+    }
+
     // 4. Point hover (snap indicator)
-    if (hoveredPoint && !shapeCreation.state.isCreating) {
+    if (hoveredPoint && !shapeCreation.state.isCreating && !freeFormCreation.state.isCreating) {
       drawSnapPoint(ctx, hoveredPoint, state.zoom, state.pan, true)
     }
 
     // Animation continue
     animationFrameRef.current = requestAnimationFrame(render)
-  }, [state.zoom, state.pan, state.selectedElementId, currentFloor, shapeCreation.state, hoveredPoint])
+  }, [state.zoom, state.pan, state.selectedElementId, currentFloor, shapeCreation.state, freeFormCreation.state, hoveredPoint])
 
   // Setup canvas et event listeners
   useEffect(() => {

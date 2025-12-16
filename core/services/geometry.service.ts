@@ -350,24 +350,38 @@ export function createTrianglePolygon(p1: Point, p2: Point, gridSize: number = G
 
 /**
  * Crée un polygone d'arc avec points snappés au grid
+ * Version améliorée : calcule automatiquement le meilleur arc (petit ou grand) selon la position du drag
+ * 
+ * @param start - Point de départ du drag (centre de l'arc)
+ * @param dragPoint - Point actuel du drag (détermine rayon et direction)
+ * @param gridSize - Taille de la grille pour le snap
+ * @returns Polygone représentant l'arc (centre + points de l'arc)
  */
-export function createArcPolygon(center: Point, start: Point, end: Point, gridSize: number = GRID_SIZE): Point[] {
-  const startAngle = Math.atan2(start.y - center.y, start.x - center.x)
-  const endAngle = Math.atan2(end.y - center.y, end.x - center.x)
-  const radius = distance(center, start)
+export function createArcPolygon(start: Point, dragPoint: Point, gridSize: number = GRID_SIZE): Point[] {
+  // Le rayon est la distance entre start et dragPoint
+  const radius = distance(start, dragPoint)
   
-  const points: Point[] = [snapToGrid(center, gridSize)]
+  // L'angle du drag détermine la direction de l'arc
+  const dragAngle = Math.atan2(dragPoint.y - start.y, dragPoint.x - start.x)
+  
+  // Arc de 180° (demi-cercle)
+  // On détermine si c'est un arc "vers le haut" ou "vers le bas" selon la position du drag
+  const arcSpan = Math.PI // 180 degrés
+  
+  // Si on drag vers le haut (dy < 0), arc vers le haut
+  // Si on drag vers le bas (dy > 0), arc vers le bas
+  // L'arc commence perpendiculairement à la direction du drag
+  const startAngle = dragAngle - arcSpan / 2
+  const endAngle = dragAngle + arcSpan / 2
+  
+  const points: Point[] = [snapToGrid(start, gridSize)]
   const segments = GEOMETRY.arcSegments
-  let angle = startAngle
-  let angleDiff = endAngle - startAngle
-  
-  if (angleDiff < 0) angleDiff += Math.PI * 2
   
   for (let i = 0; i <= segments; i++) {
-    const currentAngle = startAngle + (i / segments) * angleDiff
+    const currentAngle = startAngle + (i / segments) * arcSpan
     const point = {
-      x: center.x + Math.cos(currentAngle) * radius,
-      y: center.y + Math.sin(currentAngle) * radius,
+      x: start.x + Math.cos(currentAngle) * radius,
+      y: start.y + Math.sin(currentAngle) * radius,
     }
     // Snapper chaque point au grid
     points.push(snapToGrid(point, gridSize))
