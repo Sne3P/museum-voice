@@ -78,7 +78,7 @@ class MuseumVoiceV3:
                 
                 # Traitement selon le type de fichier
                 if file.suffix.lower() == '.pdf':
-                    summary = process_pdf_file(str(file))
+                    summary = process_pdf_file(str(file), str(self.config.DB_PATH))
                 elif file.suffix.lower() == '.txt':
                     # Traitement fichier texte
                     from doc_processing import SummaryProcessor

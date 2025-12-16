@@ -10,7 +10,11 @@ CREATE TABLE IF NOT EXISTS stats (
 -- ===============================
 CREATE TABLE IF NOT EXISTS qr_code (
     qr_code_id SERIAL PRIMARY KEY,
-    link TEXT
+    token TEXT UNIQUE,
+    created_by TEXT,
+    is_used INTEGER DEFAULT 0,
+    link TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ===============================
@@ -302,7 +306,7 @@ CREATE TABLE IF NOT EXISTS criterias_guide (
         "stats_id": 2
       }
     ],
-    "qr_codes": [
+    "qr_code": [
       {
         "qr_code_id": 1,
         "link": "https://museum-app.com/plan/1"

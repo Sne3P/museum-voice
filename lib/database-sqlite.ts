@@ -27,7 +27,7 @@ export function getDatabase(): Promise<Database> {
       } else {
         console.log('Connecté à la base de données SQLite museum_v1.db')
         
-        // Créer la table qr_codes si elle n'existe pas
+        // Créer la table qr_code si elle n'existe pas
         initializeDatabase()
           .then(() => resolve(db!))
           .catch(reject)
@@ -45,7 +45,7 @@ async function initializeDatabase(): Promise<void> {
     }
 
     const createQRCodesTable = `
-      CREATE TABLE IF NOT EXISTS qr_codes (
+      CREATE TABLE IF NOT EXISTS qr_code (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         token VARCHAR(64) UNIQUE NOT NULL,
         created_by VARCHAR(100) NOT NULL,
@@ -56,14 +56,14 @@ async function initializeDatabase(): Promise<void> {
     `
 
     const createIndexes = [
-      'CREATE INDEX IF NOT EXISTS idx_qr_codes_token ON qr_codes(token)',
-      'CREATE INDEX IF NOT EXISTS idx_qr_codes_is_used ON qr_codes(is_used)',
-      'CREATE INDEX IF NOT EXISTS idx_qr_codes_created_by ON qr_codes(created_by)'
+      'CREATE INDEX IF NOT EXISTS idx_qr_code_token ON qr_code(token)',
+      'CREATE INDEX IF NOT EXISTS idx_qr_code_is_used ON qr_code(is_used)',
+      'CREATE INDEX IF NOT EXISTS idx_qr_code_created_by ON qr_code(created_by)'
     ]
 
     db.run(createQRCodesTable, (err) => {
       if (err) {
-        console.error('Erreur création table qr_codes:', err)
+        console.error('Erreur création table qr_code:', err)
         reject(err)
         return
       }

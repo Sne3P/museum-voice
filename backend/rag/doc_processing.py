@@ -45,8 +45,13 @@ class SummaryProcessor:
     
     def __init__(self):
         self.title_patterns = [
+            # Patterns explicites
             r"(?:titre|œuvre|livre|roman|pièce)\s*:\s*([^\n]+)",
-            r"^([A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ][^\n]{5,50})\s*$",
+            # Titre seul sur une ligne (comme "Guernica")
+            r"^([A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ][a-zàáâãäåæçèéêëìíîïðñòóôõö]{2,30})\s*$",
+            # Premier mot en majuscule au début d'une ligne (avant artiste)
+            r"^([A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ][a-zàáâãäåæçèéêëìíîïðñòóôõö]{2,30})\s+[A-Z]",
+            # Entre guillemets
             r"\"([^\"]+)\"",
         ]
         
@@ -78,16 +83,14 @@ class SummaryProcessor:
     def extract_artist(self, text: str) -> Optional[str]:
         """Extrait le nom de l'artiste du texte"""
         artist_patterns = [
+            # Format "Prénom Nom – Année" (comme "Pablo Picasso – 1937")
+            r"([A-Z][a-zéèàçù]+\s+[A-Z][a-zéèàçù]+)\s*–\s*\d{4}",
             # Format explicite "Artiste: Nom" (le plus fiable)
             r"(?:artiste|auteur|créateur|sculpteur|peintre)\s*:?\s*([^\n]+)",
             # Format "Nom –" (début de ligne)
             r"^([A-Z][a-zéèàçù]+(?:\s+[A-Z][a-zéèàçù-]+)*)\s*–",
-            # Noms d'artistes célèbres spécifiques (patterns exacts)
-            r"\b(artiste|peintre|sculpteur|créateur)\b",
             # Format "par/de Nom" (noms propres seulement)
             r"(?:par|de)\s+([A-Z][a-zéèàçù]+(?:\s+[A-Z][a-zéèàçù-]+)*)",
-            # Format "tableau de Nom" (très spécifique)
-            r"(?:tableau|peinture)\s+de\s+([A-Z][a-zéèàçù]+(?:\s+de\s+[A-Z][a-zéèàçù]+)?)\b"
         ]
         
         for pattern in artist_patterns:
@@ -144,7 +147,7 @@ class SummaryProcessor:
         )
 
 
-def process_pdf_file(file_path: str) -> TextSummary:
+def process_pdf_file(file_path: str, db_path: Optional[str] = None) -> TextSummary:
     """Traite un fichier PDF : extraction texte, parsing, stockage en BDD."""
     text = extract_text_from_pdf(file_path)
     processor = SummaryProcessor()
@@ -153,7 +156,7 @@ def process_pdf_file(file_path: str) -> TextSummary:
     # Sauvegarde en BDD
     try:
         from db import init_db, add_oeuvre
-        init_db()
+        init_db(db_path)
         # Créer le pdf_link pour tous les fichiers dans pdfs
         pdf_link = f"/uploads/pdfs/{Path(file_path).name}"
         
@@ -164,7 +167,8 @@ def process_pdf_file(file_path: str) -> TextSummary:
             description=summary.summary,
             word_count=int(summary.metadata.get('word_count', 0)),
             artist=summary.artist,
-            pdf_link=pdf_link
+            pdf_link=pdf_link,
+            db_path=db_path
         )
         
         # Les anecdotes sont maintenant incluses dans les chunks

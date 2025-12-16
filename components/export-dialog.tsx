@@ -342,7 +342,7 @@ export function ExportDialog({ state, onClose }: ExportDialogProps) {
     { stats_id: 2 }
   ]
 
-  const qr_codes = plans.map((plan, index) => ({
+  const qr_code = plans.map((plan, index) => ({
     qr_code_id: index + 1,
     link: `https://museum-app.com/plan/${plan.plan_id}`
   }))
@@ -387,7 +387,7 @@ export function ExportDialog({ state, onClose }: ExportDialogProps) {
     // BLOC DIVERS
     divers: {
       stats,
-      qr_codes
+      qr_code
     },
 
     // Données originales (pour compatibilité)

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     // Vérifier que le token existe et n'est pas déjà utilisé
     const existingToken = await getRow(
-      'SELECT token, created_by, created_at, is_used FROM qr_codes WHERE token = ?',
+      'SELECT token, created_by, created_at, is_used FROM qr_code WHERE token = ?',
       [token]
     )
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     // Marquer le token comme utilisé
     const result = await runQuery(
-      'UPDATE qr_codes SET is_used = 1, used_at = CURRENT_TIMESTAMP WHERE token = ?',
+      'UPDATE qr_code SET is_used = 1, used_at = CURRENT_TIMESTAMP WHERE token = ?',
       [token]
     )
     
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     // Récupérer les données mises à jour
     const updatedToken = await getRow(
-      'SELECT token, created_by, created_at, used_at FROM qr_codes WHERE token = ?',
+      'SELECT token, created_by, created_at, used_at FROM qr_code WHERE token = ?',
       [token]
     )
 
