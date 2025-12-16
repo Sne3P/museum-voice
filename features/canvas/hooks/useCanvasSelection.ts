@@ -1,52 +1,196 @@
 /**
- * Hook pour gérer la sélection d'éléments sur le canvas
+ * Hook pour gérer la sélection complète d'éléments sur le canvas
+ * - Sélection éléments (rooms, walls, doors, artworks, verticalLinks)
+ * - Sélection vertices (points de polygones)
+ * - Sélection segments/edges
+ * - Priorités: vertices → endpoints → segments → éléments → pièces
+ * - Sélection intelligente avec continuité
  */
 
 import { useCallback } from "react"
-import type { Point, EditorState, SelectedElement } from "@/core/entities"
-import { isPointInPolygon, distanceToSegment } from "@/core/services"
+import type { Point, EditorState, SelectedElement, SelectionInfo, HoverInfo } from "@/core/entities"
+import { isPointInPolygon, distanceToSegment, distance, applySmartSelection, cleanRedundantSelection } from "@/core/services"
+import { VERTEX_HIT_RADIUS, ENDPOINT_HIT_RADIUS, LINE_HIT_THRESHOLD } from "@/core/constants"
 
 export interface SelectionOptions {
-  tolerance: number // Distance maximale pour considérer un élément cliqué
-  multiSelect: boolean // Permet la sélection multiple avec Ctrl/Cmd
+  tolerance: number
+  multiSelect: boolean
+  enableVertexSelection: boolean
+  enableSegmentSelection: boolean
+}
+
+export interface SelectionResult {
+  element: SelectedElement | null
+  selectionInfo: SelectionInfo | null
+  hoverInfo: HoverInfo | null
 }
 
 export function useCanvasSelection(
   state: EditorState,
   currentFloorId: string,
   updateState: (updates: Partial<EditorState>, saveHistory?: boolean) => void,
-  options: SelectionOptions = { tolerance: 10, multiSelect: true }
+  options: SelectionOptions = { 
+    tolerance: 10, 
+    multiSelect: true,
+    enableVertexSelection: true,
+    enableSegmentSelection: true
+  }
 ) {
-  const findElementAt = useCallback((point: Point, zoom: number): SelectedElement | null => {
+  const findElementAt = useCallback((point: Point, zoom: number): SelectionResult => {
     const currentFloor = state.floors.find(f => f.id === currentFloorId)
-    if (!currentFloor) return null
+    if (!currentFloor) return { element: null, selectionInfo: null, hoverInfo: null }
 
     const tolerance = options.tolerance / zoom
+    const vertexTolerance = VERTEX_HIT_RADIUS / zoom
+    const endpointTolerance = ENDPOINT_HIT_RADIUS / zoom
+    const lineTolerance = LINE_HIT_THRESHOLD / zoom
 
-    // Vérifier les œuvres d'art en premier (priorité aux petits éléments)
+    // PRIORITÉ 1 : VERTICES
+    if (options.enableVertexSelection) {
+      for (const room of currentFloor.rooms) {
+        for (let i = 0; i < room.polygon.length; i++) {
+          const vertex = room.polygon[i]
+          const dist = distance(point, vertex)
+          
+          if (dist <= vertexTolerance) {
+            return {
+              element: { type: 'room', id: room.id },
+              selectionInfo: {
+                id: room.id,
+                type: 'vertex',
+                vertexIndex: i,
+                roomId: room.id
+              },
+              hoverInfo: {
+                type: 'vertex',
+                id: room.id,
+                vertexIndex: i,
+                roomId: room.id
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // PRIORITÉ 2 : ENDPOINTS
+    for (const wall of currentFloor.walls) {
+      for (let i = 0; i < 2; i++) {
+        const endpoint = wall.segment[i]
+        const dist = distance(point, endpoint)
+        
+        if (dist <= endpointTolerance) {
+          return {
+            element: { type: 'wall', id: wall.id },
+            selectionInfo: { id: wall.id, type: 'wall' },
+            hoverInfo: {
+              type: 'wallEndpoint',
+              id: wall.id,
+              endpoint: i === 0 ? 'start' : 'end'
+            }
+          }
+        }
+      }
+    }
+
+    for (const door of currentFloor.doors) {
+      for (let i = 0; i < 2; i++) {
+        const endpoint = door.segment[i]
+        const dist = distance(point, endpoint)
+        
+        if (dist <= endpointTolerance) {
+          return {
+            element: { type: 'door', id: door.id },
+            selectionInfo: { id: door.id, type: 'door' },
+            hoverInfo: {
+              type: 'doorEndpoint',
+              id: door.id,
+              endpoint: i === 0 ? 'start' : 'end'
+            }
+          }
+        }
+      }
+    }
+
+    for (const link of currentFloor.verticalLinks) {
+      for (let i = 0; i < 2; i++) {
+        const endpoint = link.segment[i]
+        const dist = distance(point, endpoint)
+        
+        if (dist <= endpointTolerance) {
+          return {
+            element: { type: 'verticalLink', id: link.id },
+            selectionInfo: { id: link.id, type: 'verticalLink' },
+            hoverInfo: {
+              type: 'linkEndpoint',
+              id: link.id,
+              endpoint: i === 0 ? 'start' : 'end'
+            }
+          }
+        }
+      }
+    }
+
+    // PRIORITÉ 3 : SEGMENTS
+    if (options.enableSegmentSelection) {
+      for (const room of currentFloor.rooms) {
+        for (let i = 0; i < room.polygon.length; i++) {
+          const p1 = room.polygon[i]
+          const p2 = room.polygon[(i + 1) % room.polygon.length]
+          const dist = distanceToSegment(point, p1, p2)
+          
+          if (dist <= lineTolerance) {
+            return {
+              element: { type: 'room', id: room.id },
+              selectionInfo: { 
+                id: room.id, 
+                type: 'segment',
+                roomId: room.id,
+                segmentIndex: i
+              },
+              hoverInfo: { 
+                type: 'segment', 
+                id: room.id,
+                roomId: room.id,
+                segmentIndex: i
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // PRIORITÉ 4 : ARTWORKS
     for (const artwork of currentFloor.artworks) {
       const [x, y] = artwork.xy
       const dx = point.x - x
       const dy = point.y - y
-      const distance = Math.sqrt(dx * dx + dy * dy)
+      const dist = Math.sqrt(dx * dx + dy * dy)
       
-      // Rayon par défaut 30px si size non défini
       const radius = artwork.size ? Math.max(artwork.size[0], artwork.size[1]) / 2 : 30
       
-      if (distance <= radius + tolerance) {
-        return { type: 'artwork', id: artwork.id }
+      if (dist <= radius + tolerance) {
+        return {
+          element: { type: 'artwork', id: artwork.id },
+          selectionInfo: { id: artwork.id, type: 'artwork' },
+          hoverInfo: { type: 'artwork', id: artwork.id }
+        }
       }
     }
 
-    // Vérifier les portes
+    // PRIORITÉ 5 : DOORS
     for (const door of currentFloor.doors) {
       const dist = distanceToSegment(point, door.segment[0], door.segment[1])
       if (dist <= tolerance) {
-        return { type: 'door', id: door.id }
+        return {
+          element: { type: 'door', id: door.id },
+          selectionInfo: { id: door.id, type: 'door' },
+          hoverInfo: { type: 'door', id: door.id }
+        }
       }
     }
 
-    // Vérifier les liens verticaux
+    // PRIORITÉ 6 : VERTICAL LINKS
     for (const link of currentFloor.verticalLinks) {
       const [startX, startY] = [link.segment[0].x, link.segment[0].y]
       const [endX, endY] = [link.segment[1].x, link.segment[1].y]
@@ -55,65 +199,142 @@ export function useCanvasSelection(
       
       const dx = point.x - centerX
       const dy = point.y - centerY
-      const distance = Math.sqrt(dx * dx + dy * dy)
+      const dist = Math.sqrt(dx * dx + dy * dy)
       
-      if (distance <= 60 + tolerance) { // 60 = rayon typique
-        return { type: 'verticalLink', id: link.id }
+      if (dist <= 60 + tolerance) {
+        return {
+          element: { type: 'verticalLink', id: link.id },
+          selectionInfo: { id: link.id, type: 'verticalLink' },
+          hoverInfo: { type: 'verticalLink', id: link.id }
+        }
       }
     }
 
-    // Vérifier les murs
+    // PRIORITÉ 7 : WALLS
     for (const wall of currentFloor.walls) {
       const dist = distanceToSegment(point, wall.segment[0], wall.segment[1])
       if (dist <= wall.thickness / 2 + tolerance) {
-        return { type: 'wall', id: wall.id }
+        return {
+          element: { type: 'wall', id: wall.id },
+          selectionInfo: { id: wall.id, type: 'wall' },
+          hoverInfo: { type: 'wall', id: wall.id }
+        }
       }
     }
 
-    // Vérifier les pièces (en dernier, ce sont les plus grands éléments)
+    // PRIORITÉ 8 : ROOMS
     for (const room of currentFloor.rooms) {
       if (isPointInPolygon(point, room.polygon)) {
-        return { type: 'room', id: room.id }
+        return {
+          element: { type: 'room', id: room.id },
+          selectionInfo: { id: room.id, type: 'room' },
+          hoverInfo: { type: 'room', id: room.id }
+        }
       }
     }
 
-    return null
-  }, [state, currentFloorId, options.tolerance])
+    return { element: null, selectionInfo: null, hoverInfo: null }
+  }, [state, currentFloorId, options])
 
   const selectElement = useCallback((
-    element: SelectedElement | null,
+    result: SelectionResult | null,
     multiSelect: boolean = false
   ) => {
-    if (!element) {
-      updateState({ selectedElements: [] }, false)
+    if (!result || !result.element || !result.selectionInfo) {
+      updateState({ 
+        selectedElements: [],
+        selectedElementId: null,
+        selectedElementType: null
+      }, false)
+      return
+    }
+
+    const { element, selectionInfo } = result
+    
+    // Créer l'élément sélectionné avec toutes les infos nécessaires
+    const selectedElement: SelectedElement = {
+      type: selectionInfo.type as any,
+      id: selectionInfo.id,
+      ...(selectionInfo.vertexIndex !== undefined && { vertexIndex: selectionInfo.vertexIndex }),
+      ...(selectionInfo.segmentIndex !== undefined && { segmentIndex: selectionInfo.segmentIndex }),
+      ...(selectionInfo.roomId && { roomId: selectionInfo.roomId })
+    }
+
+    // Vérifier si c'est une sélection de sub-élément (vertex/segment) ou d'élément entier
+    const isSubElement = selectedElement.type === 'vertex' || selectedElement.type === 'segment'
+    const hasExistingSelection = state.selectedElements.length > 0
+    const existingIsSubElement = hasExistingSelection && 
+      (state.selectedElements[0].type === 'vertex' || state.selectedElements[0].type === 'segment')
+
+    // Si on change de type de sélection (sub-element ⇔ full element), clear la sélection
+    if (hasExistingSelection && isSubElement !== existingIsSubElement) {
+      updateState({ 
+        selectedElements: [selectedElement],
+        selectedElementId: selectedElement.id,
+        selectedElementType: selectedElement.type as any
+      }, false)
       return
     }
 
     if (multiSelect && options.multiSelect) {
-      const isAlreadySelected = state.selectedElements.some(
-        sel => sel.type === element.type && sel.id === element.id
-      )
+      const isAlreadySelected = state.selectedElements.some(sel => {
+        if (sel.type !== selectedElement.type || sel.id !== selectedElement.id) return false
+        if (sel.type === 'vertex') return sel.vertexIndex === selectedElement.vertexIndex
+        if (sel.type === 'segment') return sel.segmentIndex === selectedElement.segmentIndex
+        return true
+      })
 
       if (isAlreadySelected) {
-        // Désélectionner
-        const newSelection = state.selectedElements.filter(
-          sel => !(sel.type === element.type && sel.id === element.id)
-        )
-        updateState({ selectedElements: newSelection }, false)
-      } else {
-        // Ajouter à la sélection
+        const newSelection = state.selectedElements.filter(sel => {
+          if (sel.type !== selectedElement.type || sel.id !== selectedElement.id) return true
+          if (sel.type === 'vertex') return sel.vertexIndex !== selectedElement.vertexIndex
+          if (sel.type === 'segment') return sel.segmentIndex !== selectedElement.segmentIndex
+          return false
+        })
+        
+        // Appliquer la sélection intelligente
+        const currentFloor = state.floors.find(f => f.id === currentFloorId)
+        const smartSelection = currentFloor 
+          ? applySmartSelection(newSelection, currentFloor)
+          : newSelection
+        const cleanedSelection = cleanRedundantSelection(smartSelection)
+        
         updateState({ 
-          selectedElements: [...state.selectedElements, element] 
+          selectedElements: cleanedSelection,
+          selectedElementId: cleanedSelection.length > 0 ? cleanedSelection[0].id : null,
+          selectedElementType: cleanedSelection.length > 0 ? cleanedSelection[0].type as any : null
+        }, false)
+      } else {
+        const newSelection = [...state.selectedElements, selectedElement]
+        
+        // Appliquer la sélection intelligente
+        const currentFloor = state.floors.find(f => f.id === currentFloorId)
+        const smartSelection = currentFloor 
+          ? applySmartSelection(newSelection, currentFloor)
+          : newSelection
+        const cleanedSelection = cleanRedundantSelection(smartSelection)
+        
+        updateState({ 
+          selectedElements: cleanedSelection,
+          selectedElementId: selectedElement.id,
+          selectedElementType: selectedElement.type as any
         }, false)
       }
     } else {
-      // Sélection simple
-      updateState({ selectedElements: [element] }, false)
+      updateState({ 
+        selectedElements: [selectedElement],
+        selectedElementId: selectedElement.id,
+        selectedElementType: selectedElement.type as any
+      }, false)
     }
   }, [state.selectedElements, updateState, options.multiSelect])
 
   const clearSelection = useCallback(() => {
-    updateState({ selectedElements: [] }, false)
+    updateState({ 
+      selectedElements: [],
+      selectedElementId: null,
+      selectedElementType: null
+    }, false)
   }, [updateState])
 
   const selectAll = useCallback(() => {
@@ -128,13 +349,88 @@ export function useCanvasSelection(
       ...currentFloor.verticalLinks.map(v => ({ type: 'verticalLink' as const, id: v.id }))
     ]
 
-    updateState({ selectedElements: allElements }, false)
+    updateState({ 
+      selectedElements: allElements,
+      selectedElementId: allElements.length > 0 ? allElements[0].id : null,
+      selectedElementType: allElements.length > 0 ? allElements[0].type as any : null
+    }, false)
   }, [state, currentFloorId, updateState])
+
+  const isSelected = useCallback((type: string, id: string): boolean => {
+    return state.selectedElements.some(sel => sel.type === type && sel.id === id)
+  }, [state.selectedElements])
+
+  const findElementsInBounds = useCallback((
+    min: Point,
+    max: Point
+  ): SelectedElement[] => {
+    const currentFloor = state.floors.find(f => f.id === currentFloorId)
+    if (!currentFloor) return []
+
+    const selected: SelectedElement[] = []
+
+    for (const room of currentFloor.rooms) {
+      const allVerticesInside = room.polygon.every(vertex => 
+        vertex.x >= min.x && vertex.x <= max.x &&
+        vertex.y >= min.y && vertex.y <= max.y
+      )
+      
+      if (allVerticesInside) {
+        selected.push({ type: 'room', id: room.id })
+      }
+    }
+
+    for (const wall of currentFloor.walls) {
+      const allPointsInside = wall.segment.every(point =>
+        point.x >= min.x && point.x <= max.x &&
+        point.y >= min.y && point.y <= max.y
+      )
+      
+      if (allPointsInside) {
+        selected.push({ type: 'wall', id: wall.id })
+      }
+    }
+
+    for (const door of currentFloor.doors) {
+      const allPointsInside = door.segment.every(point =>
+        point.x >= min.x && point.x <= max.x &&
+        point.y >= min.y && point.y <= max.y
+      )
+      
+      if (allPointsInside) {
+        selected.push({ type: 'door', id: door.id })
+      }
+    }
+
+    for (const artwork of currentFloor.artworks) {
+      const [x, y] = artwork.xy
+      if (x >= min.x && x <= max.x && y >= min.y && y <= max.y) {
+        selected.push({ type: 'artwork', id: artwork.id })
+      }
+    }
+
+    for (const link of currentFloor.verticalLinks) {
+      const allPointsInside = link.segment.every(point =>
+        point.x >= min.x && point.x <= max.x &&
+        point.y >= min.y && point.y <= max.y
+      )
+      
+      if (allPointsInside) {
+        selected.push({ type: 'verticalLink', id: link.id })
+      }
+    }
+
+    // Appliquer la sélection intelligente aux éléments trouvés
+    const smartSelection = applySmartSelection(selected, currentFloor)
+    return cleanRedundantSelection(smartSelection)
+  }, [state, currentFloorId])
 
   return {
     findElementAt,
     selectElement,
     clearSelection,
-    selectAll
+    selectAll,
+    isSelected,
+    findElementsInBounds
   }
 }

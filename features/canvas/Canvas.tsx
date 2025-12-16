@@ -16,11 +16,14 @@ import {
   drawVerticalLink,
   drawShapePreview,
   drawSnapPoint,
-  drawValidationMessage
+  drawValidationMessage,
+  drawBoxSelection,
+  drawRoomVertices,
+  drawRoomSegments
 } from "@/features/canvas/utils"
 import { GRID_SIZE } from "@/core/constants"
 import { smartSnap } from "@/core/services"
-import { useShapeCreation, useFreeFormCreation } from "@/features/canvas/hooks"
+import { useShapeCreation, useFreeFormCreation, useCanvasSelection, useBoxSelection } from "@/features/canvas/hooks"
 import { v4 as uuidv4 } from "uuid"
 import { ValidationBadge } from "./components/ValidationBadge"
 
@@ -43,8 +46,25 @@ export function Canvas({
   
   // États pour l'interaction
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null)
+  const [hoverInfo, setHoverInfo] = useState<any>(null)
   const [isPanning, setIsPanning] = useState(false)
   const [lastPanPos, setLastPanPos] = useState<Point | null>(null)
+  
+  // Hook de sélection
+  const selection = useCanvasSelection(
+    state,
+    currentFloor.id,
+    updateState,
+    {
+      tolerance: 10,
+      multiSelect: true,
+      enableVertexSelection: state.selectedTool === 'select',
+      enableSegmentSelection: state.selectedTool === 'select'
+    }
+  )
+  
+  // Hook box selection
+  const boxSelection = useBoxSelection()
   
   // Hook de création de formes (drag-based: rectangle, circle, triangle, arc)
   const shapeCreation = useShapeCreation({
@@ -142,6 +162,21 @@ export function Canvas({
       return
     }
     
+    // Sélection (outil select)
+    if (e.button === 0 && state.selectedTool === 'select') {
+      const result = selection.findElementAt(worldPos, state.zoom)
+      
+      // Si clic sur élément : sélection simple/multiple
+      if (result.element) {
+        const isMultiSelect = e.ctrlKey || e.metaKey
+        selection.selectElement(result, isMultiSelect)
+      } else {
+        // Si clic sur fond : démarrer box selection
+        boxSelection.startSelection(worldPos)
+      }
+      return
+    }
+    
     // Créer une forme géométrique (drag)
     if (e.button === 0 && ['rectangle', 'circle', 'triangle', 'arc'].includes(state.selectedTool)) {
       shapeCreation.startCreation(snapResult.point)
@@ -151,7 +186,7 @@ export function Canvas({
     if (e.button === 0 && state.selectedTool === 'room') {
       freeFormCreation.addPoint(snapResult.point)
     }
-  }, [state.selectedTool, screenToWorld, currentFloor, shapeCreation, freeFormCreation])
+  }, [state.selectedTool, state.zoom, screenToWorld, currentFloor, shapeCreation, freeFormCreation, selection, boxSelection])
 
   // Mouse Move
   const handleMouseMove = useCallback((e: MouseEvent<HTMLCanvasElement>) => {
@@ -174,6 +209,20 @@ export function Canvas({
     
     setHoveredPoint(snapResult.point)
     
+    // Détection hover en mode select
+    if (state.selectedTool === 'select') {
+      const result = selection.findElementAt(worldPos, state.zoom)
+      setHoverInfo(result.hoverInfo)
+    } else {
+      setHoverInfo(null)
+    }
+    
+    // Box selection en cours
+    if (boxSelection.state.isActive) {
+      boxSelection.updateSelection(worldPos)
+      return
+    }
+    
     // Mettre à jour la prévisualisation pendant la création (drag)
     if (shapeCreation.state.isCreating) {
       shapeCreation.updateCreation(snapResult.point)
@@ -183,7 +232,7 @@ export function Canvas({
     if (freeFormCreation.state.isCreating) {
       freeFormCreation.updateHover(snapResult.point)
     }
-  }, [isPanning, lastPanPos, state.pan, screenToWorld, currentFloor, updateState, shapeCreation, freeFormCreation])
+  }, [isPanning, lastPanPos, state.pan, screenToWorld, currentFloor, updateState, shapeCreation, freeFormCreation, boxSelection])
 
   // Mouse Up
   const handleMouseUp = useCallback((e: MouseEvent<HTMLCanvasElement>) => {
@@ -193,10 +242,41 @@ export function Canvas({
       return
     }
     
+    // Box selection
+    if (e.button === 0 && boxSelection.state.isActive) {
+      const bounds = boxSelection.finishSelection()
+      if (bounds) {
+        const elementsInBox = selection.findElementsInBounds(bounds.min, bounds.max)
+        const isAdditive = e.shiftKey
+        
+        if (isAdditive) {
+          // Ajouter à la sélection existante
+          const newSelection = [...state.selectedElements, ...elementsInBox]
+          // Dédoublon
+          const unique = newSelection.filter((el, index, self) =>
+            index === self.findIndex(e => e.type === el.type && e.id === el.id)
+          )
+          updateState({
+            selectedElements: unique,
+            selectedElementId: unique.length > 0 ? unique[0].id : null,
+            selectedElementType: unique.length > 0 ? unique[0].type : null
+          }, false)
+        } else {
+          // Remplacer sélection
+          updateState({
+            selectedElements: elementsInBox,
+            selectedElementId: elementsInBox.length > 0 ? elementsInBox[0].id : null,
+            selectedElementType: elementsInBox.length > 0 ? elementsInBox[0].type : null
+          }, false)
+        }
+      }
+      return
+    }
+    
     if (e.button === 0 && shapeCreation.state.isCreating) {
       shapeCreation.finishCreation()
     }
-  }, [shapeCreation])
+  }, [shapeCreation, boxSelection, selection, state.selectedElements, updateState])
 
   // Rendu avec animation
   const render = useCallback(() => {
@@ -214,27 +294,27 @@ export function Canvas({
 
     // 2. Éléments du floor
     currentFloor.rooms.forEach(room => {
-      const isSelected = state.selectedElementId === room.id
+      const isSelected = selection.isSelected('room', room.id)
       drawRoom(ctx, room, state.zoom, state.pan, isSelected, false)
     })
 
     currentFloor.walls?.forEach(wall => {
-      const isSelected = state.selectedElementId === wall.id
+      const isSelected = selection.isSelected('wall', wall.id)
       drawWall(ctx, wall, state.zoom, state.pan, isSelected, false)
     })
 
     currentFloor.doors?.forEach(door => {
-      const isSelected = state.selectedElementId === door.id
+      const isSelected = selection.isSelected('door', door.id)
       drawDoor(ctx, door, state.zoom, state.pan, GRID_SIZE, isSelected, false, false)
     })
 
     currentFloor.artworks?.forEach(artwork => {
-      const isSelected = state.selectedElementId === artwork.id
+      const isSelected = selection.isSelected('artwork', artwork.id)
       drawArtwork(ctx, artwork, state.zoom, state.pan, isSelected, false)
     })
 
     currentFloor.verticalLinks?.forEach(link => {
-      const isSelected = state.selectedElementId === link.id
+      const isSelected = selection.isSelected('verticalLink', link.id)
       drawVerticalLink(ctx, link, state.zoom, state.pan, GRID_SIZE, isSelected, false, false)
     })
 
@@ -316,14 +396,36 @@ export function Canvas({
       }
     }
 
-    // 4. Point hover (snap indicator)
-    if (hoveredPoint && !shapeCreation.state.isCreating && !freeFormCreation.state.isCreating) {
+    // 4. Box selection
+    if (boxSelection.state.isActive && boxSelection.state.startPoint && boxSelection.state.currentPoint) {
+      drawBoxSelection(
+        ctx,
+        boxSelection.state.startPoint,
+        boxSelection.state.currentPoint,
+        state.zoom,
+        state.pan
+      )
+    }
+
+    // 5. Point hover (snap indicator) - PAS en mode select
+    if (hoveredPoint && !shapeCreation.state.isCreating && !freeFormCreation.state.isCreating && !boxSelection.state.isActive && state.selectedTool !== 'select') {
       drawSnapPoint(ctx, hoveredPoint, state.zoom, state.pan, true)
+    }
+
+    // 5b. Vertices et segments visibles en mode select avec feedback hover/selected
+    if (state.selectedTool === 'select') {
+      currentFloor.rooms.forEach(room => {
+        // Segments (overlay quand hover ou selected)
+        drawRoomSegments(ctx, room, state.pan, state.zoom, hoverInfo, state.selectedElements)
+        
+        // Vertices (toujours affichés)
+        drawRoomVertices(ctx, room, state.pan, state.zoom, hoverInfo, state.selectedElements)
+      })
     }
 
     // Animation continue
     animationFrameRef.current = requestAnimationFrame(render)
-  }, [state.zoom, state.pan, state.selectedElementId, currentFloor, shapeCreation.state, freeFormCreation.state, hoveredPoint])
+  }, [state.zoom, state.pan, currentFloor, shapeCreation.state, freeFormCreation.state, hoveredPoint, hoverInfo, selection, boxSelection.state])
 
   // Setup canvas et event listeners
   useEffect(() => {

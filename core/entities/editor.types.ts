@@ -21,19 +21,23 @@ export type Tool =
 
 export type ElementType = "room" | "artwork" | "door" | "wall" | "verticalLink"
 export type DragElementType = ElementType | "vertex"
-export type HoverElementType = ElementType | "vertex" | "doorEndpoint" | "linkEndpoint" | "wallEndpoint"
+export type HoverElementType = ElementType | "vertex" | "segment" | "doorEndpoint" | "linkEndpoint" | "wallEndpoint"
 
 export interface SelectionInfo {
   readonly id: string
-  readonly type: ElementType | "vertex"
+  readonly type: ElementType | "vertex" | "segment"
   readonly vertexIndex?: number
+  readonly segmentIndex?: number
   readonly roomId?: string
 }
 
 // Alias simplifié pour la sélection
 export interface SelectedElement {
-  readonly type: ElementType
+  readonly type: ElementType | "vertex" | "segment"
   readonly id: string
+  readonly vertexIndex?: number
+  readonly segmentIndex?: number
+  readonly roomId?: string
 }
 
 export interface DragInfo {
@@ -49,6 +53,8 @@ export interface HoverInfo {
   readonly id: string
   readonly vertexIndex?: number
   readonly endpoint?: "start" | "end"
+  readonly roomId?: string
+  readonly segmentIndex?: number
 }
 
 export interface ContextMenuState {
@@ -92,7 +98,7 @@ export interface EditorState {
   readonly currentFloorId: string
   readonly selectedTool: Tool
   readonly selectedElementId?: string | null
-  readonly selectedElementType?: ElementType | null
+  readonly selectedElementType?: ElementType | "vertex" | "segment" | null
   readonly selectedElements: ReadonlyArray<SelectedElement>
   readonly gridSize: number
   readonly zoom: number
