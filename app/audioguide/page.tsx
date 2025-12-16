@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CheckCircle, XCircle, Clock, PlayCircle, AlertTriangle } from 'lucide-react'
 
-export default function AudioguidePage() {
+function AudioguideContent() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
   
@@ -232,5 +232,20 @@ export default function AudioguidePage() {
         {renderContent()}
       </div>
     </div>
+  )
+}
+
+export default function AudioguidePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <Clock className="w-16 h-16 text-blue-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Chargement...</p>
+        </div>
+      </div>
+    }>
+      <AudioguideContent />
+    </Suspense>
   )
 }

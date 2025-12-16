@@ -1,0 +1,93 @@
+/**
+ * TYPES MÉTIER MUSÉE
+ * Structures pour les éléments d'un plan de musée
+ * Format compatible avec l'ancien système et la DB
+ */
+
+import type { Point } from './geometry.types'
+
+// ==================== ROOM ====================
+
+export interface Room {
+  readonly id: string
+  readonly polygon: ReadonlyArray<Point>
+}
+
+// ==================== ARTWORK ====================
+
+export interface Artwork {
+  readonly id: string
+  readonly xy: readonly [number, number]
+  readonly size?: readonly [number, number]
+  readonly name?: string
+  readonly pdf_id?: string
+  readonly pdfLink?: string
+  readonly tempPdfFile?: File | null
+  readonly tempPdfBase64?: string | null
+}
+
+// ==================== DOOR ====================
+
+export interface Door {
+  readonly id: string
+  readonly room_a: string
+  readonly room_b: string
+  readonly segment: readonly [Point, Point]
+  readonly width: number
+}
+
+// ==================== VERTICAL LINK ====================
+
+export interface VerticalLink {
+  readonly id: string
+  readonly type: "stairs" | "elevator"
+  readonly segment: readonly [Point, Point]
+  readonly width: number
+  readonly to_floor: string
+  readonly direction?: "up" | "down" | "both"
+}
+
+// ==================== ESCALATOR ====================
+
+export interface Escalator {
+  readonly id: string
+  readonly startPosition: Point
+  readonly endPosition: Point
+  readonly fromFloorId: string
+  readonly toFloorId: string
+  readonly direction: "up" | "down"
+  readonly width: number
+}
+
+// ==================== ELEVATOR ====================
+
+export interface Elevator {
+  readonly id: string
+  readonly position: Point
+  readonly size: number
+  readonly connectedFloorIds: string[]
+}
+
+// ==================== WALL ====================
+
+export interface Wall {
+  readonly id: string
+  readonly segment: readonly [Point, Point]
+  readonly thickness: number
+  readonly roomId?: string
+  readonly isLoadBearing?: boolean
+}
+
+// ==================== FLOOR ====================
+
+export interface Floor {
+  readonly id: string
+  readonly name: string
+  readonly rooms: ReadonlyArray<Room>
+  readonly doors: ReadonlyArray<Door>
+  readonly walls: ReadonlyArray<Wall>
+  readonly artworks: ReadonlyArray<Artwork>
+  readonly verticalLinks: ReadonlyArray<VerticalLink>
+  readonly escalators: ReadonlyArray<Escalator>
+  readonly elevators: ReadonlyArray<Elevator>
+}

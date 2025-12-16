@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth-context'
-import { MuseumEditor } from '@/components/museum-editor'
+import { MuseumEditor } from '@/features/editor'
 
 export default function EditorPage() {
   const { isAuthenticated, hasPermission, currentUser, isLoading } = useAuth()
