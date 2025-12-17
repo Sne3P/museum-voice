@@ -157,6 +157,9 @@ def get_artwork(oeuvre_id: int, db_path: Optional[str] = None) -> Optional[Dict[
     
     return dict(result) if result else None
 
+# Alias pour la compatibilité
+get_artwork_by_id = get_artwork
+
 
 # FONCTIONS POUR LES ANECDOTES
 def add_anecdote(oeuvre_id: int, contenu: str, numero: Optional[int] = None,
