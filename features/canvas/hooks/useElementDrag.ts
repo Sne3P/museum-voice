@@ -6,6 +6,7 @@
 
 import { useState, useCallback, type MouseEvent } from "react"
 import type { Point, EditorState, Floor, SelectedElement, Room } from "@/core/entities"
+import { HISTORY_ACTIONS } from "@/core/constants"
 import {
   translateRoom,
   translateWall,
@@ -229,9 +230,17 @@ export function useElementDrag({
 
     if (dragState.isValid && dragState.startPosition && dragState.currentPosition) {
       // Le drag est valide, sauvegarder dans l'historique
-      const delta = calculateDelta(dragState.startPosition, dragState.currentPosition)
-      const elementTypes = new Set(dragState.draggedElements.map(e => e.type))
-      const description = `Déplacer ${dragState.draggedElements.length} ${Array.from(elementTypes).join(', ')}`
+      const description = dragState.draggedElements.length > 1 
+        ? HISTORY_ACTIONS.MOVE_ELEMENTS
+        : dragState.draggedElements[0]?.type === 'room'
+        ? HISTORY_ACTIONS.MOVE_ROOM
+        : dragState.draggedElements[0]?.type === 'wall'
+        ? HISTORY_ACTIONS.MOVE_WALL
+        : dragState.draggedElements[0]?.type === 'door'
+        ? HISTORY_ACTIONS.MOVE_DOOR
+        : dragState.draggedElements[0]?.type === 'artwork'
+        ? HISTORY_ACTIONS.MOVE_ARTWORK
+        : HISTORY_ACTIONS.MOVE_ELEMENTS
       
       updateState({}, true, description)
     } else {

@@ -20,5 +20,8 @@ export * from './constraints.constants'
 // Feedback visuel
 export * from './feedback.constants'
 
+// Historique
+export * from './history.constants'
+
 // Divers
 export * from './misc.constants'

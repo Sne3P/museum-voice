@@ -6,6 +6,7 @@
 
 import { useState, useCallback, type MouseEvent } from "react"
 import type { Point, EditorState, Floor, Room } from "@/core/entities"
+import { HISTORY_ACTIONS } from "@/core/constants"
 import { updateVertexInPolygon, calculateDelta } from "@/core/services"
 import { snapToGrid, smartSnap } from "@/core/services"
 import { validateRoomGeometry } from "@/core/services"
@@ -225,10 +226,10 @@ export function useVertexEdit({
     if (editState.isValid && editState.newPolygon) {
       // Sauvegarder dans l'historique avec description adaptée
       const description = editState.editMode === 'vertex' 
-        ? 'Modifier vertex'
+        ? HISTORY_ACTIONS.EDIT_VERTEX
         : editState.editMode === 'segment'
-        ? 'Modifier segment'
-        : `Modifier ${editState.vertexIndices.length} vertices`
+        ? HISTORY_ACTIONS.EDIT_SEGMENT
+        : HISTORY_ACTIONS.EDIT_VERTEX
       
       updateState({}, true, description)
     } else {

@@ -9,7 +9,10 @@
 import { useState, useCallback, useEffect } from "react"
 import { Canvas } from "@/features/canvas"
 import { Toolbar, FloorTabs, PropertiesPanel, ArtworkPdfDialog } from "./components"
+import { HistoryButtons } from "@/shared/components/HistoryButtons"
+import { useHistory } from "@/shared/hooks"
 import type { EditorState, Tool, Floor, Artwork, MeasurementState } from "@/core/entities"
+import { HISTORY_ACTIONS } from "@/core"
 import { v4 as uuidv4 } from "uuid"
 
 export function MuseumEditor() {
@@ -117,65 +120,31 @@ export function MuseumEditor() {
     await autoSave(state, true)
   }, [state, autoSave])
 
-  // ==================== GESTION DE L'ÉTAT ====================
+  // ==================== GESTION DE L'ÉTAT & HISTORIQUE ====================
 
+  // Hook d'historique centralisé
+  const {
+    handleUndo,
+    handleRedo,
+    updateStateWithHistory,
+    canUndo,
+    canRedo,
+    undoDescription,
+    redoDescription,
+  } = useHistory({ state, setState, enableKeyboard: true })
+
+  // Fonction de mise à jour d'état (compatible avec ancien code)
   const updateState = useCallback((
     updates: Partial<EditorState>,
     saveHistory = false,
     description?: string
   ) => {
-    setState(prevState => {
-      const newState = { ...prevState, ...updates }
-
-      if (saveHistory) {
-        const historyEntry = {
-          state: prevState,
-          description: description || 'Modification',
-          timestamp: Date.now()
-        }
-
-        const newHistory = prevState.history.slice(0, prevState.historyIndex + 1)
-        newHistory.push(historyEntry)
-
-        // Limiter l'historique à 50 entrées
-        if (newHistory.length > 50) {
-          newHistory.shift()
-        }
-
-        return {
-          ...newState,
-          history: newHistory,
-          historyIndex: newHistory.length - 1
-        }
-      }
-
-      return newState
-    })
-  }, [])
-
-  // ==================== UNDO/REDO ====================
-
-  const handleUndo = useCallback(() => {
-    if (state.historyIndex > 0) {
-      const previousState = state.history[state.historyIndex - 1].state
-      setState({
-        ...previousState,
-        history: state.history,
-        historyIndex: state.historyIndex - 1
-      })
+    if (saveHistory && description) {
+      updateStateWithHistory(updates, description)
+    } else {
+      setState(prevState => ({ ...prevState, ...updates }))
     }
-  }, [state])
-
-  const handleRedo = useCallback(() => {
-    if (state.historyIndex < state.history.length - 1) {
-      const nextState = state.history[state.historyIndex + 1].state
-      setState({
-        ...nextState,
-        history: state.history,
-        historyIndex: state.historyIndex + 1
-      })
-    }
-  }, [state])
+  }, [updateStateWithHistory])
 
   // ==================== TOOLS ====================
 
@@ -362,7 +331,20 @@ export function MuseumEditor() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          {/* Boutons Undo/Redo */}
+          <HistoryButtons
+            canUndo={canUndo}
+            canRedo={canRedo}
+            undoDescription={undoDescription}
+            redoDescription={redoDescription}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+          />
+          
+          <div className="h-6 w-px bg-border" />
+          
+          {/* Status sauvegarde */}
           {saveStatus === 'saving' && (
             <span className="text-sm text-blue-600">⏳ Sauvegarde...</span>
           )}
