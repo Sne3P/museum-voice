@@ -47,7 +47,8 @@ export function canvasToWorld(
 }
 
 /**
- * Convertit des coordonnées monde en coordonnées canvas
+ * Convertit des coordonnées monde (PIXELS) en coordonnées canvas (PIXELS)
+ * worldPoint déjà en PIXELS, appliquer seulement zoom et pan
  */
 export function worldToCanvas(
   worldPoint: Point,

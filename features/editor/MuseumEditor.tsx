@@ -42,7 +42,7 @@ export function MuseumEditor() {
     historyIndex: -1,
     contextMenu: null,
     measurements: {
-      showMeasurements: true,
+      showMeasurements: false,
       showDynamicMeasurements: false,
       measurements: []
     },
@@ -53,11 +53,6 @@ export function MuseumEditor() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
   const [isLoading, setIsLoading] = useState(true)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  const [measurements, setMeasurements] = useState<MeasurementState>({
-    showMeasurements: false,
-    showDynamicMeasurements: false,
-    measurements: []
-  })
   const [propertiesModalOpen, setPropertiesModalOpen] = useState(false)
   const [propertiesElement, setPropertiesElement] = useState<{ type?: 'room' | 'artwork' | 'wall' | 'door' | 'verticalLink', id?: string }>({})
 
@@ -174,11 +169,14 @@ export function MuseumEditor() {
     updateState({ currentFloorId: floorId, selectedElements: [] }, false)
   }, [updateState])
 
-  const handleAddFloor = useCallback(() => {
-    const newFloorNumber = state.floors.length + 1
+  const handleAddFloor = useCallback((direction: 1 | -1 = 1) => {
+    const currentIndex = state.floors.findIndex(f => f.id === state.currentFloorId)
+    const newFloorLevel = direction === 1 ? state.floors.length + 1 : -(state.floors.filter(f => f.name.includes('B')).length + 1)
+    const newFloorName = direction === 1 ? `Étage ${newFloorLevel}` : `Sous-sol ${Math.abs(newFloorLevel)}`
+
     const newFloor: Floor = {
       id: uuidv4(),
-      name: `Floor ${newFloorNumber}`,
+      name: newFloorName,
       rooms: [],
       doors: [],
       walls: [],
@@ -188,14 +186,76 @@ export function MuseumEditor() {
       elevators: []
     }
 
+    const updatedFloors = direction === 1 
+      ? [...state.floors, newFloor]  // Ajouter en haut
+      : [newFloor, ...state.floors]  // Ajouter en bas
+
     updateState(
       { 
-        floors: [...state.floors, newFloor],
+        floors: updatedFloors,
         currentFloorId: newFloor.id
       },
       true,
-      'Ajout d\'étage'
+      `Ajout ${direction === 1 ? 'd\'étage' : 'de sous-sol'}`
     )
+  }, [state.floors, state.currentFloorId, updateState])
+
+  const handleDuplicateFloor = useCallback((floorId: string) => {
+    const floorToDuplicate = state.floors.find(f => f.id === floorId)
+    if (!floorToDuplicate) return
+
+    const duplicatedFloor: Floor = {
+      ...floorToDuplicate,
+      id: uuidv4(),
+      name: `${floorToDuplicate.name} (copie)`,
+      rooms: floorToDuplicate.rooms.map(room => ({ ...room, id: uuidv4() })),
+      doors: floorToDuplicate.doors.map(door => ({ ...door, id: uuidv4() })),
+      walls: floorToDuplicate.walls.map(wall => ({ ...wall, id: uuidv4() })),
+      artworks: floorToDuplicate.artworks.map(artwork => ({ ...artwork, id: uuidv4() })),
+      verticalLinks: floorToDuplicate.verticalLinks.map(link => ({ ...link, id: uuidv4() })),
+      escalators: floorToDuplicate.escalators.map(esc => ({ ...esc, id: uuidv4() })),
+      elevators: floorToDuplicate.elevators.map(elev => ({ ...elev, id: uuidv4() }))
+    }
+
+    const floorIndex = state.floors.findIndex(f => f.id === floorId)
+    const updatedFloors = [
+      ...state.floors.slice(0, floorIndex + 1),
+      duplicatedFloor,
+      ...state.floors.slice(floorIndex + 1)
+    ]
+
+    updateState(
+      { 
+        floors: updatedFloors,
+        currentFloorId: duplicatedFloor.id
+      },
+      true,
+      'Duplication d\'étage'
+    )
+  }, [state.floors, updateState])
+
+  const handleMoveFloorUp = useCallback((floorId: string) => {
+    const floorIndex = state.floors.findIndex(f => f.id === floorId)
+    if (floorIndex <= 0) return
+
+    const updatedFloors = [...state.floors]
+    const temp = updatedFloors[floorIndex - 1]
+    updatedFloors[floorIndex - 1] = updatedFloors[floorIndex]
+    updatedFloors[floorIndex] = temp
+
+    updateState({ floors: updatedFloors }, true, 'Réorganisation d\'étages')
+  }, [state.floors, updateState])
+
+  const handleMoveFloorDown = useCallback((floorId: string) => {
+    const floorIndex = state.floors.findIndex(f => f.id === floorId)
+    if (floorIndex < 0 || floorIndex >= state.floors.length - 1) return
+
+    const updatedFloors = [...state.floors]
+    const temp = updatedFloors[floorIndex + 1]
+    updatedFloors[floorIndex + 1] = updatedFloors[floorIndex]
+    updatedFloors[floorIndex] = temp
+
+    updateState({ floors: updatedFloors }, true, 'Réorganisation d\'étages')
   }, [state.floors, updateState])
 
   const handleDeleteFloor = useCallback((floorId: string) => {
@@ -234,11 +294,13 @@ export function MuseumEditor() {
   }, [currentFloor])
   
   const handleToggleMeasurements = useCallback(() => {
-    setMeasurements(prev => ({
-      ...prev,
-      showMeasurements: !prev.showMeasurements
-    }))
-  }, [])
+    updateState({
+      measurements: {
+        ...state.measurements,
+        showMeasurements: !state.measurements.showMeasurements
+      }
+    }, false)
+  }, [state.measurements, updateState])
   
   const saveToHistory = useCallback((newState: EditorState, description?: string) => {
     const historyEntry = {
@@ -422,7 +484,7 @@ export function MuseumEditor() {
         <Toolbar
           selectedTool={state.selectedTool}
           onSelectTool={handleToolChange}
-          measurements={measurements}
+          measurements={state.measurements}
           onToggleMeasurements={handleToggleMeasurements}
         />
 
@@ -433,8 +495,12 @@ export function MuseumEditor() {
             floors={state.floors}
             currentFloorId={state.currentFloorId}
             onSwitchFloor={handleFloorChange}
-            onAddFloor={(direction) => handleAddFloor()}
+            onAddFloor={handleAddFloor}
             onDeleteFloor={handleDeleteFloor}
+            onDuplicateFloor={handleDuplicateFloor}
+            onMoveFloorUp={handleMoveFloorUp}
+            onMoveFloorDown={handleMoveFloorDown}
+            onRenameFloor={handleRenameFloor}
           />
 
           {/* Canvas qui prend tout le reste */}

@@ -19,7 +19,8 @@ export function useCanvasCoordinates({
 }: CanvasCoordinatesOptions) {
   
   /**
-   * Convertir coordonnées écran → monde
+   * Convertir coordonnées écran → monde (PIXELS)
+   * Les coordonnées retournées sont en PIXELS (source de vérité)
    */
   const screenToWorld = useCallback((screenX: number, screenY: number): Point => {
     const canvas = canvasRef.current

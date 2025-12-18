@@ -11,6 +11,7 @@ export { polygonsOverlap as polygonsIntersect }
 
 /**
  * Snap un point à la grille
+ * Points en PIXELS, snap aux multiples de gridSize (40px)
  */
 export function snapToGrid(point: Point, gridSize: number = GRID_SIZE): Point {
   return {
@@ -338,22 +339,25 @@ function direction(p1: Point, p2: Point, p3: Point): number {
 
 /**
  * Calcule l'aire d'un polygone en mètres carrés
+ * Points en PIXELS : 1 carré (40px × 40px) = 0.5m × 0.5m = 0.25m²
+ * Donc 1 pixel² = (0.5/40)² = 0.00015625 m²
  */
 export function calculatePolygonAreaInMeters(polygon: ReadonlyArray<Point>): number {
   if (polygon.length < 3) return 0
   
-  let area = 0
+  let areaPixels = 0
   for (let i = 0; i < polygon.length; i++) {
     const j = (i + 1) % polygon.length
-    area += polygon[i].x * polygon[j].y
-    area -= polygon[j].x * polygon[i].y
+    areaPixels += polygon[i].x * polygon[j].y
+    areaPixels -= polygon[j].x * polygon[i].y
   }
   
-  area = Math.abs(area) / 2
+  areaPixels = Math.abs(areaPixels) / 2
   
-  // Convertir en m² (grille → mètres)
-  const gridToMeters = GRID_TO_METERS
-  return Number((area * gridToMeters * gridToMeters).toFixed(MEASUREMENT_PRECISION))
+  // Convertir pixels² en m² : areaPixels × (0.5 / 40)²
+  const pixelToMeter = GRID_TO_METERS / GRID_SIZE  // 0.0125
+  const areaMeters = areaPixels * pixelToMeter * pixelToMeter
+  return Number(areaMeters.toFixed(MEASUREMENT_PRECISION))
 }
 
 /**
@@ -388,10 +392,14 @@ export function getSegmentMidpoint(start: Point, end: Point): Point {
 
 /**
  * Calcule la distance en mètres
+ * Points en PIXELS : 40 pixels = 1 carré = 0.5m
+ * Donc 1 pixel = 0.5/40 = 0.0125m
  */
 export function calculateDistanceInMeters(p1: Point, p2: Point): number {
-  const dist = distance(p1, p2)
-  return Number((dist * GRID_TO_METERS).toFixed(MEASUREMENT_PRECISION))
+  const distPixels = distance(p1, p2)
+  // Convertir pixels en mètres : pixels × (0.5 / 40) = pixels × 0.0125
+  const distMeters = distPixels * (GRID_TO_METERS / GRID_SIZE)
+  return Number(distMeters.toFixed(MEASUREMENT_PRECISION))
 }
 
 /**

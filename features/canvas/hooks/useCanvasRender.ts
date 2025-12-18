@@ -17,7 +17,9 @@ import {
   drawValidationMessage,
   drawBoxSelection,
   drawRoomVertices,
-  drawRoomSegments
+  drawRoomSegments,
+  drawMeasurement,
+  drawAreaMeasurement
 } from "@/features/canvas/utils"
 import { GRID_SIZE } from "@/core/constants"
 
@@ -68,6 +70,11 @@ export function useCanvasRender({
 
     // 2. Éléments du floor
     renderFloorElements(ctx, currentFloor, state, selection)
+
+    // 2.5. Mesures (si activées)
+    if (state.measurements.showMeasurements) {
+      renderMeasurements(ctx, currentFloor, state, selection)
+    }
 
     // 3. Feedback visuel drag/edit (NOUVEAU)
     renderDragFeedback(ctx, canvas, elementDrag, vertexEdit, state)
@@ -284,6 +291,49 @@ function renderVerticesAndSegments(
     
     // Vertices (toujours affichés)
     drawRoomVertices(ctx, room, state.pan, state.zoom, hoverInfo, state.selectedElements)
+  })
+}
+
+/**
+ * Rendu des mesures (longueur segments + superficie)
+ */
+function renderMeasurements(
+  ctx: CanvasRenderingContext2D,
+  currentFloor: Floor,
+  state: EditorState,
+  selection: any
+) {
+  // Afficher mesures de TOUTES les pièces
+  currentFloor.rooms.forEach(room => {
+    if (room.polygon.length < 3) return
+
+    const isSelected = selection.isSelected('room', room.id)
+
+    // 1. Mesures de chaque segment (longueur en mètres) - Highlight si sélectionné
+    for (let i = 0; i < room.polygon.length; i++) {
+      const start = room.polygon[i]
+      const end = room.polygon[(i + 1) % room.polygon.length]
+      
+      drawMeasurement(
+        ctx,
+        start,
+        end,
+        state.zoom,
+        state.pan,
+        GRID_SIZE,
+        isSelected  // Highlight bleu si sélectionné
+      )
+    }
+
+    // 2. Superficie au centre - Highlight si sélectionné
+    drawAreaMeasurement(
+      ctx,
+      room,
+      state.zoom,
+      state.pan,
+      GRID_SIZE,
+      isSelected  // Highlight vert si sélectionné
+    )
   })
 }
 

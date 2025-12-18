@@ -4,7 +4,7 @@
 
 import type { Point, Room } from '@/core/entities'
 import { COLORS, FONTS, MEASUREMENT_OFFSET, GRID_TO_METERS, MEASUREMENT_PRECISION } from '@/core/constants'
-import { calculateDistanceInMeters, calculatePolygonAreaInMeters } from '@/core/services'
+import { calculateDistanceInMeters, calculatePolygonAreaInMeters, getPolygonCenter } from '@/core/services'
 import { worldToCanvas } from '@/core/utils'
 
 export function drawMeasurement(
@@ -13,57 +13,73 @@ export function drawMeasurement(
   end: Point,
   zoom: number,
   pan: Point,
-  gridSize: number = 40
+  gridSize: number = 40,
+  isHighlighted: boolean = false
 ) {
-  const startScreen = worldToCanvas({ x: start.x * gridSize, y: start.y * gridSize }, zoom, pan)
-  const endScreen = worldToCanvas({ x: end.x * gridSize, y: end.y * gridSize }, zoom, pan)
+  // Convertir coordonnées monde (unités grille) → canvas (pixels)
+  const startScreen = worldToCanvas(start, zoom, pan)
+  const endScreen = worldToCanvas(end, zoom, pan)
 
-  // Ligne de mesure
-  ctx.strokeStyle = COLORS.measurementBorder
-  ctx.lineWidth = 1
-  ctx.setLineDash([5, 5])
-  ctx.beginPath()
-  ctx.moveTo(startScreen.x, startScreen.y)
-  ctx.lineTo(endScreen.x, endScreen.y)
-  ctx.stroke()
-  ctx.setLineDash([])
-
-  // Calcul distance
+  // Calcul distance en mètres (start/end sont en unités grille, 1 unité = 0.5m)
   const distance = calculateDistanceInMeters(start, end)
   const text = `${distance.toFixed(MEASUREMENT_PRECISION)}m`
 
-  // Position du label
+  // Point milieu du segment
   const midX = (startScreen.x + endScreen.x) / 2
   const midY = (startScreen.y + endScreen.y) / 2
 
-  // Fond du label
-  ctx.font = `${FONTS.measurementSize * zoom}px ${FONTS.measurementFamily}`
+  // Calculer direction perpendiculaire pour décaler le label
+  const dx = endScreen.x - startScreen.x
+  const dy = endScreen.y - startScreen.y
+  const length = Math.sqrt(dx * dx + dy * dy)
+  const perpX = length > 0 ? -dy / length : 0
+  const perpY = length > 0 ? dx / length : 0
+  
+  // Offset adaptatif selon zoom
+  const offset = Math.max(12, MEASUREMENT_OFFSET * Math.max(0.7, Math.min(1.2, zoom / 40)))
+  const labelX = midX + perpX * offset
+  const labelY = midY + perpY * offset
+
+  // Taille de police adaptative (entre 10px et 16px)
+  const fontSize = Math.max(10, Math.min(16, (FONTS.measurementSize + 1) * Math.pow(zoom / 40, 0.3)))
+  ctx.font = `${fontSize}px ${FONTS.measurementFamily}`
   const textMetrics = ctx.measureText(text)
-  const padding = 4 * zoom
+  const padding = Math.max(3, 4 * Math.pow(zoom / 40, 0.3))
 
-  ctx.fillStyle = COLORS.measurementBackground
-  ctx.fillRect(
-    midX - textMetrics.width/2 - padding,
-    midY - FONTS.measurementSize * zoom /2 - padding,
-    textMetrics.width + padding * 2,
-    FONTS.measurementSize * zoom + padding * 2
-  )
-
-  // Contour
-  ctx.strokeStyle = COLORS.measurementBorder
-  ctx.lineWidth = 1
-  ctx.strokeRect(
-    midX - textMetrics.width/2 - padding,
-    midY - FONTS.measurementSize * zoom /2 - padding,
-    textMetrics.width + padding * 2,
-    FONTS.measurementSize * zoom + padding * 2
-  )
+  // Style selon highlight
+  if (isHighlighted) {
+    // Avec carré si sélectionné
+    ctx.fillStyle = 'rgba(59, 130, 246, 0.95)'
+    ctx.fillRect(
+      labelX - textMetrics.width/2 - padding,
+      labelY - fontSize/2 - padding,
+      textMetrics.width + padding * 2,
+      fontSize + padding * 2
+    )
+    ctx.strokeStyle = '#3b82f6'
+    ctx.lineWidth = 2
+    ctx.strokeRect(
+      labelX - textMetrics.width/2 - padding,
+      labelY - fontSize/2 - padding,
+      textMetrics.width + padding * 2,
+      fontSize + padding * 2
+    )
+    ctx.fillStyle = '#ffffff'
+  } else {
+    // Sans carré, juste le texte avec ombre légère
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
+    ctx.shadowBlur = 3
+    ctx.fillStyle = COLORS.measurementText
+  }
 
   // Texte
-  ctx.fillStyle = COLORS.measurementText
   ctx.textAlign = "center"
   ctx.textBaseline = "middle"
-  ctx.fillText(text, midX, midY)
+  ctx.fillText(text, labelX, labelY)
+  
+  // Reset shadow
+  ctx.shadowColor = 'transparent'
+  ctx.shadowBlur = 0
 }
 
 export function drawAreaMeasurement(
@@ -71,54 +87,59 @@ export function drawAreaMeasurement(
   room: Room,
   zoom: number,
   pan: Point,
-  gridSize: number = 40
+  gridSize: number = 40,
+  isHighlighted: boolean = false
 ) {
   if (room.polygon.length < 3) return
 
-  // Calculer le centre du polygone
-  let sumX = 0
-  let sumY = 0
-  for (const point of room.polygon) {
-    sumX += point.x
-    sumY += point.y
-  }
-  const centerX = sumX / room.polygon.length
-  const centerY = sumY / room.polygon.length
+  // Calculer le centre du polygone (points en unités grille)
+  const center = getPolygonCenter(room.polygon)
+  const centerScreen = worldToCanvas(center, zoom, pan)
 
-  const centerScreen = worldToCanvas({ x: centerX * gridSize, y: centerY * gridSize }, zoom, pan)
-
-  // Calcul surface
+  // Calcul surface en m² (polygon en unités grille, 1 unité = 0.5m)
   const area = calculatePolygonAreaInMeters(room.polygon)
   const text = `${area.toFixed(MEASUREMENT_PRECISION)}m²`
 
-  // Fond du label
-  ctx.font = `bold ${FONTS.measurementSize * zoom}px ${FONTS.measurementFamily}`
+  // Taille de police adaptative (entre 12px et 18px, plus gros que segments)
+  const fontSize = Math.max(12, Math.min(18, (FONTS.measurementSize + 3) * Math.pow(zoom / 40, 0.3)))
+  ctx.font = `bold ${fontSize}px ${FONTS.measurementFamily}`
   const textMetrics = ctx.measureText(text)
-  const padding = 6 * zoom
+  const padding = Math.max(4, 6 * Math.pow(zoom / 40, 0.3))
 
-  ctx.fillStyle = COLORS.areaBackground
-  ctx.fillRect(
-    centerScreen.x - textMetrics.width/2 - padding,
-    centerScreen.y - FONTS.measurementSize * zoom /2 - padding,
-    textMetrics.width + padding * 2,
-    FONTS.measurementSize * zoom + padding * 2
-  )
-
-  // Contour
-  ctx.strokeStyle = COLORS.areaText
-  ctx.lineWidth = 1
-  ctx.strokeRect(
-    centerScreen.x - textMetrics.width/2 - padding,
-    centerScreen.y - FONTS.measurementSize * zoom /2 - padding,
-    textMetrics.width + padding * 2,
-    FONTS.measurementSize * zoom + padding * 2
-  )
+  // Style selon highlight
+  if (isHighlighted) {
+    // Avec carré vert si sélectionné
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.9)'
+    ctx.fillRect(
+      centerScreen.x - textMetrics.width/2 - padding,
+      centerScreen.y - fontSize/2 - padding,
+      textMetrics.width + padding * 2,
+      fontSize + padding * 2
+    )
+    ctx.strokeStyle = '#22c55e'
+    ctx.lineWidth = 2.5
+    ctx.strokeRect(
+      centerScreen.x - textMetrics.width/2 - padding,
+      centerScreen.y - fontSize/2 - padding,
+      textMetrics.width + padding * 2,
+      fontSize + padding * 2
+    )
+    ctx.fillStyle = '#ffffff'
+  } else {
+    // Sans carré, juste le texte avec ombre
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.9)'
+    ctx.shadowBlur = 4
+    ctx.fillStyle = COLORS.areaText
+  }
 
   // Texte
-  ctx.fillStyle = COLORS.areaText
   ctx.textAlign = "center"
   ctx.textBaseline = "middle"
   ctx.fillText(text, centerScreen.x, centerScreen.y)
+  
+  // Reset shadow
+  ctx.shadowColor = 'transparent'
+  ctx.shadowBlur = 0
 }
 
 export function drawScale(

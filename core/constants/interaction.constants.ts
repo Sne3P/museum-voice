@@ -1,5 +1,6 @@
 /**
  * CONSTANTES DÉTECTION INTERACTION
+ * Valeurs en PIXELS écran (seront divisées par zoom)
  */
 
 export const VERTEX_HIT_RADIUS = 15

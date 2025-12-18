@@ -13,6 +13,7 @@ interface FloorTabsProps {
   onDuplicateFloor?: (floorId: string) => void
   onMoveFloorUp?: (floorId: string) => void
   onMoveFloorDown?: (floorId: string) => void
+  onRenameFloor?: (floorId: string, newName: string) => void
 }
 
 export function FloorTabs({ 
@@ -23,11 +24,15 @@ export function FloorTabs({
   onDeleteFloor,
   onDuplicateFloor,
   onMoveFloorUp,
-  onMoveFloorDown
+  onMoveFloorDown,
+  onRenameFloor
 }: FloorTabsProps) {
   const [showActions, setShowActions] = useState<string | null>(null)
   const [showAddMenu, setShowAddMenu] = useState(false)
+  const [editingFloorId, setEditingFloorId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
   const addMenuRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   
   const currentFloorIndex = floors.findIndex(f => f.id === currentFloorId)
   const canMoveUp = currentFloorIndex > 0
@@ -64,27 +69,91 @@ export function FloorTabs({
           onMouseEnter={() => setShowActions(floor.id)}
           onMouseLeave={() => setShowActions(null)}
         >
-          <button
-            onClick={() => onSwitchFloor(floor.id)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 ${
+          {editingFloorId === floor.id ? (
+            // Mode édition
+            <div className={`rounded-lg px-4 py-2 text-sm font-medium ${
               currentFloorId === floor.id
-                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 ring-2 ring-primary/40"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground hover:shadow-md border border-transparent hover:border-border/50"
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <span className="text-xs opacity-70">#{index + 1}</span>
-              {floor.name}
-            </span>
-          </button>
+                ? "bg-primary/10 border-2 border-primary"
+                : "bg-accent border-2 border-border"
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className="text-xs opacity-70">#{index + 1}</span>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onBlur={() => {
+                    if (editingName.trim() && onRenameFloor) {
+                      onRenameFloor(floor.id, editingName.trim())
+                    }
+                    setEditingFloorId(null)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (editingName.trim() && onRenameFloor) {
+                        onRenameFloor(floor.id, editingName.trim())
+                      }
+                      setEditingFloorId(null)
+                    } else if (e.key === 'Escape') {
+                      setEditingFloorId(null)
+                    }
+                  }}
+                  className="bg-transparent border-none outline-none text-sm font-medium px-0 py-0 min-w-20 max-w-36"
+                  autoFocus
+                />
+              </div>
+            </div>
+          ) : (
+            // Mode normal
+            <button
+              onClick={() => onSwitchFloor(floor.id)}
+              onDoubleClick={() => {
+                if (onRenameFloor) {
+                  setEditingFloorId(floor.id)
+                  setEditingName(floor.name)
+                }
+              }}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                currentFloorId === floor.id
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 ring-2 ring-primary/40"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground hover:shadow-md border border-transparent hover:border-border/50"
+              }`}
+              title="Double-cliquer pour renommer"
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-xs opacity-70">#{index + 1}</span>
+                {floor.name}
+              </span>
+            </button>
+          )}
 
           {/* Actions menu */}
           {showActions === floor.id && (
-            <div className="absolute top-full left-0 mt-1 z-50 min-w-max rounded-lg bg-card border border-border shadow-xl animate-fade-in">
+            <div className="absolute top-full left-0 mt-0.5 z-50 min-w-max rounded-lg bg-card border border-border shadow-xl animate-fade-in">
               <div className="p-1">
+                {onRenameFloor && (
+                  <button
+                    onClick={() => {
+                      setEditingFloorId(floor.id)
+                      setEditingName(floor.name)
+                      setShowActions(null)
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Renommer
+                  </button>
+                )}
+
                 {onDuplicateFloor && (
                   <button
-                    onClick={() => onDuplicateFloor(floor.id)}
+                    onClick={() => {
+                      onDuplicateFloor(floor.id)
+                      setShowActions(null)
+                    }}
                     className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
                   >
                     <Copy className="h-4 w-4" />
@@ -94,7 +163,10 @@ export function FloorTabs({
                 
                 {onMoveFloorUp && canMoveUp && (
                   <button
-                    onClick={() => onMoveFloorUp(floor.id)}
+                    onClick={() => {
+                      onMoveFloorUp(floor.id)
+                      setShowActions(null)
+                    }}
                     className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
                   >
                     <ArrowUp className="h-4 w-4" />
@@ -104,7 +176,10 @@ export function FloorTabs({
                 
                 {onMoveFloorDown && canMoveDown && (
                   <button
-                    onClick={() => onMoveFloorDown(floor.id)}
+                    onClick={() => {
+                      onMoveFloorDown(floor.id)
+                      setShowActions(null)
+                    }}
                     className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
                   >
                     <ArrowDown className="h-4 w-4" />
