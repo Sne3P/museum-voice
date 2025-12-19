@@ -7,11 +7,13 @@ import sys
 import os
 from pathlib import Path
 
-# Ajouter le dossier courant au path
-sys.path.append(str(Path(__file__).parent))
+# Ajouter les dossiers au path pour les imports
+current_dir = Path(__file__).parent
+sys.path.append(str(current_dir.parent))  # dossier rag
+sys.path.append(str(current_dir.parent / "core"))  # dossier core
 
 # Importer la nouvelle structure conforme au modèle PDF
-from model_db import (
+from core.model_db import (
     init_structured_db, get_all_artworks, search_artworks,
     _connect_structured
 )
@@ -196,11 +198,12 @@ class MuseumVoiceCLI:
             print(f"❌ Erreur récupération stats: {e}")
     
     def clean_database(self):
-        """Nettoie la base de données (nouvelle structure)."""
-        print("\n🗑️ Nettoyage de la base de données")
-        print("-" * 40)
+        """Nettoie COMPLÈTEMENT la base de données - toutes les tables de données."""
+        print("\n🗑️ Nettoyage COMPLET de la base de données")
+        print("-" * 50)
         
-        print("⚠️ ATTENTION: Cette action supprimera TOUTES les données!")
+        print("⚠️ ATTENTION: Cette action supprimera TOUTES les données de TOUTES les tables!")
+        print("💡 Cela inclut: œuvres, prégénérations, parcours, embeddings, etc.")
         confirm = input("Êtes-vous sûr? (tapez 'SUPPRIMER' pour confirmer): ")
         
         if confirm != "SUPPRIMER":
@@ -211,20 +214,48 @@ class MuseumVoiceCLI:
             conn = _connect_structured()
             cur = conn.cursor()
             
-            # Tables de la nouvelle structure conforme au modèle PDF
-            tables = ['anecdotes', 'oeuvres', 'artistes', 'mouvements']
+            # D'abord, découvrir toutes les tables existantes
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            all_tables = [row[0] for row in cur.fetchall()]
             
-            for table in tables:
+            print(f"📋 Tables trouvées: {len(all_tables)}")
+            
+            # Tables à ne PAS nettoyer (structure/système)
+            system_tables = ['sqlite_sequence']  # Tables système à préserver
+            
+            # Tables de données à nettoyer
+            tables_to_clean = [t for t in all_tables if t not in system_tables]
+            
+            print(f"🧹 Tables à nettoyer: {len(tables_to_clean)}")
+            
+            cleaned_count = 0
+            total_deleted = 0
+            
+            for table in tables_to_clean:
                 try:
-                    cur.execute(f"DELETE FROM {table}")
-                    print(f"  🗑️ Table {table} vidée")
+                    # Compter d'abord
+                    cur.execute(f"SELECT COUNT(*) FROM {table}")
+                    count_before = cur.fetchone()[0]
+                    
+                    if count_before > 0:
+                        cur.execute(f"DELETE FROM {table}")
+                        print(f"  🗑️ {table}: {count_before} entrées supprimées")
+                        cleaned_count += 1
+                        total_deleted += count_before
+                    else:
+                        print(f"  ✅ {table}: déjà vide")
+                        
                 except Exception as e:
-                    print(f"  ⚠️ Table {table} introuvable ou erreur: {e}")
+                    print(f"  ⚠️ {table}: {e}")
             
             conn.commit()
             conn.close()
             
-            print("✅ Base de données nettoyée avec succès")
+            print(f"\n✅ NETTOYAGE COMPLET TERMINÉ")
+            print(f"📊 Résumé:")
+            print(f"   • {cleaned_count} tables nettoyées")
+            print(f"   • {total_deleted} entrées supprimées au total")
+            print(f"   • Base prête pour une nouvelle initialisation")
             
         except Exception as e:
             print(f"❌ Erreur nettoyage: {e}")

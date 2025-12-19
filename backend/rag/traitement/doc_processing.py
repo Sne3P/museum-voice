@@ -3,11 +3,8 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from pathlib import Path
 
-try:
-    from db import init_db, add_document
-except ImportError:
-    def init_db(*args, **kwargs): pass
-    def add_document(*args, **kwargs): return 1
+# Import SQLite directement
+import sqlite3
 
 
 def extract_text_from_pdf(file_path: str) -> str:
@@ -153,28 +150,32 @@ def process_pdf_file(file_path: str, db_path: Optional[str] = None) -> TextSumma
     processor = SummaryProcessor()
     summary = processor.process_document(text)
 
-    # Sauvegarde en BDD
+    # Sauvegarde en BDD avec SQLite direct
     try:
-        from db import init_db, add_oeuvre
-        init_db(db_path)
+        db_file = db_path or Path(__file__).parent.parent.parent / 'database' / 'museum_v1.db'
+        conn = sqlite3.connect(str(db_file))
+        cursor = conn.cursor()
+        
         # Créer le pdf_link pour tous les fichiers dans pdfs
         pdf_link = f"/uploads/pdfs/{Path(file_path).name}"
         
-        oeuvre_id = add_oeuvre(
-            file_name=Path(file_path).name,
-            file_path=file_path,
-            title=summary.title,
-            description=summary.summary,
-            word_count=int(summary.metadata.get('word_count', 0)),
-            artist=summary.artist,
-            pdf_link=pdf_link,
-            db_path=db_path
-        )
+        # Insérer l'oeuvre directement avec les colonnes existantes
+        cursor.execute('''
+            INSERT OR REPLACE INTO oeuvres 
+            (titre, description, artiste_nom, pdf_link, word_count, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+        ''', (
+            summary.title,
+            summary.summary,
+            summary.artist or 'Inconnu',
+            pdf_link,
+            int(summary.metadata.get('word_count', 0))
+        ))
         
-        # Les anecdotes sont maintenant incluses dans les chunks
-            
-        # Ajouter métadonnées automatiques
-        update_artwork_metadata(oeuvre_id, summary.title)
+        conn.commit()
+        oeuvre_id = cursor.lastrowid
+        print(f"💾 Œuvre sauvée: ID {oeuvre_id} - {summary.title}")
+        conn.close()
             
     except Exception as e:
         print(f"Erreur sauvegarde BDD: {e}")
@@ -188,5 +189,52 @@ def update_artwork_metadata(oeuvre_id: int, title: str, db_path: Optional[str] =
     pass
 
 
+def process_all_pdfs(pdf_dir: Optional[str] = None, db_path: Optional[str] = None) -> bool:
+    """Traite tous les PDFs du répertoire spécifié"""
+    if pdf_dir is None:
+        # Répertoire par défaut
+        pdf_dir = Path(__file__).parent.parent.parent / 'public' / 'uploads' / 'pdfs'
+    
+    if db_path is None:
+        db_path = Path(__file__).parent.parent.parent / 'database' / 'museum_v1.db'
+    
+    pdf_dir = Path(pdf_dir)
+    if not pdf_dir.exists():
+        print(f"❌ Répertoire PDF non trouvé: {pdf_dir}")
+        return False
+    
+    # Trouver tous les PDFs
+    pdf_files = list(pdf_dir.glob('*.pdf'))
+    if not pdf_files:
+        print("❌ Aucun fichier PDF trouvé")
+        return False
+    
+    print(f"📄 Traitement de {len(pdf_files)} fichiers PDF...")
+    
+    try:
+        # Vérifier que la base existe
+        if not Path(db_path).exists():
+            print(f"❌ Base de données non trouvée: {db_path}")
+            return False
+        
+        success_count = 0
+        for pdf_file in pdf_files:
+            try:
+                print(f"🔄 Traitement: {pdf_file.name}")
+                summary = process_pdf_file(str(pdf_file), str(db_path))
+                print(f"✅ {pdf_file.name} → {summary.title}")
+                success_count += 1
+            except Exception as e:
+                print(f"❌ Erreur avec {pdf_file.name}: {e}")
+        
+        print(f"📊 Résultat: {success_count}/{len(pdf_files)} PDFs traités")
+        return success_count > 0
+        
+    except Exception as e:
+        print(f"❌ Erreur générale: {e}")
+        return False
+
+
 if __name__ == "__main__":
-    pass
+    # Test direct
+    process_all_pdfs()

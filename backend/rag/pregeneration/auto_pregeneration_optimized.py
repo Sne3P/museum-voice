@@ -3,12 +3,21 @@
 Système de prégénération automatique OPTIMISÉ avec parallelisation et batch inserts
 """
 
+import sys
+from pathlib import Path
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional, Tuple
+
+# Ajouter les dossiers au path
+current_dir = Path(__file__).parent
+sys.path.append(str(current_dir.parent))
+sys.path.append(str(current_dir.parent / "core"))
+sys.path.append(str(current_dir.parent / "utils"))
+
 from pregeneration_db_optimized import add_pregeneration, get_pregeneration_stats, add_pregenerations_batch
-from intelligent_generator import IntelligentContentGenerator
-from model_db import get_all_artworks, _connect_structured
+from utils.intelligent_generator import IntelligentContentGenerator
+from core.model_db import get_all_artworks, _connect_structured
 
 class AutoPregenerationSystemOptimized:
     """

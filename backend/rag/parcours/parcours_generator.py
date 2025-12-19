@@ -3,11 +3,19 @@ Générateur de parcours personnalisés intelligents
 Approche hybride : prégénérations + LLM pour cohérence narrative
 """
 
+import sys
+from pathlib import Path
 import random
 import sqlite3
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
-from db import _connect_structured, get_artwork
+
+# Ajouter les dossiers au path
+current_dir = Path(__file__).parent
+sys.path.append(str(current_dir.parent))
+sys.path.append(str(current_dir.parent / "core"))
+
+from core.db import _connect_structured, get_artwork
 
 
 @dataclass
