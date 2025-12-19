@@ -10,6 +10,7 @@ import type {
   Door, 
   VerticalLink, 
   Floor,
+  Point,
   ValidationResult,
   ExtendedValidationResult,
   ValidationContext 
@@ -181,16 +182,25 @@ export function validateRoomGeometry(room: Room, context?: ValidationContext): E
 }
 
 /**
- * Valide le placement d'un mur
+ * Trouve la pièce contenant un mur (les 2 endpoints doivent être dans la pièce)
+ */
+/**
+ * Valide le placement d'un mur (avec support path multi-points)
  */
 export function validateWallPlacement(wall: Wall, context: ValidationContext): ExtendedValidationResult {
-  // 1. Vérifier longueur minimum
-  const length = Math.hypot(
-    wall.segment[1].x - wall.segment[0].x,
-    wall.segment[1].y - wall.segment[0].y
-  )
+  // Utiliser path si disponible, sinon segment
+  const points = wall.path || [wall.segment[0], wall.segment[1]]
+  
+  // 1. Vérifier longueur minimum (distance totale du path)
+  let totalLength = 0
+  for (let i = 0; i < points.length - 1; i++) {
+    totalLength += Math.hypot(
+      points[i + 1].x - points[i].x,
+      points[i + 1].y - points[i].y
+    )
+  }
 
-  if (length < CONSTRAINTS.wall.minLength) {
+  if (totalLength < CONSTRAINTS.wall.minLength) {
     return {
       valid: false,
       severity: 'error',
@@ -205,24 +215,29 @@ export function validateWallPlacement(wall: Wall, context: ValidationContext): E
     }
   }
 
-  // 2. Vérifier que le mur est dans une pièce
+  // 2. Vérifier que TOUS les points du mur sont dans UNE pièce
   if (context.floor) {
-    let isInRoom = false
+    let containingRoom = null
+    
+    // Trouver la pièce qui contient TOUS les points
     for (const room of context.floor.rooms) {
-      if (isPointInPolygon(wall.segment[0], room.polygon) && 
-          isPointInPolygon(wall.segment[1], room.polygon)) {
-        isInRoom = true
+      const allPointsInRoom = points.every(point => 
+        isPointInPolygon(point, room.polygon)
+      )
+      
+      if (allPointsInRoom) {
+        containingRoom = room
         break
       }
     }
 
-    if (!isInRoom) {
+    if (!containingRoom) {
       return {
         valid: false,
         severity: 'error',
         code: 'WALL_OUTSIDE_ROOM',
-        message: ERROR_MESSAGES.wall.outsideRoom,
-        suggestions: ['Déplacez le mur dans une pièce', 'Créez une pièce d\'abord'],
+        message: 'Un ou plusieurs points du mur sont hors d\'une pièce',
+        suggestions: ['Déplacez tous les points dans une pièce', 'Créez une pièce d\'abord'],
         visualFeedback: {
           color: VISUAL_FEEDBACK.colors.invalid,
           opacity: 0.5,
@@ -232,12 +247,28 @@ export function validateWallPlacement(wall: Wall, context: ValidationContext): E
     }
   }
 
-  // 3. Vérifier l'intersection avec d'autres murs
+  // 3. Vérifier l'intersection avec d'autres murs (CHAQUE segment du path)
   if (context.floor) {
     const intersectingWalls = context.floor.walls.filter(otherWall => {
       if (otherWall.id === wall.id) return false
       if (context.excludeIds?.includes(otherWall.id)) return false
-      return segmentsIntersect(wall.segment, otherWall.segment)
+      
+      const otherPoints = otherWall.path || [otherWall.segment[0], otherWall.segment[1]]
+      
+      // Vérifier intersection entre CHAQUE segment de ce mur et CHAQUE segment de l'autre mur
+      for (let i = 0; i < points.length - 1; i++) {
+        const seg1: readonly [Point, Point] = [points[i], points[i + 1]]
+        
+        for (let j = 0; j < otherPoints.length - 1; j++) {
+          const seg2: readonly [Point, Point] = [otherPoints[j], otherPoints[j + 1]]
+          
+          if (segmentsIntersect(seg1, seg2)) {
+            return true
+          }
+        }
+      }
+      
+      return false
     })
 
     if (intersectingWalls.length > 0) {

@@ -45,7 +45,7 @@ export function useCanvasSelection(
     const endpointTolerance = ENDPOINT_HIT_RADIUS / zoom
     const lineTolerance = LINE_HIT_THRESHOLD / zoom
 
-    // PRIORITÉ 1 : VERTICES
+    // PRIORITÉ 1 : VERTICES DES ROOMS
     if (options.enableVertexSelection) {
       for (const room of currentFloor.rooms) {
         for (let i = 0; i < room.polygon.length; i++) {
@@ -71,9 +71,36 @@ export function useCanvasSelection(
           }
         }
       }
+      
+      // VERTICES DES MURS (si path défini)
+      for (const wall of currentFloor.walls) {
+        const points = wall.path || [wall.segment[0], wall.segment[1]]
+        for (let i = 0; i < points.length; i++) {
+          const vertex = points[i]
+          const dist = distance(point, vertex)
+          
+          if (dist <= vertexTolerance) {
+            return {
+              element: { type: 'wall', id: wall.id },
+              selectionInfo: {
+                id: wall.id,
+                type: 'wallVertex',
+                vertexIndex: i,
+                wallId: wall.id
+              },
+              hoverInfo: {
+                type: 'wallVertex',
+                id: wall.id,
+                vertexIndex: i,
+                wallId: wall.id
+              }
+            }
+          }
+        }
+      }
     }
 
-    // PRIORITÉ 2 : ENDPOINTS
+    // PRIORITÉ 2 : ENDPOINTS (murs sans path)
     for (const wall of currentFloor.walls) {
       for (let i = 0; i < 2; i++) {
         const endpoint = wall.segment[i]
@@ -82,7 +109,12 @@ export function useCanvasSelection(
         if (dist <= endpointTolerance) {
           return {
             element: { type: 'wall', id: wall.id },
-            selectionInfo: { id: wall.id, type: 'wall' },
+            selectionInfo: {
+              id: wall.id,
+              type: 'wallEndpoint',
+              endpointIndex: i,
+              wallId: wall.id
+            },
             hoverInfo: {
               type: 'wallEndpoint',
               id: wall.id,
@@ -210,19 +242,27 @@ export function useCanvasSelection(
       }
     }
 
-    // PRIORITÉ 7 : WALLS
+    // PRIORITÉ 7 : WALLS (avec meilleure tolérance et support path)
     for (const wall of currentFloor.walls) {
-      const dist = distanceToSegment(point, wall.segment[0], wall.segment[1])
-      if (dist <= wall.thickness / 2 + tolerance) {
-        return {
-          element: { type: 'wall', id: wall.id },
-          selectionInfo: { id: wall.id, type: 'wall' },
-          hoverInfo: { type: 'wall', id: wall.id }
+      const points = wall.path || [wall.segment[0], wall.segment[1]]
+      
+      // Vérifier distance à chaque segment du path
+      for (let i = 0; i < points.length - 1; i++) {
+        const dist = distanceToSegment(point, points[i], points[i + 1])
+        // Tolérance améliorée: épaisseur du mur + marge généreuse
+        const wallTolerance = Math.max(wall.thickness / 2 + tolerance, lineTolerance * 1.5)
+        
+        if (dist <= wallTolerance) {
+          return {
+            element: { type: 'wall', id: wall.id },
+            selectionInfo: { id: wall.id, type: 'wall' },
+            hoverInfo: { type: 'wall', id: wall.id }
+          }
         }
       }
     }
 
-    // PRIORITÉ 8 : ROOMS
+    // PRIORITÉ 8 : ROOMS (après les murs pour bonne hiérarchie)
     for (const room of currentFloor.rooms) {
       if (isPointInPolygon(point, room.polygon)) {
         return {

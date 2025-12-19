@@ -5,10 +5,10 @@
  * Réutilisable, scalable, modulaire
  */
 
-import type { EditorState, Point, SelectedElement } from '@/core/entities'
+import type { EditorState, Point, SelectedElement, Wall, Door, Artwork } from '@/core/entities'
 import { MIN_ZOOM, MAX_ZOOM, ZOOM_STEP, GRID_SIZE } from '@/core/constants'
-import { validateRoomGeometry, validateArtworkPlacement } from './validation.service'
-import { snapToGrid } from './geometry.service'
+import { validateRoomGeometry, validateArtworkPlacement, validateWallPlacement } from './validation.service'
+import { snapToGrid, distanceToSegment } from './geometry.service'
 import { v4 as uuidv4 } from 'uuid'
 
 // Presse-papier global
@@ -101,6 +101,51 @@ function deleteSegment(
   }
 }
 
+/**
+ * Valider et supprimer un vertex de mur
+ */
+function deleteWallVertex(
+  floor: any,
+  wallId: string,
+  vertexIndex: number
+): { success: boolean; floor?: any; reason?: string } {
+  const wallIndex = floor.walls?.findIndex((w: any) => w.id === wallId) ?? -1
+  if (wallIndex === -1) return { success: false, reason: 'Wall not found' }
+
+  const wall = floor.walls[wallIndex]
+  const points = wall.path || [wall.segment[0], wall.segment[1]]
+  
+  // Minimum 2 points pour un mur
+  if (points.length <= 2) {
+    return { success: false, reason: 'Minimum 2 points required for wall' }
+  }
+  
+  // Supprimer le vertex
+  const newPath = points.filter((_: any, i: number) => i !== vertexIndex)
+  
+  // Créer le mur mis à jour
+  const updatedWall = {
+    ...wall,
+    path: newPath,
+    segment: [newPath[0], newPath[newPath.length - 1]] as const
+  }
+  
+  // Valider le nouveau mur
+  const validation = validateWallPlacement(updatedWall, { floor, strictMode: true })
+  
+  if (!validation.valid) {
+    return { success: false, reason: validation.message }
+  }
+
+  return {
+    success: true,
+    floor: {
+      ...floor,
+      walls: floor.walls.map((w: any, i: number) => i === wallIndex ? updatedWall : w)
+    }
+  }
+}
+
 // ============================================================
 // ACTIONS COMMUNES
 // ============================================================
@@ -126,13 +171,20 @@ export function executeSupprimer(
   const skippedElements: string[] = []
   let successCount = 0
 
+  // Import du service cascade
+  const { deleteRoomWithChildren } = require('./cascade.service')
+
   // SUPPRESSION EN CASCADE - Traiter chaque élément
   state.selectedElements.forEach(selected => {
     try {
-      // Éléments simples (room, artwork, door, wall)
-      if (['room', 'artwork', 'door', 'wall'].includes(selected.type)) {
-        const typeMap: Record<string, 'rooms' | 'artworks' | 'doors' | 'walls'> = {
-          room: 'rooms',
+      // ROOM: suppression en cascade (+ walls, doors, artworks)
+      if (selected.type === 'room') {
+        updatedFloor = deleteRoomWithChildren(updatedFloor, selected.id)
+        successCount++
+      }
+      // Éléments simples (artwork, door, wall)
+      else if (['artwork', 'door', 'wall'].includes(selected.type)) {
+        const typeMap: Record<string, 'artworks' | 'doors' | 'walls'> = {
           artwork: 'artworks',
           door: 'doors',
           wall: 'walls'
@@ -160,6 +212,17 @@ export function executeSupprimer(
         } else {
           console.warn(`⚠️ Segment ${selected.segmentIndex}: ${result.reason}`)
           skippedElements.push(`Segment ${selected.segmentIndex}`)
+        }
+      }
+      // Wall Vertex (nouveau)
+      else if (selected.type === 'wallVertex' && selected.wallId && selected.vertexIndex !== undefined) {
+        const result = deleteWallVertex(updatedFloor, selected.wallId, selected.vertexIndex)
+        if (result.success && result.floor) {
+          updatedFloor = result.floor
+          successCount++
+        } else {
+          console.warn(`⚠️ Wall Vertex ${selected.vertexIndex}: ${result.reason}`)
+          skippedElements.push(`Wall Vertex ${selected.vertexIndex}`)
         }
       }
     } catch (error) {
@@ -196,7 +259,7 @@ export function executeDupliquer(
 
   const selected = state.selectedElements[0]
   let updatedFloor = { ...floor }
-  let duplicatingElement: { elementId: string; elementType: 'room' | 'artwork'; originalCenter: Point } | null = null
+  let duplicatingElement: EditorState['duplicatingElement'] = null
 
   // Snap position souris à la grille
   const snappedMousePos = snapToGrid(mousePosition, GRID_SIZE)
@@ -212,9 +275,10 @@ export function executeDupliquer(
       const deltaX = snappedMousePos.x - originalCenterX
       const deltaY = snappedMousePos.y - originalCenterY
       
+      const newRoomId = uuidv4()
       const newRoom = {
         ...room,
-        id: uuidv4(),
+        id: newRoomId,
         polygon: room.polygon.map(p => snapToGrid({
           x: p.x + deltaX,
           y: p.y + deltaY
@@ -222,16 +286,54 @@ export function executeDupliquer(
       }
       updatedFloor = { ...updatedFloor, rooms: [...updatedFloor.rooms, newRoom] }
       
+      // DUPLIQUER AUSSI les murs/portes/artworks enfants avec le nouveau roomId
+      const { getRoomChildren } = require('./cascade.service')
+      const children = getRoomChildren(floor, room.id)
+      
+      // Dupliquer les murs enfants
+      const newWalls = children.walls.map((wall: Wall) => ({
+        ...wall,
+        id: uuidv4(),
+        roomId: newRoomId,
+        segment: [
+          snapToGrid({ x: wall.segment[0].x + deltaX, y: wall.segment[0].y + deltaY }, GRID_SIZE),
+          snapToGrid({ x: wall.segment[1].x + deltaX, y: wall.segment[1].y + deltaY }, GRID_SIZE)
+        ] as const,
+        path: wall.path?.map((p: Point) => snapToGrid({ x: p.x + deltaX, y: p.y + deltaY }, GRID_SIZE))
+      }))
+      updatedFloor = { ...updatedFloor, walls: [...(updatedFloor.walls || []), ...newWalls] }
+      
+      // Dupliquer les portes enfants
+      const newDoors = children.doors.map((door: Door) => ({
+        ...door,
+        id: uuidv4(),
+        roomId: newRoomId,
+        segment: [
+          snapToGrid({ x: door.segment[0].x + deltaX, y: door.segment[0].y + deltaY }, GRID_SIZE),
+          snapToGrid({ x: door.segment[1].x + deltaX, y: door.segment[1].y + deltaY }, GRID_SIZE)
+        ] as const
+      }))
+      updatedFloor = { ...updatedFloor, doors: [...(updatedFloor.doors || []), ...newDoors] }
+      
+      // Dupliquer les artworks enfants
+      const newArtworks = children.artworks.map((artwork: Artwork) => ({
+        ...artwork,
+        id: uuidv4(),
+        roomId: newRoomId,
+        xy: [artwork.xy[0] + deltaX, artwork.xy[1] + deltaY] as const
+      }))
+      updatedFloor = { ...updatedFloor, artworks: [...(updatedFloor.artworks || []), ...newArtworks] }
+      
       // Valider la géométrie immédiatement
       const validation = validateRoomGeometry(newRoom, { floor: updatedFloor, strictMode: true })
       
       duplicatingElement = { 
         elementId: newRoom.id, 
-        elementType: 'room',
+        elementType: 'room' as const,
         originalCenter: snappedMousePos,
         isValid: validation.valid,
         validationMessage: validation.message
-      }
+      } as EditorState['duplicatingElement']
     }
   } else if (selected.type === 'artwork') {
     const artwork = (updatedFloor.artworks || []).find(a => a.id === selected.id)
@@ -248,11 +350,45 @@ export function executeDupliquer(
       
       duplicatingElement = { 
         elementId: newArtwork.id, 
-        elementType: 'artwork',
+        elementType: 'artwork' as const,
         originalCenter: snappedMousePos,
         isValid: validation.valid,
         validationMessage: validation.message
+      } as EditorState['duplicatingElement']
+    }
+  } else if (selected.type === 'wall') {
+    const wall = (updatedFloor.walls || []).find(w => w.id === selected.id)
+    if (wall) {
+      // Calculer centre original du mur
+      const originalCenterX = (wall.segment[0].x + wall.segment[1].x) / 2
+      const originalCenterY = (wall.segment[0].y + wall.segment[1].y) / 2
+      
+      // Décaler segment vers position souris SNAPPÉE
+      const deltaX = snappedMousePos.x - originalCenterX
+      const deltaY = snappedMousePos.y - originalCenterY
+      
+      const newWall = {
+        ...wall,
+        id: uuidv4(),
+        roomId: wall.roomId, // PRÉSERVER le roomId
+        segment: [
+          snapToGrid({ x: wall.segment[0].x + deltaX, y: wall.segment[0].y + deltaY }, GRID_SIZE),
+          snapToGrid({ x: wall.segment[1].x + deltaX, y: wall.segment[1].y + deltaY }, GRID_SIZE)
+        ] as const,
+        path: wall.path?.map(p => snapToGrid({ x: p.x + deltaX, y: p.y + deltaY }, GRID_SIZE))
       }
+      updatedFloor = { ...updatedFloor, walls: [...(updatedFloor.walls || []), newWall] }
+      
+      // Valider le placement
+      const validation = validateWallPlacement(newWall, { floor: updatedFloor, strictMode: true })
+      
+      duplicatingElement = { 
+        elementId: newWall.id, 
+        elementType: 'wall' as const,
+        originalCenter: snappedMousePos,
+        isValid: validation.valid,
+        validationMessage: validation.message
+      } as EditorState['duplicatingElement']
     }
   }
 
@@ -313,6 +449,24 @@ export function updateDuplicatingElementPosition(
       
       // Revalider le placement
       const validation = validateArtworkPlacement(updatedArtwork, { floor: updatedFloor, strictMode: true })
+      isValid = validation.valid
+      validationMessage = validation.message
+    }
+  } else if (elementType === 'wall') {
+    const idx = (updatedFloor.walls || []).findIndex(w => w.id === elementId)
+    if (idx !== -1) {
+      const wall = updatedFloor.walls![idx]
+      const newSegment = [
+        snapToGrid({ x: wall.segment[0].x + delta.x, y: wall.segment[0].y + delta.y }, GRID_SIZE),
+        snapToGrid({ x: wall.segment[1].x + delta.x, y: wall.segment[1].y + delta.y }, GRID_SIZE)
+      ] as const
+      const updatedWall = { ...wall, segment: newSegment }
+      updatedFloor.walls = updatedFloor.walls!.map((w, i) => 
+        i === idx ? updatedWall : w
+      )
+      
+      // Revalider le placement
+      const validation = validateWallPlacement(updatedWall, { floor: updatedFloor, strictMode: true })
       isValid = validation.valid
       validationMessage = validation.message
     }
@@ -380,6 +534,11 @@ export function cancelDuplication(
     updatedFloor = {
       ...updatedFloor,
       artworks: (updatedFloor.artworks || []).filter(a => a.id !== state.duplicatingElement!.elementId)
+    }
+  } else if (state.duplicatingElement.elementType === 'wall') {
+    updatedFloor = {
+      ...updatedFloor,
+      walls: (updatedFloor.walls || []).filter(w => w.id !== state.duplicatingElement!.elementId)
     }
   }
 
@@ -544,6 +703,148 @@ export function executeDiviserSegment(
         : f
     ),
     selectedElements: []
+  }
+}
+
+/**
+ * DIVISER UN MUR - Divise un mur en 2 murs au point milieu
+ */
+export function executeDiviserMur(
+  state: EditorState,
+  currentFloorId: string
+): EditorState {
+  const selected = state.selectedElements.find(el => el.type === 'wall')
+  if (!selected) return state
+
+  const floor = state.floors.find(f => f.id === currentFloorId)
+  if (!floor) return state
+
+  const wallIndex = (floor.walls || []).findIndex(w => w.id === selected.id)
+  if (wallIndex === -1) return state
+
+  const wall = floor.walls![wallIndex]
+  
+  // Calculer le point milieu du mur
+  const midpoint = snapToGrid({
+    x: (wall.segment[0].x + wall.segment[1].x) / 2,
+    y: (wall.segment[0].y + wall.segment[1].y) / 2
+  }, GRID_SIZE)
+
+  // Créer 2 nouveaux murs (PRÉSERVER roomId et toutes les propriétés)
+  const wall1 = {
+    ...wall,
+    id: uuidv4(),
+    roomId: wall.roomId,  // ✅ PRÉSERVER le roomId
+    segment: [wall.segment[0], midpoint] as const,
+    path: undefined  // Réinitialiser le path pour un segment simple
+  }
+  
+  const wall2 = {
+    ...wall,
+    id: uuidv4(),
+    roomId: wall.roomId,  // ✅ PRÉSERVER le roomId
+    segment: [midpoint, wall.segment[1]] as const,
+    path: undefined  // Réinitialiser le path pour un segment simple
+  }
+
+  // Valider les 2 murs
+  const validation1 = validateWallPlacement(wall1, { floor, strictMode: true })
+  const validation2 = validateWallPlacement(wall2, { floor, strictMode: true })
+  
+  if (!validation1.valid || !validation2.valid) {
+    console.warn('❌ Division impossible:', validation1.message, validation2.message)
+    return state
+  }
+
+  // Supprimer le mur original et ajouter les 2 nouveaux
+  const updatedWalls = (floor.walls || [])
+    .filter(w => w.id !== wall.id)  // Supprimer l'original
+    .concat([wall1, wall2])  // Ajouter les 2 nouveaux
+
+  return {
+    ...state,
+    floors: state.floors.map(f => 
+      f.id === currentFloorId
+        ? { ...f, walls: updatedWalls }
+        : f
+    ),
+    selectedElements: [{ type: 'wall', id: wall1.id }]  // Sélectionner le premier mur
+  }
+}
+
+/**
+ * AJOUTER POINT INTERMÉDIAIRE SUR MUR - Ajoute un point au mur existant pour créer un angle
+ * Le mur reste un seul élément mais avec plusieurs points (path)
+ */
+export function executeAjouterPointMur(
+  state: EditorState,
+  currentFloorId: string,
+  mousePosition: Point
+): EditorState {
+  const selected = state.selectedElements.find(el => el.type === 'wall')
+  if (!selected) return state
+
+  const floor = state.floors.find(f => f.id === currentFloorId)
+  if (!floor) return state
+
+  const wallIndex = (floor.walls || []).findIndex(w => w.id === selected.id)
+  if (wallIndex === -1) return state
+
+  const wall = floor.walls![wallIndex]
+  
+  // Snap le point de la souris à la grille
+  const snappedPoint = snapToGrid(mousePosition, GRID_SIZE)
+
+  // Trouver le segment le plus proche du point cliqué pour insérer le point
+  let minDist = Infinity
+  let insertIndex = 1
+  
+  const points = wall.path || [wall.segment[0], wall.segment[1]]
+  
+  for (let i = 0; i < points.length - 1; i++) {
+    const dist = distanceToSegment(snappedPoint, points[i], points[i + 1])
+    if (dist < minDist) {
+      minDist = dist
+      insertIndex = i + 1
+    }
+  }
+
+  // Créer le nouveau path avec le point inséré
+  const newPath = [
+    ...points.slice(0, insertIndex),
+    snappedPoint,
+    ...points.slice(insertIndex)
+  ]
+
+  // Créer le mur mis à jour avec path (PRÉSERVER roomId)
+  const updatedWall = {
+    ...wall,
+    roomId: wall.roomId,  // ✅ PRÉSERVER le roomId
+    path: newPath,
+    segment: [newPath[0], newPath[newPath.length - 1]] as const  // Garder segment pour compatibilité
+  }
+
+  // Valider le mur
+  const validation = validateWallPlacement(updatedWall, { floor, strictMode: true })
+  
+  if (!validation.valid) {
+    console.warn('❌ Ajout point impossible:', validation.message)
+    return state
+  }
+
+  // Mettre à jour le mur
+  const updatedWalls = floor.walls!.map((w, i) => 
+    i === wallIndex ? updatedWall : w
+  )
+
+  return {
+    ...state,
+    floors: state.floors.map(f => 
+      f.id === currentFloorId
+        ? { ...f, walls: updatedWalls }
+        : f
+    ),
+    selectedElements: [{ type: 'wall', id: wall.id }]  // Garder le même mur sélectionné
   }
 }
 

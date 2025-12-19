@@ -24,8 +24,10 @@ import {
   useBoxSelection,
   useShapeCreation,
   useFreeFormCreation,
+  useWallCreation,
   useElementDrag,
   useVertexEdit,
+  useWallEndpointEdit,
   useCanvasInteraction,
   useCanvasRender
 } from "@/features/canvas/hooks"
@@ -117,6 +119,20 @@ export function Canvas({
     }
   })
 
+  // Hook de création de murs intérieurs (drag-based)
+  const wallCreation = useWallCreation({
+    currentFloor,
+    onComplete: (wall) => {
+      const updatedFloors = state.floors.map(floor =>
+        floor.id === currentFloor.id
+          ? { ...floor, walls: [...floor.walls, wall] }
+          : floor
+      )
+      
+      updateState({ floors: updatedFloors }, true, 'Créer mur intérieur')
+    }
+  })
+
   // Hook de déplacement d'éléments (Phase 2)
   const elementDrag = useElementDrag({
     state,
@@ -127,6 +143,14 @@ export function Canvas({
 
   // Hook d'édition de vertices (Phase 2)
   const vertexEdit = useVertexEdit({
+    state,
+    currentFloor,
+    updateState,
+    screenToWorld: coordinates.screenToWorld
+  })
+
+  // Hook d'édition endpoints murs
+  const wallEndpointEdit = useWallEndpointEdit({
     state,
     currentFloor,
     updateState,
@@ -152,8 +176,10 @@ export function Canvas({
     boxSelection,
     shapeCreation,
     freeFormCreation,
+    wallCreation,
     elementDrag,
     vertexEdit,
+    wallEndpointEdit,
     screenToWorld: coordinates.screenToWorld,
     onContextMenu: contextMenu.openContextMenu
   })
@@ -166,9 +192,11 @@ export function Canvas({
     selection,
     shapeCreation,
     freeFormCreation,
+    wallCreation,
     boxSelection,
     elementDrag,
     vertexEdit,
+    wallEndpointEdit,
     hoveredPoint: interaction.hoveredPoint,
     hoverInfo: interaction.hoverInfo
   })
@@ -288,6 +316,16 @@ export function Canvas({
       {state.selectedTool === 'room' && freeFormCreation.state.isCreating && freeFormCreation.state.points.length >= 3 && (
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg shadow-lg animate-pulse">
           Double-clic ou Entrée pour terminer la forme
+        </div>
+      )}
+
+      {/* Validation inline pour mur en cours de création (comme formes) */}
+      {wallCreation.state.isCreating && wallCreation.state.validation && (
+        <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 text-white text-sm font-medium rounded-lg shadow-lg z-50 ${
+          wallCreation.state.validation.valid ? 'bg-green-500' : 
+          wallCreation.state.validation.severity === 'warning' ? 'bg-orange-500' : 'bg-red-500'
+        }`}>
+          {wallCreation.state.validation.message}
         </div>
       )}
 

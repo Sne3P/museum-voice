@@ -24,6 +24,7 @@ export interface Artwork {
   readonly pdfLink?: string
   readonly tempPdfFile?: File | null
   readonly tempPdfBase64?: string | null
+  readonly roomId?: string  // Pour liaison parent-enfant (cascade)
 }
 
 // ==================== DOOR ====================
@@ -34,6 +35,7 @@ export interface Door {
   readonly room_b: string
   readonly segment: readonly [Point, Point]
   readonly width: number
+  readonly roomId?: string  // Pour liaison parent-enfant (cascade)
 }
 
 // ==================== VERTICAL LINK ====================
@@ -72,7 +74,8 @@ export interface Elevator {
 
 export interface Wall {
   readonly id: string
-  readonly segment: readonly [Point, Point]
+  readonly segment: readonly [Point, Point]  // Pour compatibilité avec murs simples
+  readonly path?: readonly Point[]  // Pour murs multi-points (si défini, utiliser ça au lieu de segment)
   readonly thickness: number
   readonly roomId?: string
   readonly isLoadBearing?: boolean

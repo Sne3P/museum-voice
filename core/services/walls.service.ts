@@ -62,6 +62,13 @@ export function findRoomContainingSegment(start: Point, end: Point, floor: Floor
 }
 
 /**
+ * Trouve la pièce contenant un mur (alias de findRoomContainingSegment)
+ */
+export function findRoomContainingWall(wall: Wall, floor: Floor): Room | null {
+  return findRoomContainingSegment(wall.segment[0], wall.segment[1], floor)
+}
+
+/**
  * Trouve les éléments attachés à un mur
  */
 export function findElementsAttachedToWall(

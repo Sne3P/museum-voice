@@ -187,3 +187,34 @@ export function drawRoomSegments(
     }
   }
 }
+
+/**
+ * Dessiner tous les vertices d'un mur avec feedback hover/selected
+ * Fonctionne exactement comme drawRoomVertices mais pour les murs
+ */
+export function drawWallVertices(
+  ctx: CanvasRenderingContext2D,
+  wall: any, // Wall
+  pan: Point,
+  zoom: number,
+  hoverInfo: HoverInfo | null,
+  selectedElements: ReadonlyArray<any>
+) {
+  // Utiliser path si défini, sinon segment
+  const points = wall.path || [wall.segment[0], wall.segment[1]]
+  
+  points.forEach((vertex: Point, index: number) => {
+    const isHovered = 
+      hoverInfo?.type === 'wallVertex' &&
+      hoverInfo.wallId === wall.id &&
+      hoverInfo.vertexIndex === index
+
+    const isSelected = selectedElements.some(
+      sel => sel.type === 'wallVertex' && 
+             sel.wallId === wall.id && 
+             sel.vertexIndex === index
+    )
+
+    drawVertex(ctx, vertex, pan, { isSelected, isHovered, zoom })
+  })
+}

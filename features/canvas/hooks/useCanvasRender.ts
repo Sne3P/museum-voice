@@ -9,6 +9,7 @@ import {
   drawGrid,
   drawRoom,
   drawWall,
+  drawWallPreview,
   drawArtwork,
   drawDoor,
   drawVerticalLink,
@@ -18,9 +19,12 @@ import {
   drawBoxSelection,
   drawRoomVertices,
   drawRoomSegments,
+  drawWallVertices,
   drawMeasurement,
   drawAreaMeasurement
 } from "@/features/canvas/utils"
+import { validateWallPlacement } from "@/core/services"
+import { worldToCanvas } from "@/core/utils"
 import { GRID_SIZE } from "@/core/constants"
 
 interface CanvasRenderOptions {
@@ -30,9 +34,11 @@ interface CanvasRenderOptions {
   selection: any
   shapeCreation: any
   freeFormCreation: any
+  wallCreation: any
   boxSelection: any
   elementDrag: any
   vertexEdit: any
+  wallEndpointEdit: any
   hoveredPoint: Point | null
   hoverInfo: HoverInfo | null
 }
@@ -44,9 +50,11 @@ export function useCanvasRender({
   selection,
   shapeCreation,
   freeFormCreation,
+  wallCreation,
   boxSelection,
   elementDrag,
   vertexEdit,
+  wallEndpointEdit,
   hoveredPoint,
   hoverInfo
 }: CanvasRenderOptions) {
@@ -77,7 +85,7 @@ export function useCanvasRender({
     }
 
     // 3. Feedback visuel drag/edit (NOUVEAU)
-    renderDragFeedback(ctx, canvas, elementDrag, vertexEdit, state)
+    renderDragFeedback(ctx, canvas, elementDrag, vertexEdit, wallEndpointEdit, state)
 
     // 3.5. Feedback duplication invalide
     if (state.duplicatingElement && !state.duplicatingElement.isValid && state.duplicatingElement.validationMessage) {
@@ -90,7 +98,7 @@ export function useCanvasRender({
     }
 
     // 4. Prévisualisations de création
-    renderCreationPreviews(ctx, canvas, state, shapeCreation, freeFormCreation)
+    renderCreationPreviews(ctx, canvas, state, shapeCreation, freeFormCreation, wallCreation)
 
     // 5. Box selection
     renderBoxSelection(ctx, boxSelection, state)
@@ -157,7 +165,28 @@ function renderFloorElements(
 
   currentFloor.walls?.forEach(wall => {
     const isSelected = selection.isSelected('wall', wall.id)
-    drawWall(ctx, wall, state.zoom, state.pan, isSelected, false)
+    const isHovered = selection.hoverInfo?.type === 'wall' && selection.hoverInfo?.id === wall.id
+    const isDuplicating = state.duplicatingElement?.elementId === wall.id && state.duplicatingElement?.elementType === 'wall'
+    const isValidDuplication = state.duplicatingElement?.isValid ?? true
+    
+    // Si en duplication, afficher avec feedback visuel
+    if (isDuplicating) {
+      drawWall(ctx, wall, state.zoom, state.pan, true, false, state.measurements.showMeasurements)
+      // Ajouter un overlay de couleur
+      ctx.save()
+      ctx.globalAlpha = 0.3
+      ctx.strokeStyle = isValidDuplication ? '#22c55e' : '#ef4444'
+      ctx.lineWidth = 8
+      const start = worldToCanvas(wall.segment[0], state.zoom, state.pan)
+      const end = worldToCanvas(wall.segment[1], state.zoom, state.pan)
+      ctx.beginPath()
+      ctx.moveTo(start.x, start.y)
+      ctx.lineTo(end.x, end.y)
+      ctx.stroke()
+      ctx.restore()
+    } else {
+      drawWall(ctx, wall, state.zoom, state.pan, isSelected, isHovered, state.measurements.showMeasurements)
+    }
   })
 
   currentFloor.doors?.forEach(door => {
@@ -186,7 +215,8 @@ function renderCreationPreviews(
   canvas: HTMLCanvasElement,
   state: EditorState,
   shapeCreation: any,
-  freeFormCreation: any
+  freeFormCreation: any,
+  wallCreation?: any
 ) {
   // Preview formes géométriques (drag)
   if (shapeCreation.state.previewPolygon) {
@@ -255,6 +285,23 @@ function renderCreationPreviews(
       )
     }
   }
+
+  // Preview mur intérieur (drag)
+  if (wallCreation?.state.previewWall) {
+    // Valider le mur en temps réel
+    const currentFloor = state.floors.find((f: any) => f.id === state.currentFloorId)
+    const validation = currentFloor ? validateWallPlacement(wallCreation.state.previewWall, {
+      floor: currentFloor
+    }) : { valid: false, message: 'Floor not found' }
+    
+    drawWallPreview(
+      ctx,
+      wallCreation.state.previewWall,
+      state.zoom,
+      state.pan,
+      validation
+    )
+  }
 }
 
 /**
@@ -285,12 +332,18 @@ function renderVerticesAndSegments(
   state: EditorState,
   hoverInfo: HoverInfo | null
 ) {
+  // VERTICES ET SEGMENTS DES ROOMS
   currentFloor.rooms.forEach(room => {
     // Segments (overlay quand hover ou selected)
     drawRoomSegments(ctx, room, state.pan, state.zoom, hoverInfo, state.selectedElements)
     
     // Vertices (toujours affichés)
     drawRoomVertices(ctx, room, state.pan, state.zoom, hoverInfo, state.selectedElements)
+  })
+  
+  // VERTICES DES MURS (avec hover orange et sélection)
+  currentFloor.walls?.forEach(wall => {
+    drawWallVertices(ctx, wall, state.pan, state.zoom, hoverInfo, state.selectedElements)
   })
 }
 
@@ -345,6 +398,7 @@ function renderDragFeedback(
   canvas: HTMLCanvasElement,
   elementDrag: any,
   vertexEdit: any,
+  wallEndpointEdit: any,
   state: EditorState
 ) {
   // Feedback drag éléments
@@ -415,6 +469,41 @@ function renderDragFeedback(
         drawValidationMessage(
           ctx,
           vertexEdit.editState.validationMessage,
+          'error',
+          { x: canvas.width / 2, y: 50 }
+        )
+      }
+    }
+  }
+  
+  // Feedback édition vertex de MUR (wallEndpointEdit)
+  if (wallEndpointEdit.editState.isEditing && !wallEndpointEdit.editState.isValid) {
+    // Trouver le mur en cours d'édition
+    const floor = state.floors.find(f => f.id === state.currentFloorId)
+    const wall = floor?.walls?.find(w => w.id === wallEndpointEdit.editState.wallId)
+    
+    if (wall && wallEndpointEdit.editState.newPath) {
+      ctx.save()
+      
+      // Dessiner le path en ROUGE
+      ctx.strokeStyle = 'rgba(220, 38, 38, 0.8)'
+      ctx.lineWidth = 6
+      
+      ctx.beginPath()
+      wallEndpointEdit.editState.newPath.forEach((point: Point, i: number) => {
+        const screenX = point.x * state.zoom + state.pan.x
+        const screenY = point.y * state.zoom + state.pan.y
+        if (i === 0) ctx.moveTo(screenX, screenY)
+        else ctx.lineTo(screenX, screenY)
+      })
+      ctx.stroke()
+      ctx.restore()
+      
+      // Message d'erreur
+      if (wallEndpointEdit.editState.validationMessage) {
+        drawValidationMessage(
+          ctx,
+          wallEndpointEdit.editState.validationMessage,
           'error',
           { x: canvas.width / 2, y: 50 }
         )

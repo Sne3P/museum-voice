@@ -41,6 +41,7 @@ export const HISTORY_CONFIG = {
     'Dupliquer et placer',
     'Edit vertex',
     'Edit segment',
+    'Edit wall endpoint',
   ],
 } as const
 
@@ -73,6 +74,7 @@ export const HISTORY_ACTIONS = {
   MOVE_ELEMENTS: 'Move elements',
   EDIT_VERTEX: 'Edit vertex',
   EDIT_SEGMENT: 'Edit segment',
+  EDIT_WALL: 'Edit wall endpoint',
   RESIZE_ROOM: 'Resize room',
   RENAME_FLOOR: 'Rename floor',
   UPDATE_ARTWORK: 'Update artwork',

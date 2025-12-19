@@ -29,15 +29,20 @@ export function translateRoom(room: Room, delta: Point): Room {
 }
 
 /**
- * Translater un wall
+ * Translater un wall (avec support du path multi-points)
  */
 export function translateWall(wall: Wall, delta: Point): Wall {
+  const translatedPath = wall.path
+    ? wall.path.map(p => ({ x: p.x + delta.x, y: p.y + delta.y }))
+    : undefined
+
   return {
     ...wall,
     segment: [
       { x: wall.segment[0].x + delta.x, y: wall.segment[0].y + delta.y },
       { x: wall.segment[1].x + delta.x, y: wall.segment[1].y + delta.y }
-    ]
+    ],
+    path: translatedPath
   }
 }
 

@@ -12,6 +12,8 @@ import {
   executeColler,
   executeAjouterVertex,
   executeDiviserSegment,
+  executeDiviserMur,
+  executeAjouterPointMur,
   executeProprietes,
   executeZoomAvant,
   executeZoomArriere,
@@ -158,11 +160,11 @@ export function useContextMenu({
           updates = { floors: newState.floors, selectedElements: newState.selectedElements }
           historyLabel = 'Supprimer élément'
         },
-        dupliquer: () => {
-          const newState = executeDupliquer(state, currentFloor.id, lastWorldPos)
-          updates = { floors: newState.floors, selectedElements: newState.selectedElements, duplicatingElement: newState.duplicatingElement, contextMenu: null }
-          saveHistory = false
-        },
+        // dupliquer: () => {
+        //   const newState = executeDupliquer(state, currentFloor.id, lastWorldPos)
+        //   updates = { floors: newState.floors, selectedElements: newState.selectedElements, duplicatingElement: newState.duplicatingElement, contextMenu: null }
+        //   saveHistory = false
+        // },
         coller: () => {
           const newState = executeColler(state, currentFloor.id)
           updates = { floors: newState.floors }
@@ -186,6 +188,16 @@ export function useContextMenu({
           const newState = executeDiviserSegment(state, currentFloor.id)
           updates = { floors: newState.floors, selectedElements: newState.selectedElements }
           historyLabel = 'Diviser un segment'
+        },
+        diviser_mur: () => {
+          const newState = executeDiviserMur(state, currentFloor.id)
+          updates = { floors: newState.floors, selectedElements: newState.selectedElements }
+          historyLabel = 'Diviser le mur'
+        },
+        ajouter_point_mur: () => {
+          const newState = executeAjouterPointMur(state, currentFloor.id, lastWorldPos)
+          updates = { floors: newState.floors, selectedElements: newState.selectedElements }
+          historyLabel = 'Ajouter un point au mur'
         },
         zoom_avant: () => {
           updates = { zoom: executeZoomAvant(state).zoom }

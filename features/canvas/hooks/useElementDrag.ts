@@ -16,7 +16,7 @@ import {
   calculateDelta
 } from "@/core/services"
 import { snapToGrid } from "@/core/services"
-import { validateRoomGeometry } from "@/core/services"
+import { validateRoomGeometry, validateWallPlacement } from "@/core/services"
 import { GRID_SIZE } from "@/core/constants"
 
 interface ElementDragOptions {
@@ -77,6 +77,23 @@ export function useElementDrag({
       switch (selected.type) {
         case 'room':
           element = currentFloor.rooms.find(r => r.id === selected.id)
+          
+          // IMPORTANT: Sauvegarder aussi TOUS les enfants attachés à cette room
+          if (element) {
+            const attachedWalls = currentFloor.walls?.filter(w => w.roomId === selected.id) || []
+            const attachedDoors = currentFloor.doors?.filter(d => d.roomId === selected.id) || []
+            const attachedArtworks = currentFloor.artworks?.filter(a => a.roomId === selected.id) || []
+            
+            attachedWalls.forEach(wall => {
+              originalElements.set(`wall_${wall.id}`, JSON.parse(JSON.stringify(wall)))
+            })
+            attachedDoors.forEach(door => {
+              originalElements.set(`door_${door.id}`, JSON.parse(JSON.stringify(door)))
+            })
+            attachedArtworks.forEach(artwork => {
+              originalElements.set(`artwork_${artwork.id}`, JSON.parse(JSON.stringify(artwork)))
+            })
+          }
           break
         case 'wall':
           element = currentFloor.walls?.find(w => w.id === selected.id)
@@ -120,14 +137,6 @@ export function useElementDrag({
     // Calculer le delta
     const delta = calculateDelta(dragState.startPosition, snappedPos)
     
-    console.log('🎯 Element Drag Update:', {
-      worldPos,
-      snappedPos,
-      startPosition: dragState.startPosition,
-      delta,
-      gridSize: GRID_SIZE
-    })
-    
     // Créer les nouveaux éléments
     const updatedFloors = state.floors.map(floor => {
       if (floor.id !== currentFloor.id) return floor
@@ -145,10 +154,35 @@ export function useElementDrag({
         
         switch (selected.type) {
           case 'room':
+            // Déplacer la room
             const roomIndex = newRooms.findIndex(r => r.id === selected.id)
             if (roomIndex >= 0) {
               newRooms[roomIndex] = translateRoom(original, delta)
             }
+            
+            // Déplacer TOUS les enfants originaux sauvegardés
+            // Récupérer les walls enfants depuis dragState.originalElements
+            Array.from(dragState.originalElements.entries()).forEach(([key, element]) => {
+              if (key.startsWith('wall_')) {
+                const wallId = key.substring(5) // Enlever le préfixe 'wall_'
+                const idx = newWalls.findIndex(w => w.id === wallId)
+                if (idx >= 0) {
+                  newWalls[idx] = translateWall(element, delta)
+                }
+              } else if (key.startsWith('door_')) {
+                const doorId = key.substring(5)
+                const idx = newDoors.findIndex(d => d.id === doorId)
+                if (idx >= 0) {
+                  newDoors[idx] = translateDoor(element, delta)
+                }
+              } else if (key.startsWith('artwork_')) {
+                const artworkId = key.substring(8)
+                const idx = newArtworks.findIndex(a => a.id === artworkId)
+                if (idx >= 0) {
+                  newArtworks[idx] = translateArtwork(element, delta)
+                }
+              }
+            })
             break
             
           case 'wall':
@@ -191,7 +225,7 @@ export function useElementDrag({
       }
     })
     
-    // Validation (pour les rooms)
+    // Validation (pour les rooms et walls)
     let isValid = true
     let validationMessage: string | null = null
     
@@ -201,7 +235,29 @@ export function useElementDrag({
         const updatedRoom = updatedFloor?.rooms.find(r => r.id === selected.id)
         
         if (updatedRoom && updatedFloor) {
-          const validation = validateRoomGeometry(updatedRoom, { floor: updatedFloor })
+          // Validation géométrie
+          const geometryValidation = validateRoomGeometry(updatedRoom, { floor: updatedFloor })
+          if (!geometryValidation.valid) {
+            isValid = false
+            validationMessage = geometryValidation.message ?? null
+            break
+          }
+          
+          // Validation que les murs enfants restent dans la room
+          const { validateRoomModificationWithWalls } = require('@/core/services/cascade.service')
+          const wallsValidation = validateRoomModificationWithWalls(updatedRoom, updatedFloor)
+          if (!wallsValidation.valid) {
+            isValid = false
+            validationMessage = wallsValidation.reason ?? null
+            break
+          }
+        }
+      } else if (selected.type === 'wall') {
+        const updatedFloor = updatedFloors.find(f => f.id === currentFloor.id)
+        const updatedWall = updatedFloor?.walls?.find(w => w.id === selected.id)
+        
+        if (updatedWall && updatedFloor) {
+          const validation = validateWallPlacement(updatedWall, { floor: updatedFloor, strictMode: true })
           if (!validation.valid) {
             isValid = false
             validationMessage = validation.message ?? null

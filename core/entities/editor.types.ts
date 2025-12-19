@@ -21,23 +21,27 @@ export type Tool =
 
 export type ElementType = "room" | "artwork" | "door" | "wall" | "verticalLink"
 export type DragElementType = ElementType | "vertex"
-export type HoverElementType = ElementType | "vertex" | "segment" | "doorEndpoint" | "linkEndpoint" | "wallEndpoint"
+export type HoverElementType = ElementType | "vertex" | "segment" | "doorEndpoint" | "linkEndpoint" | "wallEndpoint" | "wallVertex" | "wallSegment"
 
 export interface SelectionInfo {
   readonly id: string
-  readonly type: ElementType | "vertex" | "segment"
+  readonly type: ElementType | "vertex" | "segment" | "wallVertex" | "wallSegment" | "wallEndpoint"
   readonly vertexIndex?: number
   readonly segmentIndex?: number
   readonly roomId?: string
+  readonly wallId?: string
+  readonly endpointIndex?: number
 }
 
 // Alias simplifié pour la sélection
 export interface SelectedElement {
-  readonly type: ElementType | "vertex" | "segment"
+  readonly type: ElementType | "vertex" | "segment" | "wallVertex" | "wallSegment" | "wallEndpoint"
   readonly id: string
   readonly vertexIndex?: number
   readonly segmentIndex?: number
   readonly roomId?: string
+  readonly wallId?: string
+  readonly endpointIndex?: number
 }
 
 export interface DragInfo {
@@ -54,6 +58,7 @@ export interface HoverInfo {
   readonly vertexIndex?: number
   readonly endpoint?: "start" | "end"
   readonly roomId?: string
+  readonly wallId?: string
   readonly segmentIndex?: number
 }
 
@@ -66,6 +71,7 @@ export type ContextMenuAction =
   | 'pivoter' | 'redimensionner'
   | 'aller_haut' | 'aller_bas' | 'changer_type_lien'
   | 'editer_segment' | 'ajouter_vertex'
+  | 'diviser_mur' | 'ajouter_point_mur'
   | 'zoom_avant' | 'zoom_arriere' | 'reinitialiser_zoom' | 'ajuster_vue' | 'recentrer' | 'actualiser' | 'coller'
   | 'separator'
 
@@ -124,7 +130,7 @@ export interface EditorState {
   readonly measurements: MeasurementState
   readonly duplicatingElement?: {
     elementId: string
-    elementType: 'room' | 'artwork'
+    elementType: 'room' | 'artwork' | 'wall'
     originalCenter: Point
     isValid: boolean
     validationMessage?: string

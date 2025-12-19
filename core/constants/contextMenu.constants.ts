@@ -16,12 +16,14 @@ interface ActionMeta {
 
 export const ACTION_METADATA: Record<string, ActionMeta> = {
   supprimer: { icon: 'Trash2', label: 'Supprimer', shortcut: 'Suppr' },
-  dupliquer: { icon: 'Copy', label: 'Dupliquer', shortcut: 'Ctrl+D' },
+  // dupliquer: { icon: 'Copy', label: 'Dupliquer', shortcut: 'Ctrl+D' },  // DÉSACTIVÉ
   copier: { icon: 'Copy', label: 'Copier', shortcut: 'Ctrl+C' },
   coller: { icon: 'ClipboardPaste', label: 'Coller', shortcut: 'Ctrl+V' },
   proprietes: { icon: 'Settings', label: 'Propriétés' },
   diviser: { icon: 'Scissors', label: 'Diviser' },
+  diviser_mur: { icon: 'Scissors', label: 'Diviser le mur' },
   ajouter_vertex: { icon: 'Plus', label: 'Ajouter un sommet' },
+  ajouter_point_mur: { icon: 'Plus', label: 'Ajouter un point' },
   zoom_avant: { icon: 'ZoomIn', label: 'Agrandir', shortcut: '+' },
   zoom_arriere: { icon: 'ZoomOut', label: 'Réduire', shortcut: '-' },
   ajuster_vue: { icon: 'Maximize', label: 'Ajuster à la vue' },
@@ -48,8 +50,9 @@ export const ACTION_SHORTCUTS = Object.fromEntries(
  * Actions par type d'élément (mapping compact)
  */
 const ACTIONS_MAP: Record<string, ContextMenuAction[]> = {
-  room: ['supprimer', 'dupliquer', 'proprietes'],
-  wall: ['supprimer', 'dupliquer'],
+  room: ['supprimer', 'proprietes'],
+  wall: ['supprimer', 'diviser_mur', 'ajouter_point_mur'],
+  wallVertex: ['supprimer'],
   door: ['supprimer', 'dupliquer'],
   artwork: ['supprimer', 'dupliquer'],
   verticalLink: ['supprimer', 'dupliquer'],

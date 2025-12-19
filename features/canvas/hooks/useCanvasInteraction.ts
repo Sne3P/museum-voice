@@ -17,8 +17,10 @@ interface CanvasInteractionOptions {
   boxSelection: any
   shapeCreation: any
   freeFormCreation: any
+  wallCreation: any
   elementDrag: any
   vertexEdit: any
+  wallEndpointEdit: any
   screenToWorld: (x: number, y: number) => Point
   onContextMenu?: (x: number, y: number, worldPos: Point) => void
 }
@@ -31,8 +33,10 @@ export function useCanvasInteraction({
   boxSelection,
   shapeCreation,
   freeFormCreation,
+  wallCreation,
   elementDrag,
   vertexEdit,
+  wallEndpointEdit,
   screenToWorld,
   onContextMenu
 }: CanvasInteractionOptions) {
@@ -147,6 +151,13 @@ export function useCanvasInteraction({
       return
     }
 
+    // Création de mur intérieur (drag-based)
+    if (state.selectedTool === 'wall' && e.button === 0) {
+      wallCreation.startCreation(snapResult.point)
+      setCursorType('crosshair')
+      return
+    }
+
     // Création forme libre (point par point)
     if (state.selectedTool === 'room' && e.button === 0) {
       freeFormCreation.addPoint(snapResult.point)
@@ -162,6 +173,7 @@ export function useCanvasInteraction({
     boxSelection, 
     shapeCreation, 
     freeFormCreation,
+    wallCreation,
     elementDrag,
     vertexEdit
   ])
@@ -201,7 +213,7 @@ export function useCanvasInteraction({
     setHoveredPoint(snapResult.point)
     
     // NOUVEAU: Détecter début de drag si mouseDown + mouvement suffisant
-    if (mouseDownInfo && !elementDrag.dragState.isDragging && !vertexEdit.editState.isEditing) {
+    if (mouseDownInfo && !elementDrag.dragState.isDragging && !vertexEdit.editState.isEditing && !wallEndpointEdit.editState.isEditing) {
       const distance = Math.sqrt(
         Math.pow(worldPos.x - mouseDownInfo.point.x, 2) +
         Math.pow(worldPos.y - mouseDownInfo.point.y, 2)
@@ -213,7 +225,28 @@ export function useCanvasInteraction({
       if (distance > dragThreshold) {
         const selectionInfo = mouseDownInfo.selectionInfo
         
-        // Priorité 1 : Drag vertex/segment si c'est ce qui a été cliqué
+        // Priorité 0 : Drag wallVertex (vertex de mur)
+        if (selectionInfo?.type === 'wallVertex' && selectionInfo?.wallId !== undefined) {
+          wallEndpointEdit.startEdit(
+            selectionInfo.wallId, 
+            selectionInfo.vertexIndex ?? 0, 
+            mouseDownInfo.point
+          )
+          setCursorType('grabbing')
+          setMouseDownInfo(null)
+          return
+        }
+        
+        // Priorité 1 : Drag wallEndpoint (avant vertex/segment de room)
+        if (selection.hoverInfo?.type === 'wallEndpoint' && selection.hoverInfo?.id) {
+          const endpointIndex = selection.hoverInfo.endpoint === 'start' ? 0 : 1
+          wallEndpointEdit.startEdit(selection.hoverInfo.id, endpointIndex, mouseDownInfo.point)
+          setCursorType('grabbing')
+          setMouseDownInfo(null)
+          return
+        }
+        
+        // Priorité 2 : Drag vertex/segment de room si c'est ce qui a été cliqué
         if (selectionInfo?.type === 'vertex' && selectionInfo.roomId !== undefined) {
           // Drag d'un seul vertex
           vertexEdit.startEdit(selectionInfo.roomId, selectionInfo.vertexIndex!, mouseDownInfo.point)
@@ -265,6 +298,12 @@ export function useCanvasInteraction({
       return
     }
     
+    // NOUVEAU: Édition endpoint mur en cours
+    if (wallEndpointEdit.editState.isEditing) {
+      wallEndpointEdit.updateEndpoint(e)
+      return
+    }
+    
     // Détection hover en mode select
     if (state.selectedTool === 'select') {
       const result = selection.findElementAt(worldPos, state.zoom)
@@ -297,6 +336,11 @@ export function useCanvasInteraction({
     // Création drag en cours
     if (shapeCreation.state.isCreating) {
       shapeCreation.updateCreation(snapResult.point)
+    }
+
+    // Création mur en cours
+    if (wallCreation.state.isCreating) {
+      wallCreation.updateCreation(snapResult.point)
     }
 
     // Création forme libre: mise à jour hover
@@ -350,6 +394,14 @@ export function useCanvasInteraction({
       return
     }
     
+    // NOUVEAU: Édition endpoint mur terminée
+    if (wallEndpointEdit.editState.isEditing) {
+      wallEndpointEdit.finishEdit()
+      setCursorType('default')
+      setMouseDownInfo(null)
+      return
+    }
+    
     // Réinitialiser mouseDownInfo si pas de drag
     setMouseDownInfo(null)
     
@@ -387,14 +439,22 @@ export function useCanvasInteraction({
       shapeCreation.finishCreation()
       setCursorType('crosshair')
     }
+
+    // Création mur terminée
+    if (e.button === 0 && wallCreation.state.isCreating) {
+      wallCreation.completeCreation()
+      setCursorType('crosshair')
+    }
   }, [
     shapeCreation, 
+    wallCreation,
     boxSelection, 
     selection, 
     state.selectedElements, 
     updateState,
     elementDrag,
-    vertexEdit
+    vertexEdit,
+    wallEndpointEdit
   ])
 
   /**
@@ -406,7 +466,10 @@ export function useCanvasInteraction({
     if (shapeCreation.state.isCreating) {
       shapeCreation.cancelCreation()
     }
-  }, [shapeCreation])
+    if (wallCreation.state.isCreating) {
+      wallCreation.cancelCreation()
+    }
+  }, [shapeCreation, wallCreation])
 
   /**
    * Gestion clavier (Échap pour annuler drag/edit)
@@ -420,13 +483,16 @@ export function useCanvasInteraction({
         } else if (vertexEdit.editState.isEditing) {
           vertexEdit.cancelEdit()
           setCursorType('default')
+        } else if (wallEndpointEdit.editState.isEditing) {
+          wallEndpointEdit.cancelEdit()
+          setCursorType('default')
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [elementDrag, vertexEdit])
+  }, [elementDrag, vertexEdit, wallEndpointEdit])
 
   return {
     // État

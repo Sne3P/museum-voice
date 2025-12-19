@@ -5,6 +5,7 @@
 export * from './grid.renderer'
 export * from './room.renderer'
 export * from './wall.renderer'
+export * from './wall-preview.renderer'
 export * from './artwork.renderer'
 export * from './door.renderer'
 export * from './verticalLink.renderer'

@@ -183,11 +183,28 @@ export function useVertexEdit({
       polygon: newPolygon
     }
     
-    // Valider la géométrie
-    const validation = validateRoomGeometry(tempRoom, {
+    // Import du service cascade pour validation
+    const { validateRoomModificationWithWalls } = require('@/core/services/cascade.service')
+    
+    // Valider la géométrie ET les murs enfants
+    const geometryValidation = validateRoomGeometry(tempRoom, {
       floor: currentFloor,
       strictMode: true
     })
+    
+    // Vérifier que les murs restent dans la room
+    const wallsValidation = validateRoomModificationWithWalls(tempRoom, currentFloor)
+    
+    const validation = !geometryValidation.valid 
+      ? geometryValidation
+      : !wallsValidation.valid
+      ? { 
+          valid: false, 
+          severity: 'error' as const,
+          code: 'WALLS_OUT_OF_BOUNDS',
+          message: wallsValidation.reason || 'Murs hors limites'
+        }
+      : geometryValidation
     
     // Mettre à jour les floors temporairement (sans historique)
     const updatedFloors = state.floors.map(floor => {

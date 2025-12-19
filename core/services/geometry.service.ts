@@ -52,11 +52,25 @@ export function deduplicatePoints(points: Point[]): Point[] {
 }
 
 /**
- * Test point dans polygone (winding number algorithm)
+ * Test point dans polygone (winding number algorithm + tolérance bords)
  */
 export function isPointInPolygon(point: Point, polygon: ReadonlyArray<Point>): boolean {
   if (polygon.length < 3) return false
   
+  const EDGE_TOLERANCE = 5 // 5px de tolérance pour points sur les bords
+  
+  // PREMIÈREMENT: Vérifier si le point est sur un bord (avec tolérance)
+  for (let i = 0; i < polygon.length; i++) {
+    const p1 = polygon[i]
+    const p2 = polygon[(i + 1) % polygon.length]
+    
+    const dist = distanceToSegment(point, p1, p2)
+    if (dist <= EDGE_TOLERANCE) {
+      return true // Point sur le bord = VALIDE
+    }
+  }
+  
+  // DEUXIÈMEMENT: Winding number pour points intérieurs
   let windingNumber = 0
   
   for (let i = 0; i < polygon.length; i++) {
