@@ -14,8 +14,6 @@
  * - useCanvasRender : Logique de rendu
  */
 
-"use client"
-
 import { useRef, useEffect } from "react"
 import type { EditorState, Floor } from "@/core/entities"
 import { 
@@ -25,6 +23,7 @@ import {
   useShapeCreation,
   useFreeFormCreation,
   useWallCreation,
+  useDoorCreation,
   useElementDrag,
   useVertexEdit,
   useWallEndpointEdit,
@@ -133,6 +132,20 @@ export function Canvas({
     }
   })
 
+  // Hook de création de portes (drag-based)
+  const doorCreation = useDoorCreation({
+    currentFloor,
+    onComplete: (door) => {
+      const updatedFloors = state.floors.map(floor =>
+        floor.id === currentFloor.id
+          ? { ...floor, doors: [...floor.doors, door] }
+          : floor
+      )
+      
+      updateState({ floors: updatedFloors }, true, 'Créer porte')
+    }
+  })
+
   // Hook de déplacement d'éléments (Phase 2)
   const elementDrag = useElementDrag({
     state,
@@ -177,6 +190,7 @@ export function Canvas({
     shapeCreation,
     freeFormCreation,
     wallCreation,
+    doorCreation,
     elementDrag,
     vertexEdit,
     wallEndpointEdit,
@@ -193,6 +207,7 @@ export function Canvas({
     shapeCreation,
     freeFormCreation,
     wallCreation,
+    doorCreation,
     boxSelection,
     elementDrag,
     vertexEdit,

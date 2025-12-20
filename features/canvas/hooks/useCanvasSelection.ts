@@ -100,7 +100,36 @@ export function useCanvasSelection(
       }
     }
 
-    // PRIORITÉ 2 : ENDPOINTS (murs sans path)
+    // PRIORITÉ 2 : HANDLES/ENDPOINTS DE PORTES (avant tout le reste pour manipulation)
+    for (const door of currentFloor.doors) {
+      // Convertir coordonnées grille -> pixels
+      const GRID_SIZE = 40
+      for (let i = 0; i < 2; i++) {
+        const endpoint = {
+          x: door.segment[i].x * GRID_SIZE,
+          y: door.segment[i].y * GRID_SIZE
+        }
+        const dist = distance(point, endpoint)
+        
+        if (dist <= endpointTolerance) {
+          return {
+            element: { type: 'door', id: door.id },
+            selectionInfo: {
+              id: door.id,
+              type: 'door',
+              endpointIndex: i
+            },
+            hoverInfo: {
+              type: 'doorEndpoint',
+              id: door.id,
+              endpoint: i === 0 ? 'start' : 'end'
+            }
+          }
+        }
+      }
+    }
+
+    // PRIORITÉ 3 : ENDPOINTS (murs sans path)
     for (const wall of currentFloor.walls) {
       for (let i = 0; i < 2; i++) {
         const endpoint = wall.segment[i]
@@ -118,25 +147,6 @@ export function useCanvasSelection(
             hoverInfo: {
               type: 'wallEndpoint',
               id: wall.id,
-              endpoint: i === 0 ? 'start' : 'end'
-            }
-          }
-        }
-      }
-    }
-
-    for (const door of currentFloor.doors) {
-      for (let i = 0; i < 2; i++) {
-        const endpoint = door.segment[i]
-        const dist = distance(point, endpoint)
-        
-        if (dist <= endpointTolerance) {
-          return {
-            element: { type: 'door', id: door.id },
-            selectionInfo: { id: door.id, type: 'door' },
-            hoverInfo: {
-              type: 'doorEndpoint',
-              id: door.id,
               endpoint: i === 0 ? 'start' : 'end'
             }
           }
@@ -163,7 +173,30 @@ export function useCanvasSelection(
       }
     }
 
-    // PRIORITÉ 3 : SEGMENTS
+    // PRIORITÉ 4.5 : PORTES (avant segments de rooms, après artworks)
+    for (const door of currentFloor.doors) {
+      // Convertir coordonnées grille -> pixels
+      const GRID_SIZE = 40
+      const doorStart = {
+        x: door.segment[0].x * GRID_SIZE,
+        y: door.segment[0].y * GRID_SIZE
+      }
+      const doorEnd = {
+        x: door.segment[1].x * GRID_SIZE,
+        y: door.segment[1].y * GRID_SIZE
+      }
+      
+      const dist = distanceToSegment(point, doorStart, doorEnd)
+      if (dist <= tolerance * 1.5) { // Tolérance plus large pour faciliter sélection
+        return {
+          element: { type: 'door', id: door.id },
+          selectionInfo: { id: door.id, type: 'door' },
+          hoverInfo: { type: 'door', id: door.id }
+        }
+      }
+    }
+
+    // PRIORITÉ 5 : SEGMENTS DE ROOMS
     if (options.enableSegmentSelection) {
       for (const room of currentFloor.rooms) {
         for (let i = 0; i < room.polygon.length; i++) {
@@ -192,7 +225,7 @@ export function useCanvasSelection(
       }
     }
 
-    // PRIORITÉ 4 : ARTWORKS
+    // PRIORITÉ 6 : ARTWORKS
     for (const artwork of currentFloor.artworks) {
       const [x, y] = artwork.xy
       const dx = point.x - x
@@ -210,7 +243,7 @@ export function useCanvasSelection(
       }
     }
 
-    // PRIORITÉ 5 : DOORS
+    // PRIORITÉ 4.5 : DOORS (placées avant segments de rooms)
     for (const door of currentFloor.doors) {
       const dist = distanceToSegment(point, door.segment[0], door.segment[1])
       if (dist <= tolerance) {
@@ -222,7 +255,7 @@ export function useCanvasSelection(
       }
     }
 
-    // PRIORITÉ 6 : VERTICAL LINKS
+    // PRIORITÉ 7 : VERTICAL LINKS
     for (const link of currentFloor.verticalLinks) {
       const [startX, startY] = [link.segment[0].x, link.segment[0].y]
       const [endX, endY] = [link.segment[1].x, link.segment[1].y]

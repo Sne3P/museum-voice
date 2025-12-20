@@ -9,6 +9,7 @@
 import type { Floor, Room, Wall, Door, Artwork, Point } from '@/core/entities'
 import { translatePolygon, translateWall, translateDoor, translateArtwork } from './transform.service'
 import { isPointInPolygon } from './geometry.service'
+import { getDoorsToDeleteWithRoom } from './door-constraints.service'
 
 /**
  * Récupérer tous les éléments enfants d'une room
@@ -23,15 +24,19 @@ export function getRoomChildren(floor: Floor, roomId: string) {
 
 /**
  * Supprimer une room ET tous ses enfants (cascade)
+ * Inclut aussi les portes qui connectent cette room à d'autres
  */
 export function deleteRoomWithChildren(floor: Floor, roomId: string): Floor {
   const children = getRoomChildren(floor, roomId)
+  
+  // NOUVEAU: Trouver aussi les portes à supprimer (qui connectent cette room)
+  const doorsToDelete = getDoorsToDeleteWithRoom(roomId, floor)
   
   return {
     ...floor,
     rooms: floor.rooms.filter(r => r.id !== roomId),
     walls: floor.walls?.filter(w => !children.walls.some(cw => cw.id === w.id)),
-    doors: floor.doors?.filter(d => !children.doors.some(cd => cd.id === d.id)),
+    doors: floor.doors?.filter(d => !doorsToDelete.some(dtd => dtd.id === d.id)),
     artworks: floor.artworks?.filter(a => !children.artworks.some(ca => ca.id === a.id))
   }
 }

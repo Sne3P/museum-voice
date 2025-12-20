@@ -160,11 +160,11 @@ export function useContextMenu({
           updates = { floors: newState.floors, selectedElements: newState.selectedElements }
           historyLabel = 'Supprimer élément'
         },
-        // dupliquer: () => {
-        //   const newState = executeDupliquer(state, currentFloor.id, lastWorldPos)
-        //   updates = { floors: newState.floors, selectedElements: newState.selectedElements, duplicatingElement: newState.duplicatingElement, contextMenu: null }
-        //   saveHistory = false
-        // },
+        dupliquer: () => {
+          const newState = executeDupliquer(state, currentFloor.id, lastWorldPos)
+          updates = { floors: newState.floors, selectedElements: newState.selectedElements, duplicatingElement: newState.duplicatingElement, contextMenu: null }
+          saveHistory = false
+        },
         coller: () => {
           const newState = executeColler(state, currentFloor.id)
           updates = { floors: newState.floors }

@@ -18,6 +18,7 @@ interface CanvasInteractionOptions {
   shapeCreation: any
   freeFormCreation: any
   wallCreation: any
+  doorCreation: any
   elementDrag: any
   vertexEdit: any
   wallEndpointEdit: any
@@ -34,6 +35,7 @@ export function useCanvasInteraction({
   shapeCreation,
   freeFormCreation,
   wallCreation,
+  doorCreation,
   elementDrag,
   vertexEdit,
   wallEndpointEdit,
@@ -101,10 +103,19 @@ export function useCanvasInteraction({
         const selectionType = result.selectionInfo?.type || result.element.type
         const elementId = result.selectionInfo?.id || result.element.id
         
-        // Vérifier si l'élément est déjà sélectionné
-        const isAlreadySelected = state.selectedElements.some(
-          el => el.id === elementId && el.type === selectionType
-        )
+        // Vérifier si c'est EXACTEMENT le même élément (type + id + vertex/segment)
+        const isExactlySameElement = state.selectedElements.some(el => {
+          if (el.type !== selectionType || el.id !== elementId) return false
+          
+          // Pour vertices/segments, vérifier l'index
+          if (selectionType === 'vertex' || selectionType === 'segment') {
+            const clickedVertexIndex = result.selectionInfo?.vertexIndex
+            const clickedSegmentIndex = result.selectionInfo?.segmentIndex
+            return el.vertexIndex === clickedVertexIndex && el.segmentIndex === clickedSegmentIndex
+          }
+          
+          return true
+        })
         
         // CAS 1: Multi-sélection (Ctrl) → Ajouter/retirer de la sélection
         if (isMultiSelect) {
@@ -119,7 +130,7 @@ export function useCanvasInteraction({
         }
         
         // CAS 2: Clic simple sur élément DÉJÀ sélectionné → Garder la sélection (pour multi-drag)
-        if (isAlreadySelected) {
+        if (isExactlySameElement) {
           // Ne pas changer la sélection, juste préparer le drag potentiel
           setMouseDownInfo({
             point: worldPos,
@@ -154,6 +165,13 @@ export function useCanvasInteraction({
     // Création de mur intérieur (drag-based)
     if (state.selectedTool === 'wall' && e.button === 0) {
       wallCreation.startCreation(snapResult.point)
+      setCursorType('crosshair')
+      return
+    }
+
+    // Création de porte (drag-based)
+    if (state.selectedTool === 'door' && e.button === 0) {
+      doorCreation.startCreation(snapResult.point)
       setCursorType('crosshair')
       return
     }
@@ -343,6 +361,11 @@ export function useCanvasInteraction({
       wallCreation.updateCreation(snapResult.point)
     }
 
+    // Création porte en cours
+    if (doorCreation.state.isCreating) {
+      doorCreation.updateCreation(snapResult.point)
+    }
+
     // Création forme libre: mise à jour hover
     if (freeFormCreation.state.isCreating) {
       freeFormCreation.updateHover(snapResult.point)
@@ -445,9 +468,16 @@ export function useCanvasInteraction({
       wallCreation.completeCreation()
       setCursorType('crosshair')
     }
+
+    // Création porte terminée
+    if (e.button === 0 && doorCreation.state.isCreating) {
+      doorCreation.completeCreation()
+      setCursorType('crosshair')
+    }
   }, [
     shapeCreation, 
     wallCreation,
+    doorCreation,
     boxSelection, 
     selection, 
     state.selectedElements, 
@@ -469,7 +499,10 @@ export function useCanvasInteraction({
     if (wallCreation.state.isCreating) {
       wallCreation.cancelCreation()
     }
-  }, [shapeCreation, wallCreation])
+    if (doorCreation.state.isCreating) {
+      doorCreation.cancelCreation()
+    }
+  }, [shapeCreation, wallCreation, doorCreation])
 
   /**
    * Gestion clavier (Échap pour annuler drag/edit)

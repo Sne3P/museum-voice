@@ -12,6 +12,9 @@ import {
   drawWallPreview,
   drawArtwork,
   drawDoor,
+  drawDoorPreview,
+  drawSharedWalls,
+  drawDoorCreationGuides,
   drawVerticalLink,
   drawShapePreview,
   drawSnapPoint,
@@ -35,6 +38,7 @@ interface CanvasRenderOptions {
   shapeCreation: any
   freeFormCreation: any
   wallCreation: any
+  doorCreation: any
   boxSelection: any
   elementDrag: any
   vertexEdit: any
@@ -50,6 +54,7 @@ export function useCanvasRender({
   selection,
   shapeCreation,
   freeFormCreation,
+  doorCreation,
   wallCreation,
   boxSelection,
   elementDrag,
@@ -98,7 +103,7 @@ export function useCanvasRender({
     }
 
     // 4. Prévisualisations de création
-    renderCreationPreviews(ctx, canvas, state, shapeCreation, freeFormCreation, wallCreation)
+    renderCreationPreviews(ctx, canvas, state, shapeCreation, freeFormCreation, wallCreation, doorCreation)
 
     // 5. Box selection
     renderBoxSelection(ctx, boxSelection, state)
@@ -216,7 +221,8 @@ function renderCreationPreviews(
   state: EditorState,
   shapeCreation: any,
   freeFormCreation: any,
-  wallCreation?: any
+  wallCreation?: any,
+  doorCreation?: any
 ) {
   // Preview formes géométriques (drag)
   if (shapeCreation.state.previewPolygon) {
@@ -301,6 +307,53 @@ function renderCreationPreviews(
       state.pan,
       validation
     )
+  }
+
+  // Preview porte (drag) - Mode door actif
+  if (state.selectedTool === 'door' && doorCreation) {
+    // Afficher les murs partagés (segments où on peut placer des portes)
+    if (doorCreation.sharedWalls && doorCreation.sharedWalls.length > 0) {
+      drawSharedWalls(
+        ctx,
+        doorCreation.sharedWalls,
+        state.zoom,
+        state.pan,
+        doorCreation.state.selectedWall
+      )
+    }
+
+    // Afficher les guides pendant la création
+    if (doorCreation.state.isCreating && doorCreation.state.selectedWall && doorCreation.state.currentPoint) {
+      drawDoorCreationGuides(
+        ctx,
+        doorCreation.state.selectedWall,
+        doorCreation.state.currentPoint,
+        state.zoom,
+        state.pan
+      )
+    }
+
+    // Afficher la preview de la porte
+    if (doorCreation.state.previewDoor) {
+      drawDoorPreview(
+        ctx,
+        doorCreation.state.previewDoor,
+        state.zoom,
+        state.pan,
+        40, // GRID_SIZE
+        doorCreation.state.isValid
+      )
+
+      // Message de validation
+      if (doorCreation.state.validationMessage) {
+        drawValidationMessage(
+          ctx,
+          doorCreation.state.validationMessage,
+          doorCreation.state.isValid ? 'info' : 'error',
+          { x: canvas.width / 2, y: 50 }
+        )
+      }
+    }
   }
 }
 

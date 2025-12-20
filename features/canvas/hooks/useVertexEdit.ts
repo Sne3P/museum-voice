@@ -9,7 +9,7 @@ import type { Point, EditorState, Floor, Room } from "@/core/entities"
 import { HISTORY_ACTIONS } from "@/core/constants"
 import { updateVertexInPolygon, calculateDelta } from "@/core/services"
 import { snapToGrid, smartSnap } from "@/core/services"
-import { validateRoomGeometry } from "@/core/services"
+import { validateRoomGeometry, validateRoomMoveWithDoors } from "@/core/services"
 import { GRID_SIZE } from "@/core/constants"
 
 interface VertexEditOptions {
@@ -192,11 +192,16 @@ export function useVertexEdit({
       strictMode: true
     })
     
+    // NOUVEAU: Vérifier que les portes restent valides
+    const doorValidation = validateRoomMoveWithDoors(editState.roomId!, newPolygon, currentFloor)
+    
     // Vérifier que les murs restent dans la room
     const wallsValidation = validateRoomModificationWithWalls(tempRoom, currentFloor)
     
     const validation = !geometryValidation.valid 
       ? geometryValidation
+      : !doorValidation.valid
+      ? { valid: false, message: doorValidation.message }
       : !wallsValidation.valid
       ? { 
           valid: false, 

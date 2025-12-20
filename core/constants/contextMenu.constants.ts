@@ -16,7 +16,7 @@ interface ActionMeta {
 
 export const ACTION_METADATA: Record<string, ActionMeta> = {
   supprimer: { icon: 'Trash2', label: 'Supprimer', shortcut: 'Suppr' },
-  // dupliquer: { icon: 'Copy', label: 'Dupliquer', shortcut: 'Ctrl+D' },  // DÉSACTIVÉ
+  dupliquer: { icon: 'Copy', label: 'Dupliquer', shortcut: 'Ctrl+D' },
   copier: { icon: 'Copy', label: 'Copier', shortcut: 'Ctrl+C' },
   coller: { icon: 'ClipboardPaste', label: 'Coller', shortcut: 'Ctrl+V' },
   proprietes: { icon: 'Settings', label: 'Propriétés' },
@@ -50,7 +50,7 @@ export const ACTION_SHORTCUTS = Object.fromEntries(
  * Actions par type d'élément (mapping compact)
  */
 const ACTIONS_MAP: Record<string, ContextMenuAction[]> = {
-  room: ['supprimer', 'proprietes'],
+  room: ['supprimer', 'dupliquer', 'proprietes'],
   wall: ['supprimer', 'diviser_mur', 'ajouter_point_mur'],
   wallVertex: ['supprimer'],
   door: ['supprimer', 'dupliquer'],

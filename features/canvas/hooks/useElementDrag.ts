@@ -13,7 +13,8 @@ import {
   translateDoor,
   translateArtwork,
   translateVerticalLink,
-  calculateDelta
+  calculateDelta,
+  validateRoomMoveWithDoors
 } from "@/core/services"
 import { snapToGrid } from "@/core/services"
 import { validateRoomGeometry, validateWallPlacement } from "@/core/services"
@@ -240,6 +241,14 @@ export function useElementDrag({
           if (!geometryValidation.valid) {
             isValid = false
             validationMessage = geometryValidation.message ?? null
+            break
+          }
+          
+          // NOUVEAU: Validation portes (vérifier que les portes restent valides)
+          const doorValidation = validateRoomMoveWithDoors(selected.id, updatedRoom.polygon, updatedFloor)
+          if (!doorValidation.valid) {
+            isValid = false
+            validationMessage = doorValidation.message ?? "Déplacement invaliderait les portes"
             break
           }
           
