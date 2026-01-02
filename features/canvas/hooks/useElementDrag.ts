@@ -18,6 +18,7 @@ import {
   snapToGrid,
   validateRoomGeometry,
   validateWallPlacement,
+  isPointInPolygon,
   validateVerticalLinkMove
 } from "@/core/services"
 
@@ -84,7 +85,17 @@ export function useElementDrag({
           if (element) {
             const attachedWalls = currentFloor.walls?.filter(w => w.roomId === selected.id) || []
             const attachedDoors = currentFloor.doors?.filter(d => d.roomId === selected.id) || []
-            const attachedArtworks = currentFloor.artworks?.filter(a => a.roomId === selected.id) || []
+            
+            // Artworks: chercher par roomId OU par position géométrique (fallback)
+            const attachedArtworks = currentFloor.artworks?.filter(a => {
+              if (a.roomId === selected.id) return true
+              // Fallback: vérifier si le centre de l'artwork est dans la room
+              const sizeW = a.size ? a.size[0] : 0
+              const sizeH = a.size ? a.size[1] : 0
+              const center = { x: a.xy[0] + sizeW / 2, y: a.xy[1] + sizeH / 2 }
+              return element.polygon.length >= 3 && isPointInPolygon(center, element.polygon)
+            }) || []
+            
             const attachedVerticalLinks = currentFloor.verticalLinks?.filter(v => 
               v.roomId === selected.id && v.floorId === currentFloor.id
             ) || []
@@ -187,7 +198,12 @@ export function useElementDrag({
                 const artworkId = key.substring(8)
                 const idx = newArtworks.findIndex(a => a.id === artworkId)
                 if (idx >= 0) {
-                  newArtworks[idx] = translateArtwork(element, delta)
+                  const translated = translateArtwork(element, delta)
+                  // Préserver/assigner le roomId lors du déplacement avec la room
+                  newArtworks[idx] = {
+                    ...translated,
+                    roomId: element.roomId || selected.id // Assigner si manquant
+                  }
                 }
               } else if (key.startsWith('verticalLink_')) {
                 const linkId = key.substring(13)
@@ -216,7 +232,21 @@ export function useElementDrag({
           case 'artwork':
             const artworkIndex = newArtworks.findIndex(a => a.id === selected.id)
             if (artworkIndex >= 0) {
-              newArtworks[artworkIndex] = translateArtwork(original, delta)
+              const translatedArtwork = translateArtwork(original, delta)
+              // Détecter la nouvelle room contenant l'artwork
+              const sizeW = translatedArtwork.size ? translatedArtwork.size[0] : 0
+              const sizeH = translatedArtwork.size ? translatedArtwork.size[1] : 0
+              const centerPoint = { 
+                x: translatedArtwork.xy[0] + sizeW / 2, 
+                y: translatedArtwork.xy[1] + sizeH / 2 
+              }
+              const newRoom = newRooms.find(r => 
+                r.polygon.length >= 3 && isPointInPolygon(centerPoint, r.polygon)
+              )
+              newArtworks[artworkIndex] = {
+                ...translatedArtwork,
+                roomId: newRoom?.id
+              }
             }
             break
             
@@ -273,6 +303,30 @@ export function useElementDrag({
             validationMessage = wallsValidation.reason ?? null
             break
           }
+          
+          // NOUVEAU: Validation que les artworks restent dans la room après déplacement
+          // Récupérer les IDs des artworks attachés depuis originalElements
+          const attachedArtworkIds = Array.from(dragState.originalElements.keys())
+            .filter(key => key.startsWith('artwork_'))
+            .map(key => key.substring(8))
+          
+          // Vérifier que chaque artwork déplacé reste dans la room déplacée
+          for (const artworkId of attachedArtworkIds) {
+            const movedArtwork = updatedFloor.artworks?.find(a => a.id === artworkId)
+            if (!movedArtwork) continue
+            
+            const { validateArtworkPlacement } = require('@/core/services')
+            const artworkValidation = validateArtworkPlacement(movedArtwork, { 
+              floor: updatedFloor,
+              excludeIds: [movedArtwork.id]
+            })
+            if (!artworkValidation.valid) {
+              isValid = false
+              validationMessage = "Déplacement invaliderait les œuvres de la pièce"
+              break
+            }
+          }
+          if (!isValid) break
         }
       } else if (selected.type === 'wall') {
         const updatedFloor = updatedFloors.find(f => f.id === currentFloor.id)
@@ -295,6 +349,22 @@ export function useElementDrag({
           if (!validation.valid) {
             isValid = false
             validationMessage = validation.message ?? 'Déplacement invalide'
+            break
+          }
+        }
+      } else if (selected.type === 'artwork') {
+        const updatedFloor = updatedFloors.find(f => f.id === currentFloor.id)
+        const updatedArtwork = updatedFloor?.artworks?.find(a => a.id === selected.id)
+        
+        if (updatedArtwork && updatedFloor) {
+          const { validateArtworkPlacement } = require('@/core/services')
+          const validation = validateArtworkPlacement(updatedArtwork, { 
+            floor: updatedFloor,
+            excludeIds: [selected.id]
+          })
+          if (!validation.valid) {
+            isValid = false
+            validationMessage = validation.message ?? 'Déplacement invalide - œuvre hors de la pièce'
             break
           }
         }

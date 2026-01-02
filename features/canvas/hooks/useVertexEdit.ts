@@ -9,7 +9,7 @@ import type { Point, EditorState, Floor, Room } from "@/core/entities"
 import { HISTORY_ACTIONS } from "@/core/constants"
 import { updateVertexInPolygon, calculateDelta } from "@/core/services"
 import { snapToGrid, smartSnap } from "@/core/services"
-import { validateRoomGeometry, validateRoomMoveWithDoors } from "@/core/services"
+import { validateRoomGeometry, validateRoomMoveWithDoors, isPointInPolygon } from "@/core/services"
 import { GRID_SIZE } from "@/core/constants"
 
 interface VertexEditOptions {
@@ -198,6 +198,31 @@ export function useVertexEdit({
     // Vérifier que les murs restent dans la room
     const wallsValidation = validateRoomModificationWithWalls(tempRoom, currentFloor)
     
+    // NOUVEAU: Vérifier que les artworks restent dans la room après modification
+    let artworksValidation = { valid: true, reason: null as string | null }
+    const roomArtworks = currentFloor.artworks?.filter(a => {
+      if (a.roomId === editState.roomId) return true
+      // Fallback: vérifier si le centre de l'artwork était dans la room originale
+      const originalRoom = currentFloor.rooms.find(r => r.id === editState.roomId)
+      if (!originalRoom || originalRoom.polygon.length < 3) return false
+      const sizeW = a.size ? a.size[0] : 0
+      const sizeH = a.size ? a.size[1] : 0
+      const center = { x: a.xy[0] + sizeW / 2, y: a.xy[1] + sizeH / 2 }
+      return isPointInPolygon(center, originalRoom.polygon)
+    }) || []
+    
+    for (const artwork of roomArtworks) {
+      const { validateArtworkPlacement } = require('@/core/services')
+      const artworkCheck = validateArtworkPlacement(artwork, {
+        floor: { ...currentFloor, rooms: currentFloor.rooms.map(r => r.id === editState.roomId ? tempRoom : r) },
+        excludeIds: [artwork.id]
+      })
+      if (!artworkCheck.valid) {
+        artworksValidation = { valid: false, reason: artworkCheck.message || 'Œuvres hors de la pièce' }
+        break
+      }
+    }
+    
     const validation = !geometryValidation.valid 
       ? geometryValidation
       : !doorValidation.valid
@@ -208,6 +233,13 @@ export function useVertexEdit({
           severity: 'error' as const,
           code: 'WALLS_OUT_OF_BOUNDS',
           message: wallsValidation.reason || 'Murs hors limites'
+        }
+      : !artworksValidation.valid
+      ? {
+          valid: false,
+          severity: 'error' as const,
+          code: 'ARTWORKS_OUT_OF_BOUNDS',
+          message: artworksValidation.reason || 'Œuvres hors de la pièce'
         }
       : geometryValidation
     

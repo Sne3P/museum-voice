@@ -20,6 +20,8 @@ interface CanvasInteractionOptions {
   wallCreation: any
   doorCreation: any
   verticalLinkCreation: any
+  artworkCreation: any
+  artworkResize: any
   elementDrag: any
   vertexEdit: any
   verticalLinkEdit: any
@@ -39,6 +41,8 @@ export function useCanvasInteraction({
   wallCreation,
   doorCreation,
   verticalLinkCreation,
+  artworkCreation,
+  artworkResize,
   elementDrag,
   vertexEdit,
   verticalLinkEdit,
@@ -187,6 +191,13 @@ export function useCanvasInteraction({
       return
     }
 
+    // Création d'œuvre (drag-based)
+    if (state.selectedTool === 'artwork' && e.button === 0) {
+      artworkCreation.startCreation(snapResult.point)
+      setCursorType('crosshair')
+      return
+    }
+
     // Création forme libre (point par point)
     if (state.selectedTool === 'room' && e.button === 0) {
       freeFormCreation.addPoint(snapResult.point)
@@ -205,6 +216,8 @@ export function useCanvasInteraction({
     wallCreation,
     doorCreation,
     verticalLinkCreation,
+    artworkCreation,
+    artworkResize,
     elementDrag,
     vertexEdit,
     verticalLinkEdit
@@ -280,6 +293,17 @@ export function useCanvasInteraction({
           setMouseDownInfo(null)
           return
         }
+
+        // Priorité 0.6 : Drag artworkVertex (coin d'artwork pour redimensionnement)
+        if (selectionInfo?.type === 'artworkVertex' && selectionInfo?.artworkId !== undefined) {
+          artworkResize.startResize(
+            selectionInfo.artworkId, 
+            selectionInfo.vertexIndex ?? 0
+          )
+          setCursorType('grabbing')
+          setMouseDownInfo(null)
+          return
+        }
         
         // Priorité 1 : Drag wallEndpoint (avant vertex/segment de room)
         if (selection.hoverInfo?.type === 'wallEndpoint' && selection.hoverInfo?.id) {
@@ -347,6 +371,12 @@ export function useCanvasInteraction({
       verticalLinkEdit.updateEdit(e)
       return
     }
+
+    // NOUVEAU: Redimensionnement artwork en cours
+    if (artworkResize.resizeState.isResizing) {
+      artworkResize.updateResize(e)
+      return
+    }
     
     // NOUVEAU: Édition endpoint mur en cours
     if (wallEndpointEdit.editState.isEditing) {
@@ -403,6 +433,11 @@ export function useCanvasInteraction({
       verticalLinkCreation.updateCurrentPoint(snapResult.point)
     }
 
+    // Création œuvre en cours (drag)
+    if (artworkCreation.state.isCreating) {
+      artworkCreation.updateCurrentPoint(snapResult.point)
+    }
+
     // Création forme libre: mise à jour hover
     if (freeFormCreation.state.isCreating) {
       freeFormCreation.updateHover(snapResult.point)
@@ -423,10 +458,12 @@ export function useCanvasInteraction({
     wallCreation,
     doorCreation,
     verticalLinkCreation,
+    artworkCreation,
     boxSelection,
     elementDrag,
     vertexEdit,
     verticalLinkEdit,
+    artworkResize,
     mouseDownInfo
   ])
 
@@ -461,6 +498,14 @@ export function useCanvasInteraction({
     // NOUVEAU: Édition vertex vertical link terminée
     if (verticalLinkEdit.editState.isEditing) {
       verticalLinkEdit.finishEdit()
+      setCursorType('default')
+      setMouseDownInfo(null)
+      return
+    }
+
+    // NOUVEAU: Redimensionnement artwork terminé
+    if (artworkResize.resizeState.isResizing) {
+      artworkResize.finishResize()
       setCursorType('default')
       setMouseDownInfo(null)
       return
@@ -528,12 +573,21 @@ export function useCanvasInteraction({
     if (e.button === 0 && verticalLinkCreation.state.isCreating) {
       verticalLinkCreation.finishCreation()
       setCursorType('crosshair')
+      return
+    }
+
+    // Création artwork terminée (drag-based)
+    if (e.button === 0 && artworkCreation.state.isCreating) {
+      artworkCreation.finishCreation()
+      setCursorType('crosshair')
+      return
     }
   }, [
     shapeCreation, 
     wallCreation,
     doorCreation,
     verticalLinkCreation,
+    artworkCreation,
     boxSelection, 
     selection, 
     state.selectedElements, 
@@ -576,13 +630,19 @@ export function useCanvasInteraction({
         } else if (wallEndpointEdit.editState.isEditing) {
           wallEndpointEdit.cancelEdit()
           setCursorType('default')
+        } else if (artworkCreation.state.isCreating) {
+          artworkCreation.cancelCreation()
+          setCursorType('crosshair')
+        } else if (artworkResize.resizeState.isResizing) {
+          artworkResize.cancelResize()
+          setCursorType('default')
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [elementDrag, vertexEdit, wallEndpointEdit])
+  }, [elementDrag, vertexEdit, wallEndpointEdit, artworkCreation, artworkResize])
 
   return {
     // État

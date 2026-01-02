@@ -11,6 +11,8 @@ export * from './useFreeFormCreation'     // Création forme libre (point par po
 export * from './useWallCreation'         // Création murs intérieurs (drag)
 export * from './useDoorCreation'         // Création portes (drag)
 export * from './useVerticalLinkCreation' // Création liens verticaux (escaliers/ascenseurs)
+export * from './useArtworkCreation'      // Création œuvres d'art (drag)
+export * from './useArtworkResize'        // Redimensionnement œuvres d'art (vertices)
 export * from './useDoorSelection'        // Sélection et manipulation portes
 export * from './useCanvasInteraction'    // Interactions utilisateur (clicks, pan)
 export * from './useCanvasCoordinates'    // Coordonnées et zoom

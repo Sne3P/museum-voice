@@ -55,7 +55,7 @@ const ACTIONS_MAP: Record<string, ContextMenuAction[]> = {
   wall: ['supprimer', 'diviser_mur', 'ajouter_point_mur'],
   wallVertex: ['supprimer'],
   door: ['supprimer', 'dupliquer'],
-  artwork: ['supprimer', 'dupliquer'],
+  artwork: ['supprimer', 'dupliquer', 'proprietes'],
   verticalLink: ['supprimer', 'modifier_etages'],
   vertex: ['supprimer'],
   segment: ['supprimer', 'diviser', 'ajouter_vertex'],

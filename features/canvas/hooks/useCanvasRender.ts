@@ -11,6 +11,7 @@ import {
   drawWall,
   drawWallPreview,
   drawArtwork,
+  drawArtworkCreationPreview,
   drawDoor,
   drawDoorPreview,
   drawSharedWalls,
@@ -42,6 +43,7 @@ interface CanvasRenderOptions {
   wallCreation: any
   doorCreation: any
   verticalLinkCreation: any
+  artworkCreation: any
   boxSelection: any
   elementDrag: any
   vertexEdit: any
@@ -61,6 +63,7 @@ export function useCanvasRender({
   doorCreation,
   wallCreation,
   verticalLinkCreation,
+  artworkCreation,
   boxSelection,
   elementDrag,
   vertexEdit,
@@ -109,7 +112,7 @@ export function useCanvasRender({
     }
 
     // 4. Prévisualisations de création
-    renderCreationPreviews(ctx, canvas, state, shapeCreation, freeFormCreation, wallCreation, doorCreation, verticalLinkCreation)
+    renderCreationPreviews(ctx, canvas, state, shapeCreation, freeFormCreation, wallCreation, doorCreation, verticalLinkCreation, artworkCreation)
 
     // 5. Box selection
     renderBoxSelection(ctx, boxSelection, state)
@@ -210,9 +213,37 @@ function renderFloorElements(
 
   currentFloor.artworks?.forEach(artwork => {
     const isSelected = selection.isSelected('artwork', artwork.id)
+    const isHovered = hoverInfo?.type === 'artwork' && hoverInfo?.id === artwork.id
     const isDuplicating = state.duplicatingElement?.elementId === artwork.id && state.duplicatingElement?.elementType === 'artwork'
     const isValidDuplication = state.duplicatingElement?.isValid ?? true
-    drawArtwork(ctx, artwork, state.zoom, state.pan, isSelected, false, isDuplicating, isValidDuplication)
+    drawArtwork(ctx, artwork, state.zoom, state.pan, isSelected, isHovered, isDuplicating, isValidDuplication)
+    
+    // Dessiner vertices avec hover si sélectionné
+    if (isSelected && artwork.size) {
+      const [x, y] = artwork.xy
+      const [width, height] = artwork.size
+      const corners = [
+        worldToCanvas({ x, y }, state.zoom, state.pan),
+        worldToCanvas({ x: x + width, y }, state.zoom, state.pan),
+        worldToCanvas({ x: x + width, y: y + height }, state.zoom, state.pan),
+        worldToCanvas({ x, y: y + height }, state.zoom, state.pan)
+      ]
+      
+      corners.forEach((corner, idx) => {
+        const isVertexHovered = hoverInfo?.type === 'artworkVertex' && 
+                                hoverInfo?.id === artwork.id && 
+                                hoverInfo?.vertexIndex === idx
+        const handleSize = isVertexHovered ? 8 * state.zoom : 6 * state.zoom
+        
+        ctx.beginPath()
+        ctx.arc(corner.x, corner.y, handleSize, 0, Math.PI * 2)
+        ctx.fillStyle = isVertexHovered ? '#3b82f6' : '#fff'
+        ctx.fill()
+        ctx.strokeStyle = '#0ea5e9'
+        ctx.lineWidth = 2 * state.zoom
+        ctx.stroke()
+      })
+    }
   })
 
   currentFloor.verticalLinks?.forEach(link => {
@@ -241,7 +272,8 @@ function renderCreationPreviews(
   freeFormCreation: any,
   wallCreation?: any,
   doorCreation?: any,
-  verticalLinkCreation?: any
+  verticalLinkCreation?: any,
+  artworkCreation?: any
 ) {
   // Preview formes géométriques (drag)
   if (shapeCreation.state.previewPolygon) {
@@ -393,6 +425,28 @@ function renderCreationPreviews(
         ctx,
         verticalLinkCreation.state.validationMessage,
         verticalLinkCreation.state.validationSeverity || 'error',
+        { x: canvas.width / 2, y: 50 }
+      )
+    }
+  }
+
+  // Preview œuvre (zone drag)
+  if (artworkCreation && artworkCreation.state.isCreating) {
+    drawArtworkCreationPreview(
+      ctx,
+      artworkCreation.state.startPoint,
+      artworkCreation.state.currentPoint,
+      state.zoom,
+      state.pan,
+      artworkCreation.state.isValid
+    )
+
+    // Message de validation
+    if (artworkCreation.state.validationMessage && !artworkCreation.state.isValid) {
+      drawValidationMessage(
+        ctx,
+        artworkCreation.state.validationMessage,
+        artworkCreation.state.validationSeverity || 'error',
         { x: canvas.width / 2, y: 50 }
       )
     }

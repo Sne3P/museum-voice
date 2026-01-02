@@ -25,6 +25,8 @@ import {
   useWallCreation,
   useDoorCreation,
   useVerticalLinkCreation,
+  useArtworkCreation,
+  useArtworkResize,
   useElementDrag,
   useVertexEdit,
   useVerticalLinkEdit,
@@ -36,7 +38,8 @@ import { useContextMenu } from "@/shared/hooks"
 import { ContextMenu } from "@/shared/components"
 import { v4 as uuidv4 } from "uuid"
 import { FloorSelectionModal } from "./components/FloorSelectionModal"
-import { findRoomForVerticalLink } from "@/core/services"
+import { ArtworkPropertiesModal } from "./components/ArtworkPropertiesModal"
+import { findRoomForVerticalLink, isPointInPolygon } from "@/core/services"
 
 interface CanvasProps {
   state: EditorState
@@ -66,6 +69,13 @@ export function Canvas({
     currentFloorIds?: string[]
     currentLinkGroupId?: string
     currentLinkNumber?: number
+  } | null>(null)
+
+  // État du modal de propriétés artwork
+  const [artworkModal, setArtworkModal] = useState<{
+    position: readonly [number, number]
+    size: readonly [number, number]
+    existingArtworks?: Artwork[]  // Si défini = mode édition
   } | null>(null)
   
   // Hook coordonnées & zoom
@@ -170,6 +180,15 @@ export function Canvas({
     }
   })
 
+  // Hook de création d'œuvres d'art (drag)
+  const artworkCreation = useArtworkCreation({
+    currentFloor,
+    onComplete: (xy, size) => {
+      // Ouvrir le modal de propriétés artwork
+      setArtworkModal({ position: xy, size })
+    }
+  })
+
   // Hook de déplacement d'éléments (Phase 2)
   const elementDrag = useElementDrag({
     state,
@@ -202,6 +221,32 @@ export function Canvas({
     screenToWorld: coordinates.screenToWorld
   })
 
+  // Hook de redimensionnement artworks
+  const artworkResize = useArtworkResize({
+    state,
+    currentFloor,
+    updateState
+  })
+
+  /**
+   * Gestion ouverture modal propriétés (appelé par menu contextuel)
+   */
+  const handleOpenPropertiesModal = useCallback((type: 'room' | 'artwork' | 'wall' | 'door' | 'verticalLink', id: string) => {
+    if (type === 'artwork') {
+      const artwork = currentFloor.artworks?.find(a => a.id === id)
+      if (artwork) {
+        setArtworkModal({
+          position: artwork.xy,
+          size: artwork.size || [GRID_SIZE, GRID_SIZE],
+          existingArtworks: [artwork]  // Mode édition
+        })
+      }
+    } else {
+      // Appeler le handler externe pour les autres types
+      onOpenPropertiesModal?.(type, id)
+    }
+  }, [currentFloor, onOpenPropertiesModal])
+
   // Callback pour ouvrir le modal d'édition d'étages
   const handleEditVerticalLinkFloors = useCallback((linkId: string) => {
     const link = currentFloor.verticalLinks.find(l => l.id === linkId)
@@ -226,7 +271,7 @@ export function Canvas({
     updateState,
     detectElementAt: selection.findElementAt,
     canvasRef,
-    onOpenPropertiesModal,
+    onOpenPropertiesModal: handleOpenPropertiesModal,
     onEditVerticalLinkFloors: handleEditVerticalLinkFloors
   })
 
@@ -351,6 +396,71 @@ export function Canvas({
     setVerticalLinkModal(null)
   }
 
+  /**
+   * Gestion de la confirmation du modal d'artwork
+   */
+  const handleArtworkModalConfirm = useCallback((artworksData: Array<{ name: string; pdfFile?: File | null; pdfLink?: string }>) => {
+    if (!artworkModal) return
+
+    const { position, size, existingArtworks } = artworkModal
+
+    if (existingArtworks && existingArtworks.length > 0) {
+      // MODE ÉDITION : Mettre à jour l'artwork existant
+      const existingArtwork = existingArtworks[0]
+      const updatedData = artworksData[0] // Un seul artwork en mode édition
+      
+      const updatedFloors = state.floors.map(floor =>
+        floor.id === currentFloor.id
+          ? {
+              ...floor,
+              artworks: floor.artworks.map(a =>
+                a.id === existingArtwork.id
+                  ? {
+                      ...a,
+                      name: updatedData.name,
+                      pdfLink: updatedData.pdfLink,
+                      pdf_id: updatedData.pdfLink || '',
+                      tempPdfFile: updatedData.pdfFile || null
+                    }
+                  : a
+              )
+            }
+          : floor
+      )
+      
+      updateState({ floors: updatedFloors }, true, `Modifier œuvre "${updatedData.name}"`)
+    } else {
+      // MODE CRÉATION : Créer de nouvelles œuvres
+      const sizeW = size[0]
+      const sizeH = size[1]
+      const centerPoint = { x: position[0] + sizeW / 2, y: position[1] + sizeH / 2 }
+      const containingRoom = currentFloor.rooms.find(room => 
+        room.polygon.length >= 3 && isPointInPolygon(centerPoint, room.polygon)
+      )
+
+      const newArtworks = artworksData.map(data => ({
+        id: uuidv4(),
+        xy: position,
+        size,
+        name: data.name,
+        pdf_id: data.pdfLink || '',
+        pdfLink: data.pdfLink,
+        tempPdfFile: data.pdfFile || null,
+        roomId: containingRoom?.id
+      }))
+
+      const updatedFloors = state.floors.map(floor =>
+        floor.id === currentFloor.id
+          ? { ...floor, artworks: [...floor.artworks, ...newArtworks] }
+          : floor
+      )
+
+      updateState({ floors: updatedFloors }, true, `Créer ${newArtworks.length} œuvre${newArtworks.length > 1 ? 's' : ''}`)
+    }
+    
+    setArtworkModal(null)
+  }, [artworkModal, state.floors, currentFloor, updateState, isPointInPolygon])
+
   // Hook d'interaction utilisateur
   const interaction = useCanvasInteraction({
     state,
@@ -363,6 +473,8 @@ export function Canvas({
     wallCreation,
     doorCreation,
     verticalLinkCreation,
+    artworkCreation,
+    artworkResize,
     elementDrag,
     vertexEdit,
     verticalLinkEdit,
@@ -382,6 +494,7 @@ export function Canvas({
     wallCreation,
     doorCreation,
     verticalLinkCreation,
+    artworkCreation,
     boxSelection,
     elementDrag,
     vertexEdit,
@@ -569,6 +682,17 @@ export function Canvas({
           currentLinkNumber={verticalLinkModal.currentLinkNumber}
           onConfirm={handleVerticalLinkModalConfirm}
           onCancel={() => setVerticalLinkModal(null)}
+        />
+      )}
+
+      {/* Modal de propriétés d'œuvres */}
+      {artworkModal && (
+        <ArtworkPropertiesModal
+          position={artworkModal.position}
+          size={artworkModal.size}
+          existingArtworks={artworkModal.existingArtworks}
+          onConfirm={handleArtworkModalConfirm}
+          onCancel={() => setArtworkModal(null)}
         />
       )}
     </div>

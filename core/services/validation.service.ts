@@ -329,27 +329,71 @@ export function validateArtworkPlacement(artwork: Artwork, context: ValidationCo
     }
   }
 
-  // 2. Vérifier que l'œuvre est dans une pièce
+  // 2. Vérifier que TOUS les coins de l'œuvre sont dans une pièce
   if (context.floor) {
-    let isInRoom = false
+    const size = artwork.size || [1, 1]
+    const corners = [
+      { x: artwork.xy[0], y: artwork.xy[1] },
+      { x: artwork.xy[0] + size[0], y: artwork.xy[1] },
+      { x: artwork.xy[0] + size[0], y: artwork.xy[1] + size[1] },
+      { x: artwork.xy[0], y: artwork.xy[1] + size[1] }
+    ]
+
+    let containingRoom = null
     for (const room of context.floor.rooms) {
-      if (isPointInPolygon(point, room.polygon)) {
-        isInRoom = true
+      const allCornersInRoom = corners.every(corner => isPointInPolygon(corner, room.polygon))
+      if (allCornersInRoom) {
+        containingRoom = room
         break
       }
     }
 
-    if (!isInRoom) {
+    if (!containingRoom) {
       return {
         valid: false,
         severity: 'error',
         code: 'ARTWORK_OUTSIDE_ROOM',
         message: ERROR_MESSAGES.artwork.outsideRoom,
-        suggestions: ['Placez l\'œuvre dans une pièce', 'Créez une pièce d\'abord'],
+        suggestions: ['Placez l\'œuvre entièrement dans une pièce', 'Créez une pièce d\'abord'],
         visualFeedback: {
           color: VISUAL_FEEDBACK.colors.invalid,
           opacity: 0.5,
           strokeWidth: 3
+        }
+      }
+    }
+
+    // 3. Vérifier le chevauchement avec d'autres œuvres
+    const overlappingArtworks = context.floor.artworks.filter(otherArtwork => {
+      if (otherArtwork.id === artwork.id) return false
+      if (context.excludeIds?.includes(otherArtwork.id)) return false
+
+      const otherSize = otherArtwork.size || [1, 1]
+      const [ax, ay] = artwork.xy
+      const [aWidth, aHeight] = size
+      const [ox, oy] = otherArtwork.xy
+      const [oWidth, oHeight] = otherSize
+
+      // Vérifier chevauchement (pas juste contact)
+      return !(ax >= ox + oWidth || 
+               ax + aWidth <= ox || 
+               ay >= oy + oHeight || 
+               ay + aHeight <= oy)
+    })
+
+    if (overlappingArtworks.length > 0) {
+      return {
+        valid: false,
+        severity: 'error',
+        code: 'ARTWORK_OVERLAPPING',
+        message: 'L\'œuvre chevauche une autre œuvre',
+        affectedElements: overlappingArtworks.map(a => a.id),
+        suggestions: ['Déplacez l\'œuvre', 'Les œuvres peuvent se toucher mais pas se chevaucher'],
+        visualFeedback: {
+          color: VISUAL_FEEDBACK.colors.invalid,
+          opacity: 0.5,
+          strokeWidth: 3,
+          highlight: true
         }
       }
     }

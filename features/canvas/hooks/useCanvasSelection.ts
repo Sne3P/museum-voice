@@ -242,16 +242,57 @@ export function useCanvasSelection(
       }
     }
 
-    // PRIORITÉ 6 : ARTWORKS
+    // PRIORITÉ 6 : VERTICES D'ARTWORKS (coins pour redimensionnement)
+    if (options.enableVertexSelection) {
+      for (const artwork of currentFloor.artworks) {
+        if (!artwork.size) continue
+        
+        const [x, y] = artwork.xy
+        const [width, height] = artwork.size
+        
+        // Les 4 coins du rectangle
+        const corners = [
+          { x, y },                          // Top-left
+          { x: x + width, y },               // Top-right
+          { x: x + width, y: y + height },   // Bottom-right
+          { x, y: y + height }               // Bottom-left
+        ]
+        
+        for (let i = 0; i < corners.length; i++) {
+          const corner = corners[i]
+          const dist = distance(point, corner)
+          
+          if (dist <= vertexTolerance) {
+            return {
+              element: { type: 'artwork', id: artwork.id },
+              selectionInfo: {
+                id: artwork.id,
+                type: 'artworkVertex',
+                vertexIndex: i,
+                artworkId: artwork.id
+              },
+              hoverInfo: {
+                type: 'artworkVertex',
+                id: artwork.id,
+                vertexIndex: i,
+                artworkId: artwork.id
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // PRIORITÉ 6.5 : ARTWORKS (body entier)
     for (const artwork of currentFloor.artworks) {
+      if (!artwork.size) continue
+      
       const [x, y] = artwork.xy
-      const dx = point.x - x
-      const dy = point.y - y
-      const dist = Math.sqrt(dx * dx + dy * dy)
+      const [width, height] = artwork.size
       
-      const radius = artwork.size ? Math.max(artwork.size[0], artwork.size[1]) / 2 : 30
-      
-      if (dist <= radius + tolerance) {
+      // Vérifier si le point est dans le rectangle
+      if (point.x >= x && point.x <= x + width &&
+          point.y >= y && point.y <= y + height) {
         return {
           element: { type: 'artwork', id: artwork.id },
           selectionInfo: { id: artwork.id, type: 'artwork' },
