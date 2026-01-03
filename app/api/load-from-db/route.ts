@@ -1,196 +1,238 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getDatabase } from '@/lib/database-sqlite'
+﻿import { NextRequest, NextResponse } from 'next/server'
+import { queryPostgres } from '@/lib/database-postgres'
 
 export async function GET() {
   try {
-    console.log('📤 Demande de chargement des données')
-    const db = await getDatabase()
+    const plans = await queryPostgres<any>('SELECT * FROM plans ORDER BY plan_id')
+    const entities = await queryPostgres<any>('SELECT * FROM entities ORDER BY entity_id')
+    const points = await queryPostgres<any>('SELECT * FROM points ORDER BY entity_id, ordre')
+    const oeuvres = await queryPostgres<any>('SELECT * FROM oeuvres')
+    const relations = await queryPostgres<any>('SELECT * FROM relations')
 
-    // Récupérer toutes les données depuis SQLite
-    const plans = await new Promise<any[]>((resolve, reject) => {
-      db.all('SELECT * FROM plans ORDER BY plan_id', (err, rows) => {
-        if (err) reject(err)
-        else resolve(rows || [])
+    if (plans.length === 0) {
+      // Default floor structure
+      return NextResponse.json({
+        success: true,
+        editorState: {
+          floors: [{
+            id: 'floor-1',
+            name: 'F1',
+            description: '',
+            rooms: [],
+            walls: [],
+            artworks: [],
+            doors: [],
+            verticalLinks: []
+          }],
+          currentFloorId: 'floor-1',
+          selectedTool: 'select',
+          gridSize: 40,
+          zoom: 1,
+          pan: { x: 0, y: 0 },
+          history: [],
+          historyIndex: -1,
+          contextMenu: null,
+          selectedElements: [],
+          measurements: { active: false, points: [] }
+        }
       })
-    })
+    }
 
-    const entities = await new Promise<any[]>((resolve, reject) => {
-      db.all('SELECT * FROM entities ORDER BY entity_id', (err, rows) => {
-        if (err) reject(err)
-        else resolve(rows || [])
-      })
-    })
-
-    const points = await new Promise<any[]>((resolve, reject) => {
-      db.all('SELECT * FROM points ORDER BY point_id', (err, rows) => {
-        if (err) reject(err)
-        else resolve(rows || [])
-      })
-    })
-
-    const oeuvres = await new Promise<any[]>((resolve, reject) => {
-      db.all('SELECT * FROM oeuvres ORDER BY oeuvre_id', (err, rows) => {
-        if (err) reject(err)
-        else resolve(rows || [])
-      })
-    })
-
-    const relations = await new Promise<any[]>((resolve, reject) => {
-      db.all('SELECT * FROM relations ORDER BY relation_id', (err, rows) => {
-        if (err) reject(err)
-        else resolve(rows || [])
-      })
-    })
-
-    const chunks = await new Promise<any[]>((resolve, reject) => {
-      db.all('SELECT * FROM chunk ORDER BY chunk_id', (err, rows) => {
-        if (err) reject(err)
-        else resolve(rows || [])
-      })
-    })
-
-    const criterias = await new Promise<any[]>((resolve, reject) => {
-      db.all('SELECT * FROM criterias ORDER BY criteria_id', (err, rows) => {
-        if (err) reject(err)
-        else resolve(rows || [])
-      })
-    })
-
-    console.log('📊 Données chargées depuis SQLite:', {
-      plans: plans.length,
-      entities: entities.length,
-      points: points.length,
-      oeuvres: oeuvres.length,
-      relations: relations.length,
-      chunks: chunks.length,
-      criterias: criterias.length
-    })
-
-    // Convertir les données SQLite vers le format EditorState
-    const floors = plans.map(plan => {
-      // Récupérer les entités pour ce plan
-      const planEntities = entities.filter(entity => entity.plan_id === plan.plan_id)
-      
-      // Séparer les rooms et walls
-      const rooms = planEntities
-        .filter(entity => entity.entity_type === 'ROOM')
-        .map(entity => {
-          const entityPoints = points
-            .filter(point => point.entity_id === entity.entity_id)
-            .sort((a, b) => a.ordre - b.ordre)
-            .map(point => ({ x: point.x, y: point.y }))
-
-            return {
-            id: `room-${entity.entity_id}`,
-            polygon: entityPoints
-          }
-        })
-
-      const walls = planEntities
-        .filter(entity => entity.entity_type === 'WALL')
-        .map(entity => {
-          const entityPoints = points
-            .filter(point => point.entity_id === entity.entity_id)
-            .sort((a, b) => a.ordre - b.ordre)
-            .map(point => ({ x: point.x, y: point.y }))
-
-          return {
-            id: `wall-${entity.entity_id}`,
-            start: entityPoints[0] || { x: 0, y: 0 },
-            end: entityPoints[1] || { x: 100, y: 100 }
-          }
-        })
-
-      // Créer les artworks séparément depuis la table oeuvres
-      const floorArtworks = oeuvres
-        .filter(oeuvre => {
-          // Trouver si cette œuvre est associée à une entité de ce plan
-          return entities.some(entity => 
-            entity.oeuvre_id === oeuvre.oeuvre_id && 
-            entity.plan_id === plan.plan_id
-          )
-        })
-        .map(oeuvre => ({
-          id: `artwork-${oeuvre.oeuvre_id}`,
-          xy: [400, 300] as const, // Position par défaut
-          size: [60, 40] as const, // Taille par défaut
-          name: oeuvre.title,
-          pdf_id: oeuvre.pdf_link || undefined,
-          pdfLink: oeuvre.pdf_link || undefined
-        }))
-
-      return {
-        id: `F${plan.plan_id}`,
-        name: plan.nom,
-        rooms,
-        doors: [],
-        walls,
-        artworks: floorArtworks,
-        verticalLinks: [],
-        escalators: [],
-        elevators: []
-      }
-    })
-
-    console.log('🏗️ Floors construits:', floors)
-
-    const editorState = {
-      floors: floors.length > 0 ? floors : [{
-        id: 'F1',
-        name: 'Ground Floor',
-        rooms: [],
-        doors: [],
-        walls: [],
-        artworks: [],
-        verticalLinks: [],
-        escalators: [],
-        elevators: []
-      }],
-      currentFloorId: floors.length > 0 ? `F${plans[0]?.plan_id || 1}` : 'F1',
-      selectedTool: 'select' as const,
-      selectedElementId: null,
-      selectedElementType: null,
-      selectedElements: [],
-      gridSize: 1.0,
-      zoom: 1,
-      pan: { x: 0, y: 0 },
-      isPanning: false,
-      currentPolygon: [],
-      history: [],
-      historyIndex: -1,
-      contextMenu: null,
-      measurements: {
-        showMeasurements: true,
-        showDynamicMeasurements: true,
-        measurements: []
+    // Helper: Safe JSON parse
+    const parseMetadata = (description: string | null): any => {
+      if (!description) return {}
+      try {
+        return JSON.parse(description)
+      } catch {
+        return {}
       }
     }
 
-    console.log('📋 EditorState final:', {
-      floorsCount: editorState.floors.length,
-      currentFloorId: editorState.currentFloorId,
-      firstFloor: editorState.floors[0]
-    })
+    // Reconstruct floors from database
+    const floors = plans.map((plan: any, index: number) => {
+      const planEntities = entities.filter((e: any) => e.plan_id === plan.plan_id)
 
-    return NextResponse.json({ 
-      success: true, 
-      data: editorState,
-      loaded: {
-        plans: plans.length,
-        entities: entities.length,
-        points: points.length,
-        oeuvres: oeuvres.length,
-        relations: relations.length,
-        chunks: chunks.length,
-        criterias: criterias.length
+      // ROOMS
+      const rooms = planEntities
+        .filter((e: any) => e.entity_type === 'ROOM')
+        .map((entity: any) => {
+          const polygon = points
+            .filter((p: any) => p.entity_id === entity.entity_id)
+            .sort((a: any, b: any) => a.ordre - b.ordre)
+            .map((p: any) => ({ x: p.x, y: p.y }))
+          
+          const metadata = parseMetadata(entity.description)
+          
+          return {
+            id: metadata.id || `room-${entity.entity_id}`,
+            polygon,
+            holes: metadata.holes || []
+          }
+        })
+
+      // WALLS
+      const walls = planEntities
+        .filter((e: any) => e.entity_type === 'WALL')
+        .map((entity: any) => {
+          const wallPoints = points
+            .filter((p: any) => p.entity_id === entity.entity_id)
+            .sort((a: any, b: any) => a.ordre - b.ordre)
+            .map((p: any) => ({ x: p.x, y: p.y }))
+          
+          const metadata = parseMetadata(entity.description)
+          
+          return {
+            id: metadata.id || `wall-${entity.entity_id}`,
+            segment: wallPoints.slice(0, 2),
+            path: metadata.path,
+            thickness: metadata.thickness || 0.15,
+            isLoadBearing: metadata.isLoadBearing || false,
+            roomId: metadata.roomId
+          }
+        })
+
+      // ARTWORKS
+      const artworks = planEntities
+        .filter((e: any) => e.entity_type === 'ARTWORK')
+        .map((entity: any) => {
+          const artworkPoints = points
+            .filter((p: any) => p.entity_id === entity.entity_id)
+            .sort((a: any, b: any) => a.ordre - b.ordre)
+          
+          const oeuvre = oeuvres.find((o: any) => o.oeuvre_id === entity.oeuvre_id)
+          const metadata = parseMetadata(entity.description)
+          
+          return {
+            id: metadata.id || `artwork-${entity.entity_id}`,
+            xy: artworkPoints.length > 0 ? [artworkPoints[0].x, artworkPoints[0].y] : [0, 0],
+            size: metadata.size || [40, 40],
+            name: oeuvre?.title || entity.name || 'Sans titre',
+            pdfLink: oeuvre?.pdf_link || metadata.pdfLink || null,
+            roomId: metadata.roomId
+          }
+        })
+
+      // DOORS
+      const doors = planEntities
+        .filter((e: any) => e.entity_type === 'DOOR')
+        .map((entity: any) => {
+          const doorPoints = points
+            .filter((p: any) => p.entity_id === entity.entity_id)
+            .sort((a: any, b: any) => a.ordre - b.ordre)
+            .map((p: any) => ({ x: p.x, y: p.y }))
+          
+          const metadata = parseMetadata(entity.description)
+          
+          return {
+            id: metadata.id || `door-${entity.entity_id}`,
+            segment: doorPoints.slice(0, 2),
+            width: metadata.width || 0.8,
+            room_a: metadata.room_a || '',
+            room_b: metadata.room_b || '',
+            roomId: metadata.roomId
+          }
+        })
+
+      // VERTICAL LINKS
+      const verticalLinks = planEntities
+        .filter((e: any) => e.entity_type === 'VERTICAL_LINK')
+        .map((entity: any) => {
+          const linkPoints = points
+            .filter((p: any) => p.entity_id === entity.entity_id)
+            .sort((a: any, b: any) => a.ordre - b.ordre)
+          
+          const metadata = parseMetadata(entity.description)
+          
+          return {
+            id: metadata.id || `vlink-${entity.entity_id}`,
+            type: metadata.type || 'stairs',
+            floorId: metadata.floorId || `floor-${plan.plan_id}`,
+            position: linkPoints.length > 0 ? { x: linkPoints[0].x, y: linkPoints[0].y } : { x: 0, y: 0 },
+            size: metadata.size || [80, 120],
+            connectedFloorIds: metadata.connectedFloorIds || [],
+            roomId: metadata.roomId,
+            linkGroupId: metadata.linkGroupId,
+            linkNumber: metadata.linkNumber
+          }
+        })
+
+      // ESCALATORS
+      const escalators = planEntities
+        .filter((e: any) => e.entity_type === 'ESCALATOR')
+        .map((entity: any) => {
+          const escalatorPoints = points
+            .filter((p: any) => p.entity_id === entity.entity_id)
+            .sort((a: any, b: any) => a.ordre - b.ordre)
+          
+          const metadata = parseMetadata(entity.description)
+          
+          return {
+            id: metadata.id || `escalator-${entity.entity_id}`,
+            startPosition: escalatorPoints.length > 0 ? { x: escalatorPoints[0].x, y: escalatorPoints[0].y } : { x: 0, y: 0 },
+            endPosition: escalatorPoints.length > 1 ? { x: escalatorPoints[1].x, y: escalatorPoints[1].y } : { x: 0, y: 0 },
+            fromFloorId: metadata.fromFloorId || '',
+            toFloorId: metadata.toFloorId || '',
+            direction: metadata.direction || 'up',
+            width: metadata.width || 1.0
+          }
+        })
+
+      // ELEVATORS
+      const elevators = planEntities
+        .filter((e: any) => e.entity_type === 'ELEVATOR')
+        .map((entity: any) => {
+          const elevatorPoints = points
+            .filter((p: any) => p.entity_id === entity.entity_id)
+            .sort((a: any, b: any) => a.ordre - b.ordre)
+          
+          const metadata = parseMetadata(entity.description)
+          
+          return {
+            id: metadata.id || `elevator-${entity.entity_id}`,
+            position: elevatorPoints.length > 0 ? { x: elevatorPoints[0].x, y: elevatorPoints[0].y } : { x: 0, y: 0 },
+            size: metadata.size || 1.5,
+            connectedFloorIds: metadata.connectedFloorIds || []
+          }
+        })
+
+      return {
+        id: `floor-${plan.plan_id}`,
+        name: plan.nom,
+        description: plan.description || '',
+        rooms,
+        walls,
+        artworks,
+        doors,
+        verticalLinks,
+        escalators: escalators || [],
+        elevators: elevators || []
       }
     })
 
-  } catch (error) {
-    console.error('Erreur lors du chargement depuis SQLite:', error)
+    const editorState = {
+      floors,
+      currentFloorId: floors[0]?.id || 'floor-1',
+      selectedTool: 'select',
+      gridSize: 40,
+      zoom: 1,
+      pan: { x: 0, y: 0 },
+      history: [],
+      historyIndex: -1,
+      contextMenu: null,
+      selectedElements: [],
+      measurements: { active: false, points: [] }
+    }
+
+    return NextResponse.json({
+      success: true,
+      editorState
+    })
+
+  } catch (error: any) {
+    console.error('Load error:', error)
     return NextResponse.json({ 
-      error: 'Erreur lors du chargement depuis SQLite',
-      details: error instanceof Error ? error.message : 'Erreur inconnue'
+      success: false,
+      error: error.message 
     }, { status: 500 })
   }
 }

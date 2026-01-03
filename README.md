@@ -1,27 +1,98 @@
-# Visual museum editor
+# Museum Voice - Éditeur Visuel de Plans
 
-*Automatically synced with your museumvoice deployments*
+Éditeur interactif pour créer des plans de musées avec artworks, liaisons verticales (escaliers, ascenseurs), et génération de parcours guidés.
 
-## Overview
+## 🚀 Démarrage Rapide
 
-This repository will stay in sync with your deployed chats on museumvoice.
-Any changes you make to your deployed app will be automatically pushed to this repository from museumvoice.
+### Mode Développement (avec hot-reload)
 
-## Deployment
+```bash
+# Lancer en mode dev avec volumes montés
+pnpm docker:dev
 
-Your project is live at:
+# Ou rebuild si dépendances changent
+pnpm docker:dev:build
 
-**[https://vercel.com/bastien-roberts-projects-f58df83a/v0-visual-museum-editor](https://vercel.com/bastien-roberts-projects-f58df83a/v0-visual-museum-editor)**
+# Accès
+- Application: http://localhost:3000 (hot-reload activé)
+- Base de données PostgreSQL: localhost:5432
+```
 
-## Build your app
+Les modifications de code sont automatiquement détectées et rechargées sans rebuild.
 
-Continue building your app on:
+### Mode Production (optimisé)
 
-**[https://v0.app/chat/projects/FhmbN6qpRUl](https://v0.app/chat/projects/FhmbN6qpRUl)**
+```bash
+# Lancer en mode production
+pnpm docker:prod
 
-## How It Works
+# Ou rebuild
+pnpm docker:prod:build
 
-1. Create and modify your project using museumvoice
-2. Deploy your chats from the museumvoice interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+# Accès
+- Application: http://localhost:3000 (build optimisé)
+- Base de données PostgreSQL: localhost:5432
+```
+
+### Commandes Docker utiles
+
+```bash
+# Arrêter tous les containers
+pnpm docker:down
+
+# Voir les logs de l'app
+pnpm docker:logs
+
+# Nettoyer complètement (volumes inclus)
+pnpm docker:clean
+```
+
+## 📁 Structure
+
+```
+app/              # Next.js App Router (pages, API routes)
+core/             # Services métier, types, constantes (DRY)
+features/         # Composants fonctionnels (canvas, editor, toolbar)
+shared/           # Composants UI réutilisables, hooks
+components/       # Composants UI de base (auth, theme, ui/)
+lib/              # Clients DB (PostgreSQL)
+database/         # Scripts SQL init
+backend/          # Python RAG engine (séparé)
+legacy/           # Ancien code archivé
+```
+
+## 🛠️ Technologies
+
+- **Frontend**: Next.js 16, React, TypeScript, TailwindCSS
+- **Backend**: PostgreSQL 16, Python (RAG)
+- **Déploiement**: Docker, docker-compose
+
+## 📐 Architecture
+
+- **DRY**: Tout code centralisé dans `core/`
+- **Bottom-up**: `core/` → `shared/` → `features/` → `app/`
+- **Pas de duplication**: Vérifier `core/` avant d'écrire
+
+## 🗄️ Base de Données
+
+PostgreSQL avec sauvegarde complète des propriétés via JSON metadata :
+- Positions exactes (x, y)
+- Dimensions (width, height, thickness)
+- Connexions (connectedFloorIds, linkGroupId)
+- Types (ROOM, WALL, DOOR, ARTWORK, VERTICAL_LINK, ESCALATOR, ELEVATOR)
+
+## 📝 Scripts
+
+```bash
+# Développement local (sans Docker)
+pnpm install
+pnpm dev
+
+# Build production
+pnpm build
+pnpm start
+```
+
+## 🔧 Variables d'Environnement
+
+Voir `.env.local.example`

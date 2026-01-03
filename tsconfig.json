@@ -25,6 +25,18 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@/core/*": [
+        "./core/*"
+      ],
+      "@/features/*": [
+        "./features/*"
+      ],
+      "@/shared/*": [
+        "./shared/*"
+      ],
+      "@/infrastructure/*": [
+        "./infrastructure/*"
       ]
     }
   },
