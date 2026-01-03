@@ -1,0 +1,14 @@
+# ============================================
+# DOCKER COMPOSE - PRODUCTION MODE
+# ============================================
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+# Build optimisé, pas de volumes source
+# ============================================
+
+services:
+  app:
+    build:
+      target: runner
+    environment:
+      NODE_ENV: production
+    # Pas de volumes de code source en prod

@@ -4,13 +4,47 @@
 
 ## 🚀 Démarrage Rapide
 
+### Mode Développement (avec hot-reload)
+
 ```bash
-# Lancer avec Docker
-docker-compose up -d
+# Lancer en mode dev avec volumes montés
+pnpm docker:dev
+
+# Ou rebuild si dépendances changent
+pnpm docker:dev:build
 
 # Accès
-- Application: http://localhost:3000
+- Application: http://localhost:3000 (hot-reload activé)
 - Base de données PostgreSQL: localhost:5432
+```
+
+Les modifications de code sont automatiquement détectées et rechargées sans rebuild.
+
+### Mode Production (optimisé)
+
+```bash
+# Lancer en mode production
+pnpm docker:prod
+
+# Ou rebuild
+pnpm docker:prod:build
+
+# Accès
+- Application: http://localhost:3000 (build optimisé)
+- Base de données PostgreSQL: localhost:5432
+```
+
+### Commandes Docker utiles
+
+```bash
+# Arrêter tous les containers
+pnpm docker:down
+
+# Voir les logs de l'app
+pnpm docker:logs
+
+# Nettoyer complètement (volumes inclus)
+pnpm docker:clean
 ```
 
 ## 📁 Structure

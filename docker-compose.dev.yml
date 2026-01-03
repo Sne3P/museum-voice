@@ -1,0 +1,36 @@
+# ============================================
+# DOCKER COMPOSE - DEV MODE
+# ============================================
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Hot-reload activé, volumes montés
+# ============================================
+
+volumes:
+  dev_node_modules:
+
+services:
+  app:
+    build:
+      target: dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      # Mount configuration files
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./next.config.mjs:/app/next.config.mjs
+      - ./next-env.d.ts:/app/next-env.d.ts
+      - ./components.json:/app/components.json
+      - ./postcss.config.mjs:/app/postcss.config.mjs
+      - ./package.json:/app/package.json
+      # Mount source code for hot-reload
+      - ./app:/app/app
+      - ./components:/app/components
+      - ./core:/app/core
+      - ./features:/app/features
+      - ./shared:/app/shared
+      - ./lib:/app/lib
+      - ./public:/app/public
+      - ./styles:/app/styles
+      # Use named volume to preserve node_modules from build
+      - dev_node_modules:/app/node_modules
+      - /app/.next

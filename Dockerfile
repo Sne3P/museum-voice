@@ -1,5 +1,5 @@
 # ============================================
-# DOCKERFILE PRODUCTION - NEXT.JS 16 + TURBOPACK
+# DOCKERFILE MULTI-STAGE - NEXT.JS 16 + TURBOPACK
 # ============================================
 
 FROM node:20-alpine AS base
@@ -10,7 +10,34 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # ============================================
-# ÉTAPE 1 : INSTALLATION DÉPENDANCES
+# ÉTAPE DEV : DÉVELOPPEMENT AVEC HOT-RELOAD
+# ============================================
+FROM base AS dev
+
+# Copier fichiers de configuration et dépendances
+COPY package.json pnpm-lock.yaml* ./
+COPY tsconfig.json next.config.mjs next-env.d.ts ./
+COPY components.json postcss.config.mjs ./
+
+# Installer pnpm et toutes les dépendances (y compris devDependencies)
+RUN corepack enable && corepack prepare pnpm@latest --activate && \
+    pnpm install
+
+# Le code source sera monté via volumes docker-compose.dev.yml
+# Les fichiers de config ci-dessus seront overridés par les volumes si modifiés
+
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV WATCHPACK_POLLING=true
+ENV CHOKIDAR_USEPOLLING=true
+
+EXPOSE 3000
+
+# Utiliser forme shell pour exécuter pnpm correctement
+CMD pnpm dev
+
+# ============================================
+# ÉTAPE 1 : INSTALLATION DÉPENDANCES (PROD)
 # ============================================
 FROM base AS deps
 
@@ -20,8 +47,8 @@ COPY package.json pnpm-lock.yaml* ./
 # Installer pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Installer les dépendances
-RUN pnpm install --frozen-lockfile
+# Installer les dépendances production uniquement
+RUN pnpm install --frozen-lockfile --prod
 
 # ============================================
 # ÉTAPE 2 : BUILD DE L'APPLICATION

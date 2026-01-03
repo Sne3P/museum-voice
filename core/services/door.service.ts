@@ -480,3 +480,90 @@ export function areRoomsConnected(
 
   return false
 }
+
+/**
+ * Valider le déplacement d'une porte
+ * La porte doit rester sur un segment de mur partagé valide
+ */
+export function validateDoorMove(
+  door: Door,
+  floor: Floor
+): { valid: boolean; message?: string } {
+  // Trouver tous les segments de mur partagés
+  const sharedSegments = findSharedWallSegments(floor)
+  
+  // Vérifier si la porte est toujours sur un segment partagé valide
+  const doorCenter = {
+    x: (door.segment[0].x + door.segment[1].x) / 2,
+    y: (door.segment[0].y + door.segment[1].y) / 2
+  }
+  
+  // Chercher un segment partagé qui contient la porte
+  let foundValidSegment = false
+  for (const segment of sharedSegments) {
+    // Vérifier si la porte est sur ce segment
+    const segStart = segment.segment[0]
+    const segEnd = segment.segment[1]
+    
+    // Convertir en coordonnées grille
+    const segStartGrid = { x: segStart.x / GRID_SIZE, y: segStart.y / GRID_SIZE }
+    const segEndGrid = { x: segEnd.x / GRID_SIZE, y: segEnd.y / GRID_SIZE }
+    
+    // Vérifier si le centre de la porte est sur ce segment
+    const dist = distanceToSegment(
+      { x: doorCenter.x * GRID_SIZE, y: doorCenter.y * GRID_SIZE },
+      segStart,
+      segEnd
+    )
+    
+    if (dist < 5) { // Tolérance 5 pixels
+      // Vérifier que les deux points de la porte sont aussi sur le segment
+      const dist1 = distanceToSegment(
+        { x: door.segment[0].x * GRID_SIZE, y: door.segment[0].y * GRID_SIZE },
+        segStart,
+        segEnd
+      )
+      const dist2 = distanceToSegment(
+        { x: door.segment[1].x * GRID_SIZE, y: door.segment[1].y * GRID_SIZE },
+        segStart,
+        segEnd
+      )
+      
+      if (dist1 < 5 && dist2 < 5) {
+        foundValidSegment = true
+        break
+      }
+    }
+  }
+  
+  if (!foundValidSegment) {
+    return {
+      valid: false,
+      message: 'La porte doit rester sur un mur partagé'
+    }
+  }
+  
+  // Vérifier la largeur
+  const doorWidth = Math.sqrt(
+    Math.pow(door.segment[1].x - door.segment[0].x, 2) +
+    Math.pow(door.segment[1].y - door.segment[0].y, 2)
+  )
+  
+  const doorWidthMeters = doorWidth * GRID_SIZE / 100
+  
+  if (doorWidthMeters < CONSTRAINTS.door.minWidth) {
+    return {
+      valid: false,
+      message: `Porte trop petite (min: ${CONSTRAINTS.door.minWidth}m)`
+    }
+  }
+  
+  if (doorWidthMeters > CONSTRAINTS.door.maxWidth) {
+    return {
+      valid: false,
+      message: `Porte trop large (max: ${CONSTRAINTS.door.maxWidth}m)`
+    }
+  }
+  
+  return { valid: true }
+}

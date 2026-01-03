@@ -15,7 +15,8 @@
  */
 
 import { useRef, useEffect, useState, useCallback } from "react"
-import type { EditorState, Floor, Point } from "@/core/entities"
+import type { EditorState, Floor, Point, Artwork } from "@/core/entities"
+import { GRID_SIZE } from "@/core/constants"
 import { 
   useCanvasCoordinates,
   useCanvasSelection,
@@ -333,13 +334,14 @@ export function Canvas({
     let updatedFloors = [...state.floors]
     let finalSelectedFloorIds = [...selectedFloorIds]
 
-    // Créer nouvel étage au-dessus si demandé
+    // Créer nouvel étage au-dessus si demandé (insérer APRÈS l'étage courant)
     if (createAbove) {
       const newFloorId = uuidv4()
-      const topFloorIndex = updatedFloors.length - 1
+      const currentIndex = updatedFloors.findIndex(f => f.id === currentFloor.id)
+      const floorsAbove = updatedFloors.length - currentIndex - 1
       const newFloor = {
         id: newFloorId,
-        name: `Étage ${updatedFloors.length + 1}`,
+        name: floorsAbove > 0 ? `Étage ${floorsAbove + 1}` : `Étage 1`,
         rooms: [],
         doors: [],
         walls: [],
@@ -348,16 +350,18 @@ export function Canvas({
         escalators: [],
         elevators: []
       }
-      updatedFloors.push(newFloor)
+      updatedFloors.splice(currentIndex + 1, 0, newFloor)
       finalSelectedFloorIds.push(newFloorId)
     }
 
-    // Créer nouvel étage en-dessous si demandé
+    // Créer nouvel étage en-dessous si demandé (insérer AVANT l'étage courant)
     if (createBelow) {
       const newFloorId = uuidv4()
+      const currentIndex = updatedFloors.findIndex(f => f.id === currentFloor.id)
+      const floorsBelow = currentIndex
       const newFloor = {
         id: newFloorId,
-        name: `Sous-sol ${updatedFloors.filter(f => f.name.startsWith('Sous-sol')).length + 1}`,
+        name: floorsBelow > 0 ? `Sous-sol ${floorsBelow + 1}` : `Rez-de-chaussée`,
         rooms: [],
         doors: [],
         walls: [],
@@ -366,7 +370,7 @@ export function Canvas({
         escalators: [],
         elevators: []
       }
-      updatedFloors.unshift(newFloor)
+      updatedFloors.splice(currentIndex, 0, newFloor)
       finalSelectedFloorIds.push(newFloorId)
     }
 

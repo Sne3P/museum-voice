@@ -10,6 +10,7 @@ import type { Point } from './geometry.types'
 
 export interface Room {
   readonly id: string
+  readonly name?: string
   readonly polygon: ReadonlyArray<Point>
   readonly holes?: ReadonlyArray<ReadonlyArray<Point>>
 }
@@ -32,6 +33,7 @@ export interface Artwork {
 
 export interface Door {
   readonly id: string
+  readonly name?: string
   readonly room_a: string
   readonly room_b: string
   readonly segment: readonly [Point, Point]
@@ -43,6 +45,7 @@ export interface Door {
 // Lien technique entre étages (pas de représentation visuelle dans autres étages)
 export interface VerticalLink {
   readonly id: string
+  readonly name?: string
   readonly type: "stairs" | "elevator"
   readonly floorId: string  // Étage où est physiquement situé l'élément
   readonly position: Point  // Position simple (centre)
@@ -78,6 +81,7 @@ export interface Elevator {
 
 export interface Wall {
   readonly id: string
+  readonly name?: string
   readonly segment: readonly [Point, Point]  // Pour compatibilité avec murs simples
   readonly path?: readonly Point[]  // Pour murs multi-points (si défini, utiliser ça au lieu de segment)
   readonly thickness: number

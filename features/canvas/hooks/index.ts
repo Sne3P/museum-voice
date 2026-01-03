@@ -21,3 +21,4 @@ export * from './useElementDrag'          // Déplacement éléments (Phase 2)
 export * from './useVertexEdit'           // Édition vertices (Phase 2)
 export * from './useVerticalLinkEdit'     // Édition vertices vertical links
 export * from './useWallEndpointEdit'     // Édition endpoints murs
+

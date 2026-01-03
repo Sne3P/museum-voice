@@ -76,6 +76,7 @@ export const HISTORY_ACTIONS = {
   EDIT_SEGMENT: 'Edit segment',
   EDIT_WALL: 'Edit wall endpoint',
   RESIZE_ROOM: 'Resize room',
+  RESIZE_DOOR: 'Resize door',
   RENAME_FLOOR: 'Rename floor',
   UPDATE_ARTWORK: 'Update artwork',
 

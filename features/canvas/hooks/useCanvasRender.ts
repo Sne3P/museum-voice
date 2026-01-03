@@ -208,7 +208,8 @@ function renderFloorElements(
 
   currentFloor.doors?.forEach(door => {
     const isSelected = selection.isSelected('door', door.id)
-    drawDoor(ctx, door, state.zoom, state.pan, GRID_SIZE, isSelected, false, false)
+    const isHovered = hoverInfo?.type === 'door' && hoverInfo?.id === door.id
+    drawDoor(ctx, door, state.zoom, state.pan, GRID_SIZE, isSelected, isHovered, false)
   })
 
   currentFloor.artworks?.forEach(artwork => {

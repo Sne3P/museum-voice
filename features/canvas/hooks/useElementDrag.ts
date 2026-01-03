@@ -19,7 +19,9 @@ import {
   validateRoomGeometry,
   validateWallPlacement,
   isPointInPolygon,
-  validateVerticalLinkMove
+  validateVerticalLinkMove,
+  projectPointOntoSegment,
+  distance
 } from "@/core/services"
 
 interface ElementDragOptions {
@@ -37,6 +39,68 @@ interface DragState {
   originalElements: Map<string, any>
   isValid: boolean
   validationMessage: string | null
+}
+
+/**
+ * Contraindre le déplacement d'une porte sur l'axe de son mur d'origine
+ * La porte peut glisser uniquement le long du mur, pas perpendiculairement
+ * Les portes sont en coordonnées GRILLE, le delta est en PIXELS
+ */
+function constrainDoorToWallAxis(door: any, delta: Point): any {
+  // IMPORTANT: Les door.segment sont en coordonnées GRILLE (unités)
+  // Le delta est en PIXELS (coordonnées monde)
+  // Il faut convertir le delta en unités de grille
+  
+  const deltaGrid = {
+    x: delta.x / GRID_SIZE,
+    y: delta.y / GRID_SIZE
+  }
+  
+  // Calculer le vecteur du mur (en unités de grille)
+  const wallVector = {
+    x: door.segment[1].x - door.segment[0].x,
+    y: door.segment[1].y - door.segment[0].y
+  }
+  
+  // Longueur du mur
+  const wallLength = Math.sqrt(wallVector.x ** 2 + wallVector.y ** 2)
+  if (wallLength === 0) return door // Mur invalide, pas de déplacement
+  
+  // Normaliser le vecteur du mur
+  const wallNormalized = {
+    x: wallVector.x / wallLength,
+    y: wallVector.y / wallLength
+  }
+  
+  // Projeter le delta sur l'axe du mur (produit scalaire)
+  const projectedDistance = deltaGrid.x * wallNormalized.x + deltaGrid.y * wallNormalized.y
+  
+  // Calculer le delta contraint (uniquement le long du mur, en grille)
+  const constrainedDeltaGrid = {
+    x: projectedDistance * wallNormalized.x,
+    y: projectedDistance * wallNormalized.y
+  }
+  
+  // Arrondir à la grille (snap case par case)
+  const snappedDeltaGrid = {
+    x: Math.round(constrainedDeltaGrid.x),
+    y: Math.round(constrainedDeltaGrid.y)
+  }
+  
+  // Appliquer le déplacement contraint
+  return {
+    ...door,
+    segment: [
+      { 
+        x: door.segment[0].x + snappedDeltaGrid.x, 
+        y: door.segment[0].y + snappedDeltaGrid.y 
+      },
+      { 
+        x: door.segment[1].x + snappedDeltaGrid.x, 
+        y: door.segment[1].y + snappedDeltaGrid.y 
+      }
+    ]
+  }
 }
 
 export function useElementDrag({
@@ -225,7 +289,9 @@ export function useElementDrag({
           case 'door':
             const doorIndex = newDoors.findIndex(d => d.id === selected.id)
             if (doorIndex >= 0) {
-              newDoors[doorIndex] = translateDoor(original, delta)
+              // Contraindre le déplacement de la porte sur l'axe de son mur
+              const newPosition = constrainDoorToWallAxis(original, delta)
+              newDoors[doorIndex] = newPosition
             }
             break
             
@@ -368,6 +434,19 @@ export function useElementDrag({
             break
           }
         }
+      } else if (selected.type === 'door') {
+        const updatedFloor = updatedFloors.find(f => f.id === currentFloor.id)
+        const updatedDoor = updatedFloor?.doors?.find(d => d.id === selected.id)
+        
+        if (updatedDoor && updatedFloor) {
+          const { validateDoorMove } = require('@/core/services')
+          const validation = validateDoorMove(updatedDoor, updatedFloor)
+          if (!validation.valid) {
+            isValid = false
+            validationMessage = validation.message ?? 'Déplacement invalide - porte hors du mur'
+            break
+          }
+        }
       }
     }
     
@@ -404,7 +483,7 @@ export function useElementDrag({
       
       updateState({}, true, description)
     } else {
-      // Le drag est invalide, restaurer l'état original
+      // Le drag est invalide, restaurer l'état original COMPLET (éléments + enfants)
       const updatedFloors = state.floors.map(floor => {
         if (floor.id !== currentFloor.id) return floor
         
@@ -414,45 +493,73 @@ export function useElementDrag({
         let newArtworks = floor.artworks ? [...floor.artworks] : []
         let newVerticalLinks = floor.verticalLinks ? [...floor.verticalLinks] : []
         
-        dragState.draggedElements.forEach(selected => {
-          const original = dragState.originalElements.get(selected.id)
-          if (!original) return
-          
-          switch (selected.type) {
-            case 'room':
-              const roomIndex = newRooms.findIndex(r => r.id === selected.id)
-              if (roomIndex >= 0) {
-                newRooms[roomIndex] = original
-              }
-              break
-              
-            case 'wall':
-              const wallIndex = newWalls.findIndex(w => w.id === selected.id)
-              if (wallIndex >= 0) {
-                newWalls[wallIndex] = original
-              }
-              break
-              
-            case 'door':
-              const doorIndex = newDoors.findIndex(d => d.id === selected.id)
-              if (doorIndex >= 0) {
-                newDoors[doorIndex] = original
-              }
-              break
-              
-            case 'artwork':
-              const artworkIndex = newArtworks.findIndex(a => a.id === selected.id)
-              if (artworkIndex >= 0) {
-                newArtworks[artworkIndex] = original
-              }
-              break
-              
-            case 'verticalLink':
-              const linkIndex = newVerticalLinks.findIndex(v => v.id === selected.id)
-              if (linkIndex >= 0) {
-                newVerticalLinks[linkIndex] = original
-              }
-              break
+        // Restaurer TOUS les éléments originaux (y compris enfants)
+        Array.from(dragState.originalElements.entries()).forEach(([key, original]) => {
+          if (key.startsWith('wall_')) {
+            const wallId = key.substring(5)
+            const idx = newWalls.findIndex(w => w.id === wallId)
+            if (idx >= 0) {
+              newWalls[idx] = original
+            }
+          } else if (key.startsWith('door_')) {
+            const doorId = key.substring(5)
+            const idx = newDoors.findIndex(d => d.id === doorId)
+            if (idx >= 0) {
+              newDoors[idx] = original
+            }
+          } else if (key.startsWith('artwork_')) {
+            const artworkId = key.substring(8)
+            const idx = newArtworks.findIndex(a => a.id === artworkId)
+            if (idx >= 0) {
+              newArtworks[idx] = original
+            }
+          } else if (key.startsWith('verticalLink_')) {
+            const linkId = key.substring(13)
+            const idx = newVerticalLinks.findIndex(v => v.id === linkId)
+            if (idx >= 0) {
+              newVerticalLinks[idx] = original
+            }
+          } else {
+            // Élément principal (room, wall, door, artwork, verticalLink)
+            const selected = dragState.draggedElements.find(el => el.id === key)
+            if (!selected) return
+            
+            switch (selected.type) {
+              case 'room':
+                const roomIndex = newRooms.findIndex(r => r.id === key)
+                if (roomIndex >= 0) {
+                  newRooms[roomIndex] = original
+                }
+                break
+                
+              case 'wall':
+                const wallIndex = newWalls.findIndex(w => w.id === key)
+                if (wallIndex >= 0) {
+                  newWalls[wallIndex] = original
+                }
+                break
+                
+              case 'door':
+                const doorIndex = newDoors.findIndex(d => d.id === key)
+                if (doorIndex >= 0) {
+                  newDoors[doorIndex] = original
+                }
+                break
+                
+              case 'artwork':
+                const artworkIndex = newArtworks.findIndex(a => a.id === key)
+                if (artworkIndex >= 0) {
+                  newArtworks[artworkIndex] = original
+                }
+                break
+                
+              case 'verticalLink':
+                const linkIndex = newVerticalLinks.findIndex(v => v.id === key)
+                if (linkIndex >= 0) {
+                  newVerticalLinks[linkIndex] = original
+                }
+                break
+            }
           }
         })
         

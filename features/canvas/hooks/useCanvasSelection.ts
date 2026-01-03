@@ -140,26 +140,23 @@ export function useCanvasSelection(
     for (const door of currentFloor.doors) {
       // Convertir coordonnées grille -> pixels
       const GRID_SIZE = 40
-      for (let i = 0; i < 2; i++) {
-        const endpoint = {
-          x: door.segment[i].x * GRID_SIZE,
-          y: door.segment[i].y * GRID_SIZE
-        }
-        const dist = distance(point, endpoint)
-        
-        if (dist <= endpointTolerance) {
-          return {
-            element: { type: 'door', id: door.id },
-            selectionInfo: {
-              id: door.id,
-              type: 'door',
-              endpointIndex: i
-            },
-            hoverInfo: {
-              type: 'doorEndpoint',
-              id: door.id,
-              endpoint: i === 0 ? 'start' : 'end'
-            }
+      const doorCenter = {
+        x: (door.segment[0].x + door.segment[1].x) / 2 * GRID_SIZE,
+        y: (door.segment[0].y + door.segment[1].y) / 2 * GRID_SIZE
+      }
+      const dist = distance(point, doorCenter)
+      
+      if (dist <= tolerance) {
+        return {
+          element: { type: 'door', id: door.id },
+          selectionInfo: {
+            id: door.id,
+            type: 'door',
+            doorId: door.id
+          },
+          hoverInfo: {
+            type: 'door',
+            id: door.id
           }
         }
       }

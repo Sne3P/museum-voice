@@ -270,6 +270,7 @@ export function useCanvasInteraction({
       if (distance > dragThreshold) {
         const selectionInfo = mouseDownInfo.selectionInfo
         
+
         // Priorité 0 : Drag wallVertex (vertex de mur)
         if (selectionInfo?.type === 'wallVertex' && selectionInfo?.wallId !== undefined) {
           wallEndpointEdit.startEdit(

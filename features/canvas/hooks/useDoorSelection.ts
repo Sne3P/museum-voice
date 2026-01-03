@@ -111,7 +111,7 @@ export function useDoorSelection({
   const updateDrag = useCallback((point: Point) => {
     if (!state.isDragging || !state.selectedDoor || !state.startPoint) return
 
-    const snappedPoint = snapToGrid(point, GRID_SIZE)
+    // Ne pas snapper ici - le snap sera fait dans translateDoorAlongSegment/resizeDoor
     const door = state.selectedDoor
 
     // Trouver le mur partagé pour cette porte
@@ -135,10 +135,10 @@ export function useDoorSelection({
 
     if (state.editMode === 'move') {
       // Translation le long du segment
-      newDoor = translateDoorAlongSegment(door, snappedPoint, sharedWall.segment)
+      newDoor = translateDoorAlongSegment(door, point, sharedWall.segment)
     } else if (state.editMode === 'resize-start' || state.editMode === 'resize-end') {
       // Redimensionnement
-      newDoor = resizeDoor(door, snappedPoint, state.editMode, sharedWall.segment)
+      newDoor = resizeDoor(door, point, state.editMode, sharedWall.segment)
     }
 
     if (!newDoor) {
@@ -238,9 +238,17 @@ function translateDoorAlongSegment(
   targetPoint: Point,
   wallSegment: readonly [Point, Point]
 ): Door | null {
-  const [wallStart, wallEnd] = wallSegment
+  // wallSegment est en unités de grille, convertir en pixels pour calculs
+  const wallStart = {
+    x: wallSegment[0].x * GRID_SIZE,
+    y: wallSegment[0].y * GRID_SIZE
+  }
+  const wallEnd = {
+    x: wallSegment[1].x * GRID_SIZE,
+    y: wallSegment[1].y * GRID_SIZE
+  }
 
-  // Projeter le point cible sur le segment du mur
+  // Projeter le point cible (en pixels) sur le segment du mur (en pixels)
   const projectedPoint = projectPointOntoSegment(targetPoint, wallStart, wallEnd)
 
   // Calculer le vecteur direction du mur
@@ -253,19 +261,30 @@ function translateDoorAlongSegment(
   const ux = dx / length
   const uy = dy / length
 
-  // Demi-largeur en pixels
+  // Demi-largeur de la porte en pixels
   const halfWidth = (door.width / 0.5) * GRID_SIZE / 2
 
-  // Nouveaux points de la porte EN UNITÉS DE GRILLE
-  const newStart: Point = {
-    x: Math.round((projectedPoint.x - ux * halfWidth) / GRID_SIZE),
-    y: Math.round((projectedPoint.y - uy * halfWidth) / GRID_SIZE)
+  // Nouveaux points de la porte en pixels
+  const newStartPixels = {
+    x: projectedPoint.x - ux * halfWidth,
+    y: projectedPoint.y - uy * halfWidth
   }
 
-  const newEnd: Point = {
-    x: Math.round((projectedPoint.x + ux * halfWidth) / GRID_SIZE),
-    y: Math.round((projectedPoint.y + uy * halfWidth) / GRID_SIZE)
+  const newEndPixels = {
+    x: projectedPoint.x + ux * halfWidth,
+    y: projectedPoint.y + uy * halfWidth
   }
+
+  // Convertir en unités de grille et snapper
+  const newStart: Point = snapToGrid({
+    x: newStartPixels.x / GRID_SIZE,
+    y: newStartPixels.y / GRID_SIZE
+  }, 1)
+
+  const newEnd: Point = snapToGrid({
+    x: newEndPixels.x / GRID_SIZE,
+    y: newEndPixels.y / GRID_SIZE
+  }, 1)
 
   return {
     ...door,
@@ -282,32 +301,40 @@ function resizeDoor(
   mode: 'resize-start' | 'resize-end',
   wallSegment: readonly [Point, Point]
 ): Door | null {
-  const [wallStart, wallEnd] = wallSegment
+  // wallSegment est en unités de grille, convertir en pixels
+  const wallStart = {
+    x: wallSegment[0].x * GRID_SIZE,
+    y: wallSegment[0].y * GRID_SIZE
+  }
+  const wallEnd = {
+    x: wallSegment[1].x * GRID_SIZE,
+    y: wallSegment[1].y * GRID_SIZE
+  }
 
-  // Projeter le point cible sur le segment du mur
+  // Projeter le point cible (en pixels) sur le segment du mur (en pixels)
   const projectedPoint = projectPointOntoSegment(targetPoint, wallStart, wallEnd)
 
-  // Point fixe (l'autre extrémité)
+  // Point fixe (l'autre extrémité) en pixels
   const fixedPointGrid = mode === 'resize-start' ? door.segment[1] : door.segment[0]
   const fixedPointPixels = {
     x: fixedPointGrid.x * GRID_SIZE,
     y: fixedPointGrid.y * GRID_SIZE
   }
 
-  // Calculer nouvelle largeur
+  // Calculer nouvelle largeur en pixels
   const newWidthPixels = distance(fixedPointPixels, projectedPoint)
   const newWidthMeters = (newWidthPixels / GRID_SIZE) * 0.5
 
-  // Vérifier contraintes
+  // Vérifier contraintes de largeur
   if (newWidthMeters < CONSTRAINTS.door.minWidth || newWidthMeters > CONSTRAINTS.door.maxWidth) {
     return null
   }
 
-  // Convertir le point mobile en unités de grille
-  const newMovingPoint: Point = {
-    x: Math.round(projectedPoint.x / GRID_SIZE),
-    y: Math.round(projectedPoint.y / GRID_SIZE)
-  }
+  // Convertir le point mobile en unités de grille et snapper
+  const newMovingPoint: Point = snapToGrid({
+    x: projectedPoint.x / GRID_SIZE,
+    y: projectedPoint.y / GRID_SIZE
+  }, 1)
 
   const newSegment: readonly [Point, Point] = mode === 'resize-start'
     ? [newMovingPoint, fixedPointGrid]
