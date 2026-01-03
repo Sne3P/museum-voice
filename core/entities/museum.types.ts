@@ -11,6 +11,7 @@ import type { Point } from './geometry.types'
 export interface Room {
   readonly id: string
   readonly polygon: ReadonlyArray<Point>
+  readonly holes?: ReadonlyArray<ReadonlyArray<Point>>
 }
 
 // ==================== ARTWORK ====================

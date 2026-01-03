@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { runQuery, getRow } from '@/lib/database-sqlite'
+import { queryPostgres } from '@/lib/database-postgres'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,19 +13,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Vérifier que le token existe et n'est pas déjà utilisé
-    const existingToken = await getRow(
-      'SELECT token, created_by, created_at, is_used FROM qr_code WHERE token = ?',
+    const existingTokens = await queryPostgres<any>(
+      'SELECT token, created_by, created_at, is_used FROM qr_code WHERE token = $1',
       [token]
     )
 
-    if (!existingToken) {
+    if (existingTokens.length === 0) {
       return NextResponse.json(
         { error: 'Token invalide' },
         { status: 400 }
       )
     }
 
-    if (existingToken.is_used === 1) {
+    const existingToken = existingTokens[0]
+    if (existingToken.is_used) {
       return NextResponse.json(
         { error: 'Token déjà utilisé' },
         { status: 400 }
@@ -33,21 +34,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Marquer le token comme utilisé
-    const result = await runQuery(
-      'UPDATE qr_code SET is_used = 1, used_at = CURRENT_TIMESTAMP WHERE token = ?',
+    await queryPostgres(
+      'UPDATE qr_code SET is_used = true, used_at = CURRENT_TIMESTAMP WHERE token = $1',
       [token]
     )
-    
-    if (result.changes === 0) {
-      return NextResponse.json(
-        { error: 'Erreur lors de la mise à jour du token' },
-        { status: 500 }
-      )
-    }
 
     // Récupérer les données mises à jour
-    const updatedToken = await getRow(
-      'SELECT token, created_by, created_at, used_at FROM qr_code WHERE token = ?',
+    const updatedTokens = await queryPostgres<any>(
+      'SELECT token, created_by, created_at, used_at FROM qr_code WHERE token = $1',
       [token]
     )
 

@@ -1,27 +1,64 @@
-# Visual museum editor
+# Museum Voice - Éditeur Visuel de Plans
 
-*Automatically synced with your museumvoice deployments*
+Éditeur interactif pour créer des plans de musées avec artworks, liaisons verticales (escaliers, ascenseurs), et génération de parcours guidés.
 
-## Overview
+## 🚀 Démarrage Rapide
 
-This repository will stay in sync with your deployed chats on museumvoice.
-Any changes you make to your deployed app will be automatically pushed to this repository from museumvoice.
+```bash
+# Lancer avec Docker
+docker-compose up -d
 
-## Deployment
+# Accès
+- Application: http://localhost:3000
+- Base de données PostgreSQL: localhost:5432
+```
 
-Your project is live at:
+## 📁 Structure
 
-**[https://vercel.com/bastien-roberts-projects-f58df83a/v0-visual-museum-editor](https://vercel.com/bastien-roberts-projects-f58df83a/v0-visual-museum-editor)**
+```
+app/              # Next.js App Router (pages, API routes)
+core/             # Services métier, types, constantes (DRY)
+features/         # Composants fonctionnels (canvas, editor, toolbar)
+shared/           # Composants UI réutilisables, hooks
+components/       # Composants UI de base (auth, theme, ui/)
+lib/              # Clients DB (PostgreSQL)
+database/         # Scripts SQL init
+backend/          # Python RAG engine (séparé)
+legacy/           # Ancien code archivé
+```
 
-## Build your app
+## 🛠️ Technologies
 
-Continue building your app on:
+- **Frontend**: Next.js 16, React, TypeScript, TailwindCSS
+- **Backend**: PostgreSQL 16, Python (RAG)
+- **Déploiement**: Docker, docker-compose
 
-**[https://v0.app/chat/projects/FhmbN6qpRUl](https://v0.app/chat/projects/FhmbN6qpRUl)**
+## 📐 Architecture
 
-## How It Works
+- **DRY**: Tout code centralisé dans `core/`
+- **Bottom-up**: `core/` → `shared/` → `features/` → `app/`
+- **Pas de duplication**: Vérifier `core/` avant d'écrire
 
-1. Create and modify your project using museumvoice
-2. Deploy your chats from the museumvoice interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+## 🗄️ Base de Données
+
+PostgreSQL avec sauvegarde complète des propriétés via JSON metadata :
+- Positions exactes (x, y)
+- Dimensions (width, height, thickness)
+- Connexions (connectedFloorIds, linkGroupId)
+- Types (ROOM, WALL, DOOR, ARTWORK, VERTICAL_LINK, ESCALATOR, ELEVATOR)
+
+## 📝 Scripts
+
+```bash
+# Développement local (sans Docker)
+pnpm install
+pnpm dev
+
+# Build production
+pnpm build
+pnpm start
+```
+
+## 🔧 Variables d'Environnement
+
+Voir `.env.local.example`

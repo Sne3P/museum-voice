@@ -1,11 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { runQuery, getRow } from '@/lib/database-sqlite'
+﻿import { NextRequest, NextResponse } from 'next/server'
+import { queryPostgres } from '@/lib/database-postgres'
 
 export async function POST(request: NextRequest) {
   try {
     const { userId, userName } = await request.json()
 
-    // Générer un token unique
     const generateToken = () => {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
       let token = ''
@@ -19,11 +18,10 @@ export async function POST(request: NextRequest) {
     let isUnique = false
     let attempts = 0
     
-    // Vérifier l'unicité du token (max 5 tentatives)
     while (!isUnique && attempts < 5) {
-      const existingToken = await getRow('SELECT token FROM qr_code WHERE token = ?', [token])
+      const existingTokens = await queryPostgres<any>('SELECT token FROM qr_code WHERE token = $1', [token])
       
-      if (!existingToken) {
+      if (existingTokens.length === 0) {
         isUnique = true
       } else {
         token = generateToken()
@@ -32,29 +30,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isUnique) {
-      return NextResponse.json(
-        { error: 'Impossible de générer un token unique' },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'Impossible de générer un token unique' }, { status: 500 })
     }
 
-    // Insérer le nouveau token dans la base de données
-    const result = await runQuery(
-      'INSERT INTO qr_code (token, created_by, is_used) VALUES (?, ?, 0)',
+    await queryPostgres(
+      'INSERT INTO qr_code (token, created_by, is_used) VALUES ($1, $2, false)',
       [token, userName]
     )
-    
-    if (result.changes === 0) {
-      return NextResponse.json(
-        { error: 'Erreur lors de la création du token' },
-        { status: 500 }
-      )
-    }
 
-    // Récupérer les détails du token créé
-    const createdToken = await getRow(
-      'SELECT token, created_at FROM qr_code WHERE qr_code_id = ?',
-      [result.lastID]
+    const createdTokens = await queryPostgres<any>(
+      'SELECT token, created_at FROM qr_code WHERE token = $1',
+      [token]
     )
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
@@ -64,15 +50,12 @@ export async function POST(request: NextRequest) {
       success: true,
       token: token,
       url: qrUrl,
-      createdAt: createdToken.created_at
+      createdAt: createdTokens[0].created_at
     })
 
   } catch (error) {
     console.error('Erreur génération QR code:', error)
-    return NextResponse.json(
-      { error: 'Erreur serveur lors de la génération du QR code' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Erreur serveur lors de la génération du QR code' }, { status: 500 })
   }
 }
 
@@ -82,47 +65,22 @@ export async function GET(request: NextRequest) {
     const token = searchParams.get('token')
 
     if (!token) {
-      return NextResponse.json(
-        { error: 'Token manquant' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Token manquant' }, { status: 400 })
     }
 
-    // Vérifier le token dans la base de données
-    const qrData = await getRow(
-      'SELECT token, created_by, created_at, is_used, used_at FROM qr_code WHERE token = ?',
+    const tokens = await queryPostgres<any>(
+      'SELECT token, created_by, created_at, is_used, used_at FROM qr_code WHERE token = $1',
       [token]
     )
 
-    if (!qrData) {
-      return NextResponse.json(
-        { error: 'Token invalide' },
-        { status: 404 }
-      )
+    if (tokens.length === 0) {
+      return NextResponse.json({ error: 'Token invalide' }, { status: 404 })
     }
 
-    if (qrData.is_used === 1) {
-      return NextResponse.json(
-        { 
-          error: 'Token déjà utilisé', 
-          usedAt: qrData.used_at 
-        },
-        { status: 410 }
-      )
-    }
-
-    return NextResponse.json({
-      valid: true,
-      token: qrData.token,
-      createdBy: qrData.created_by,
-      createdAt: qrData.created_at
-    })
+    return NextResponse.json({ token: tokens[0] })
 
   } catch (error) {
-    console.error('Erreur vérification token:', error)
-    return NextResponse.json(
-      { error: 'Erreur serveur lors de la vérification du token' },
-      { status: 500 }
-    )
+    console.error('Erreur récupération token:', error)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }

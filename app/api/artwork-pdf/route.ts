@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { executeTransaction } from '@/lib/database'
+import { executeTransaction } from '@/lib/database-postgres'
 
 export async function POST(request: NextRequest) {
   try {

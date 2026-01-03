@@ -11,7 +11,7 @@ import { Canvas } from "@/features/canvas"
 import { Toolbar, FloorTabs, ArtworkPdfDialog } from "./components"
 import { HistoryButtons } from "@/shared/components/HistoryButtons"
 import { PropertiesModal } from "@/shared/components/PropertiesModal"
-import { useHistory, useKeyboardShortcuts } from "@/shared/hooks"
+import { useHistory, useKeyboardShortcuts, useAutoSave } from "@/shared/hooks"
 import type { EditorState, Tool, Floor, Artwork, MeasurementState, SelectedElement } from "@/core/entities"
 import { HISTORY_ACTIONS } from "@/core"
 import { executeSupprimer, executeCopier, executeColler, removeFloorFromVerticalLinks } from "@/core/services"
@@ -50,75 +50,30 @@ export function MuseumEditor() {
   })
 
   const [pdfDialogArtwork, setPdfDialogArtwork] = useState<Artwork | null>(null)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
   const [isLoading, setIsLoading] = useState(true)
-  const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [propertiesModalOpen, setPropertiesModalOpen] = useState(false)
   const [propertiesElement, setPropertiesElement] = useState<{ type?: 'room' | 'artwork' | 'wall' | 'door' | 'verticalLink', id?: string }>({})
 
   const currentFloor = state.floors.find((f) => f.id === state.currentFloorId)!
 
-  // ==================== CHARGEMENT ====================
+  // ==================== SAUVEGARDE AUTO + CHARGEMENT ====================
 
-  const loadFromDatabase = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      const response = await fetch('/api/load-from-db')
-      const result = await response.json()
-      
-      if (result.success && result.data) {
-        console.log('📥 Plan chargé depuis DB')
-        setState(result.data)
-      } else {
-        console.log('ℹ️ Plan par défaut')
-      }
-    } catch (error) {
-      console.error('❌ Erreur chargement:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+  const { saveStatus, lastSaved, save: handleManualSave, load: loadFromDatabase } = useAutoSave(state, {
+    enabled: true,
+    delay: 5000
+  })
 
   useEffect(() => {
-    loadFromDatabase()
-  }, [loadFromDatabase])
-
-  // ==================== SAUVEGARDE ====================
-
-  const autoSave = useCallback(async (currentState: EditorState, isManual = false) => {
-    try {
-      if (isManual) setSaveStatus('saving')
-      
-      const response = await fetch('/api/save-to-db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exportData: currentState })
-      })
-
-      const result = await response.json()
-      if (result.success) {
-        setLastSaved(new Date())
-        if (isManual) {
-          setSaveStatus('success')
-          setTimeout(() => setSaveStatus('idle'), 2000)
-        }
-        console.log('✅ Sauvegarde OK')
-      } else {
-        throw new Error(result.error || 'Erreur sauvegarde')
+    async function loadInitialData() {
+      setIsLoading(true)
+      const loadedState = await loadFromDatabase()
+      if (loadedState) {
+        setState(loadedState)
       }
-    } catch (error) {
-      console.error('❌ Erreur sauvegarde:', error)
-      if (isManual) {
-        setSaveStatus('error')
-        setTimeout(() => setSaveStatus('idle'), 3000)
-      }
+      setIsLoading(false)
     }
-  }, [])
-
-  const handleManualSave = useCallback(async () => {
-    console.log('💾 Sauvegarde manuelle')
-    await autoSave(state, true)
-  }, [state, autoSave])
+    loadInitialData()
+  }, [loadFromDatabase])
 
   // ==================== GESTION DE L'ÉTAT & HISTORIQUE ====================
 
