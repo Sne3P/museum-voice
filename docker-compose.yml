@@ -31,7 +31,46 @@ services:
       - museum-network
 
   # ==========================================
-  # SERVICE 2 : NEXT.JS EDITOR/DASHBOARD
+  # SERVICE 2 : BACKEND PYTHON FLASK + RAG
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: museum-backend
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      # Database PostgreSQL
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_NAME: museumvoice
+      DB_USER: museum_admin
+      DB_PASSWORD: Museum@2026!Secure
+      
+      # Flask
+      FLASK_ENV: development
+      FLASK_APP: rag/main.py
+      
+      # LLM API Keys
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "5000:5000"
+    networks:
+      - museum-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================
+  # SERVICE 3 : NEXT.JS EDITOR/DASHBOARD
   # ==========================================
   app:
     build:
@@ -42,6 +81,8 @@ services:
     depends_on:
       database:
         condition: service_healthy
+      backend:
+        condition: service_healthy
     environment:
       # Database
       DB_TYPE: postgresql
@@ -50,6 +91,10 @@ services:
       DB_NAME: museumvoice
       DB_USER: museum_admin
       DB_PASSWORD: Museum@2026!Secure
+      
+      # Backend API
+      BACKEND_API_URL: http://backend:5000
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:5000
       
       # Next.js
       NODE_ENV: production
