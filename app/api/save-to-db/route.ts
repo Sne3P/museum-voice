@@ -1,5 +1,49 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { getPostgresClient } from '@/lib/database-postgres'
+import { promises as fs } from 'fs'
+import path from 'path'
+
+/**
+ * Nettoie les PDFs orphelins (fichiers uploadés mais non enregistrés)
+ */
+async function cleanupOrphanPdfs(savedOeuvres: any[]) {
+  try {
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'pdfs')
+    
+    // Lire tous les fichiers PDF
+    const files = await fs.readdir(uploadsDir).catch(() => [])
+    const pdfFiles = files.filter(f => f.toLowerCase().endsWith('.pdf'))
+    
+    if (pdfFiles.length === 0) return
+
+    // Extraire les noms de fichiers des œuvres sauvegardées
+    const savedPdfNames = new Set(
+      savedOeuvres
+        .filter(o => o.pdf_path)
+        .map(o => o.pdf_path.split('/').pop())
+    )
+
+    // Identifier et supprimer les orphelins
+    let deletedCount = 0
+    for (const filename of pdfFiles) {
+      if (!savedPdfNames.has(filename)) {
+        try {
+          await fs.unlink(path.join(uploadsDir, filename))
+          console.log(`🗑️  PDF orphelin supprimé: ${filename}`)
+          deletedCount++
+        } catch (error) {
+          console.warn(`⚠️  Impossible de supprimer ${filename}:`, error)
+        }
+      }
+    }
+
+    if (deletedCount > 0) {
+      console.log(`✅ ${deletedCount} PDF(s) orphelin(s) nettoyé(s)`)
+    }
+  } catch (error) {
+    console.error('Erreur cleanupOrphanPdfs:', error)
+  }
+}
 
 export async function POST(request: NextRequest) {
   const client = await getPostgresClient()
@@ -29,21 +73,37 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Insert oeuvres (from oeuvres_contenus)
+      // Insert oeuvres (from oeuvres_contenus) avec métadonnées enrichies
       if (exportData.oeuvres_contenus?.oeuvres) {
         for (const oeuvre of exportData.oeuvres_contenus.oeuvres) {
+          const metadata = oeuvre.metadata || {}
+          console.log(`📝 Sauvegarde œuvre: ${oeuvre.title}, metadata:`, metadata)
+          
           await client.query(
-            `INSERT INTO oeuvres (oeuvre_id, title, artist, description, image_link, pdf_link, file_path, room) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            `INSERT INTO oeuvres (
+              oeuvre_id, title, artist, description, image_link, pdf_link, file_name, file_path, room,
+              date_oeuvre, materiaux_technique, provenance, contexte_commande,
+              analyse_materielle_technique, iconographie_symbolique, 
+              reception_circulation_posterite, parcours_conservation_doc
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
             [
               oeuvre.oeuvre_id,
-              oeuvre.title,
-              oeuvre.artist,
-              oeuvre.description || '',
+              oeuvre.title || metadata.title || '',
+              oeuvre.artist || metadata.artist || '',
+              oeuvre.description || metadata.description || '',
               oeuvre.image_link || null,
               oeuvre.pdf_path || oeuvre.pdf_link || null,
+              oeuvre.pdf_path ? oeuvre.pdf_path.split('/').pop() : null,
               oeuvre.pdf_path || null,
-              oeuvre.room
+              oeuvre.room,
+              metadata.date_oeuvre || null,
+              metadata.materiaux || null,
+              metadata.provenance || null,
+              metadata.contexte || null,
+              metadata.analyse || null,
+              metadata.iconographie || null,
+              metadata.reception || null,
+              metadata.parcours || null
             ]
           )
         }
@@ -98,6 +158,11 @@ export async function POST(request: NextRequest) {
       }
 
       await client.query('COMMIT')
+      
+      // Nettoyage des PDFs orphelins en arrière-plan (ne bloque pas la réponse)
+      cleanupOrphanPdfs(exportData.oeuvres_contenus?.oeuvres || []).catch(err => {
+        console.error('❌ Erreur nettoyage PDFs orphelins:', err)
+      })
       
       return NextResponse.json({ 
         success: true,

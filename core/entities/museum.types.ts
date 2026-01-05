@@ -22,12 +22,29 @@ export interface Artwork {
   readonly xy: readonly [number, number]
   readonly size?: readonly [number, number]
   readonly name?: string
+  readonly artist?: string  // NEW: Artiste extrait du PDF
   readonly pdf_id?: string
   readonly pdfLink?: string  // Legacy - utiliser pdfPath
   readonly pdfPath?: string  // Nouveau - chemin du PDF uploadé
   readonly tempPdfFile?: File | null
   readonly tempPdfBase64?: string | null
   readonly roomId?: string  // Pour liaison parent-enfant (cascade)
+  readonly metadata?: {  // NEW: Métadonnées extraites du PDF
+    title?: string
+    artist?: string
+    date_oeuvre?: string
+    materiaux?: string
+    mouvement?: string
+    description?: string
+    lieu_naissance?: string
+    provenance?: string
+    contexte?: string
+    analyse?: string
+    iconographie?: string
+    reception?: string
+    parcours?: string
+    anecdotes?: string[]
+  }
 }
 
 // ==================== DOOR ====================

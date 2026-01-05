@@ -31,7 +31,26 @@ interface ExportOeuvre {
   image_link: string | null
   pdf_link: string | null  // Legacy
   pdf_path?: string | null  // Nouveau
+  file_name?: string | null
+  file_path?: string | null
   room: number
+  // Métadonnées extraites du PDF
+  metadata?: {
+    title?: string
+    artist?: string
+    description?: string
+    date_oeuvre?: string
+    materiaux?: string
+    mouvement?: string
+    provenance?: string
+    contexte?: string
+    analyse?: string
+    iconographie?: string
+    reception?: string
+    parcours?: string
+    lieu_naissance?: string
+    anecdotes?: string[]
+  }
 }
 
 interface ExportData {
@@ -98,6 +117,12 @@ export function convertStateToExportData(state: EditorState): ExportData {
   const chunks: any[] = []
   const relations: any[] = []
   const tempPdfs: Array<{ filename: string; base64: string }> = []
+  
+  // Map roomId (UUID) -> entity_id for artwork association
+  const roomIdToEntityId: Map<string, number> = new Map()
+  
+  // Compteur global pour numéroter les salles de façon séquentielle
+  let roomCounter = 1
 
   state.floors.forEach((floor, floorIndex) => {
     const planId = floorIndex + 1
@@ -105,17 +130,24 @@ export function convertStateToExportData(state: EditorState): ExportData {
     // ROOMS
     floor.rooms.forEach((room) => {
       const entityId = entityIdCounter++
+      
+      // Store mapping roomId -> entity_id
+      roomIdToEntityId.set(room.id, entityId)
+      
       entities.push({
         entity_id: entityId,
         plan_id: planId,
-        name: `Salle ${room.id}`,
+        name: `Salle ${roomCounter}`,  // Nom simple: Salle 1, Salle 2, etc.
         entity_type: 'ROOM',
         description: JSON.stringify({ 
           id: room.id,
-          holes: room.holes || []
+          holes: room.holes || [],
+          room_number: roomCounter  // Garder le numéro dans la description
         }),
         oeuvre_id: null
       })
+      
+      roomCounter++  // Incrémenter pour la prochaine salle
 
       room.polygon.forEach((point, index) => {
         points.push({
@@ -133,26 +165,52 @@ export function convertStateToExportData(state: EditorState): ExportData {
       const oeuvreId = oeuvreIdCounter++
       
       let finalPdfPath = artwork.pdfPath || artwork.pdfLink || null
+      let fileName: string | null = null
       
       // Gérer PDF temporaires
       if ((artwork as any).tempPdfFile && (artwork as any).tempPdfBase64) {
-        const fileName = `artwork_${artwork.id}_${Date.now()}.pdf`
+        fileName = `artwork_${artwork.id}_${Date.now()}.pdf`
         tempPdfs.push({
           filename: fileName,
           base64: (artwork as any).tempPdfBase64
         })
         finalPdfPath = `/uploads/pdfs/${fileName}`
+      } else if (finalPdfPath) {
+        // Extraire le nom du fichier du chemin
+        fileName = finalPdfPath.split('/').pop() || null
       }
+
+      // Trouver l'entity_id de la room à partir du roomId
+      const roomEntityId = artwork.roomId ? roomIdToEntityId.get(artwork.roomId) : null
 
       oeuvres.push({
         oeuvre_id: oeuvreId,
-        title: artwork.name || 'Sans titre',
-        artist: 'Artiste inconnu',
-        description: '',
+        title: artwork.name || artwork.metadata?.title || 'Sans titre',
+        artist: artwork.artist || artwork.metadata?.artist || 'Artiste inconnu',
+        description: artwork.metadata?.description || '',
         image_link: null,
         pdf_path: finalPdfPath,
         pdf_link: finalPdfPath,  // Legacy compatibility
-        room: artwork.roomId ? parseInt(artwork.roomId.split('-')[1] || '1') : 1
+        file_name: fileName || null,
+        file_path: finalPdfPath,
+        room: roomEntityId || null,  // Utiliser l'entity_id de la room ou null si pas de room
+        // Inclure toutes les métadonnées extraites du PDF
+        metadata: artwork.metadata ? {
+          title: artwork.metadata.title,
+          artist: artwork.metadata.artist,
+          description: artwork.metadata.description,
+          date_oeuvre: artwork.metadata.date_oeuvre,
+          materiaux: artwork.metadata.materiaux,
+          mouvement: artwork.metadata.mouvement,
+          provenance: artwork.metadata.provenance,
+          contexte: artwork.metadata.contexte,
+          analyse: artwork.metadata.analyse,
+          iconographie: artwork.metadata.iconographie,
+          reception: artwork.metadata.reception,
+          parcours: artwork.metadata.parcours,
+          lieu_naissance: artwork.metadata.lieu_naissance,
+          anecdotes: artwork.metadata.anecdotes
+        } : undefined
       })
 
       // Entity ARTWORK (pour la position + taille)

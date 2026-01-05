@@ -7,8 +7,30 @@
 
 volumes:
   dev_node_modules:
+  uploads_data:
+  ollama_data:
 
 services:
+  # Ollama local pour LLM (dev)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: museum-ollama-dev
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          memory: 16G  # Augmenté de 8G à 16G pour Mistral plus rapide
+
   # Backend Python - Hot-reload
   backend:
     build:
@@ -18,6 +40,10 @@ services:
     environment:
       FLASK_ENV: development
       FLASK_DEBUG: "1"
+      OLLAMA_API_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma:2b
+    depends_on:
+      - ollama
     volumes:
       - ./backend/rag:/app/rag:cached
       - uploads_data:/app/uploads  # Volume partagé pour PDFs

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     // Supprimer l'ancien PDF si existant
     if (oldPdfPath) {
-      const oldFullPath = path.join(process.cwd(), 'public', oldPdfPath)
+      const oldFullPath = path.join(process.cwd(), 'uploads', oldPdfPath.replace('/uploads/', ''))
       try {
         await fs.unlink(oldFullPath)
         console.log(`✅ Ancien PDF supprimé: ${oldPdfPath}`)
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const safeName = pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')
     const fileName = `artwork_${cleanArtworkId}_${timestamp}_${safeName}`
     const relativePath = `/uploads/pdfs/${fileName}`
-    const fullPath = path.join(process.cwd(), 'public', relativePath)
+    const fullPath = path.join(process.cwd(), 'public', 'uploads', 'pdfs', fileName)
     
     try {
       // Lire le fichier
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       await fs.mkdir(path.dirname(fullPath), { recursive: true })
       
       // Écrire le fichier
-      await fs.writeFile(fullPath, buffer)
+      await fs.writeFile(fullPath, new Uint8Array(buffer))
       console.log(`✅ PDF sauvegardé: ${fileName} (${pdfFile.size} bytes)`)
       
       // Vérifier après sauvegarde
@@ -116,7 +116,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Chemin PDF manquant' }, { status: 400 })
     }
 
-    const fullPath = path.join(process.cwd(), 'public', pdfPath)
+    const fullPath = path.join(process.cwd(), 'uploads', pdfPath.replace('/uploads/', ''))
     
     try {
       await fs.unlink(fullPath)

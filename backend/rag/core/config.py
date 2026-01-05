@@ -11,10 +11,11 @@ class MuseumVoiceConfig:
     
     # CHEMINS ET DOSSIERS
     BASE_DIR = Path(__file__).parent.parent  # /backend/rag/ -> /backend/
-    PDF_DIR = BASE_DIR.parent / "public/uploads/pdfs"  # Pointage vers le dossier frontend 
-    INDEXES_DIR = BASE_DIR / "indexes" 
-    DB_PATH = BASE_DIR.parent / "database/museum_v1.db"  # Utilise la même BDD que le frontend
-    CACHE_DIR = BASE_DIR / "cache"
+    UPLOADS_DIR = Path("/app/uploads")  # Volume Docker persistant
+    PDF_DIR = UPLOADS_DIR / "pdfs"
+    INDEXES_DIR = UPLOADS_DIR / "indexes"  # FAISS indexes dans volume Docker
+    CACHE_DIR = UPLOADS_DIR / "cache"      # Cache dans volume Docker
+    DB_PATH = BASE_DIR.parent / "database/museum_v1.db"
     
     # TRAITEMENT PDF
     PDF_SETTINGS = {

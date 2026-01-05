@@ -35,11 +35,14 @@ COPY requirements.txt .
 
 # Installer dépendances lourdes ML séparément (PERMANENT CACHE)
 # Torch ~800MB, sentence-transformers ~500MB - Installation 1 fois
+# OPTIMISATION: torch CPU-only + compile optimisé
 RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir \
-    torch>=2.0.0 \
-    sentence-transformers>=2.2.0 \
-    faiss-cpu>=1.7.2 \
+    torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir \
+    sentence-transformers \
+    faiss-cpu \
     numpy>=1.23.0
 
 # Installer le reste des dépendances (CACHE si requirements.txt unchanged)
@@ -63,7 +66,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # Command dev avec hot-reload
 # Note: Le code sera monté en volume dans docker-compose.dev.yml
-CMD ["python", "-m", "flask", "--app", "rag/main.py", "run", "--host=0.0.0.0", "--port=5000", "--reload", "--debug"]
+CMD ["python", "-m", "flask", "--app", "rag/main_postgres.py", "run", "--host=0.0.0.0", "--port=5000", "--reload", "--debug"]
 
 # ============================================
 # STAGE: Production (OPTIMIZED)
@@ -86,4 +89,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # Command production avec gunicorn
 # 4 workers = CPU cores, timeout 120s pour génération RAG
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "--access-logfile", "-", "rag.main:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "--access-logfile", "-", "rag.main_postgres:app"]

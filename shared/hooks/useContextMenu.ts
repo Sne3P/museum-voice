@@ -244,10 +244,10 @@ export function useContextMenu({
       }
       
       // Appliquer les modifications
-      if (updates !== null) {
+      if (updates !== null && typeof updates === 'object') {
         // Toujours fermer le menu après l'action
         const updatesWithClosedMenu = {
-          ...updates,
+          ...(updates as Record<string, any>),
           contextMenu: null,
         }
         updateState(updatesWithClosedMenu, saveHistory, historyLabel)

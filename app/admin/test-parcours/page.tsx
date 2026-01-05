@@ -1,0 +1,353 @@
+'use client'
+
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { ArrowRight, Loader2, MapPin, Clock, Route } from 'lucide-react'
+
+interface ParcoursArtwork {
+  order: number
+  oeuvre_id: number
+  title: string
+  artist: string
+  date: string
+  materiaux_technique: string
+  position: {
+    x: number
+    y: number
+    room: number
+    floor: number
+  }
+  narration: string
+  narration_word_count: number
+  distance_to_next: number
+}
+
+interface ParcoursResult {
+  parcours_id: string
+  profil: {
+    age_cible: string
+    thematique: string
+    style_texte: string
+  }
+  metadata: {
+    artwork_count: number
+    total_distance_meters: number
+    total_duration_minutes: number
+    floors_visited: number
+    rooms_visited: number
+  }
+  artworks: ParcoursArtwork[]
+}
+
+export default function TestParcoursPage() {
+  const [loading, setLoading] = useState(false)
+  const [parcours, setParcours] = useState<ParcoursResult | null>(null)
+  const [selectedNarration, setSelectedNarration] = useState<ParcoursArtwork | null>(null)
+  
+  // Options de profil
+  const [ageCible, setAgeCible] = useState('adulte')
+  const [thematique, setThematique] = useState('technique_picturale')
+  const [styleTexte, setStyleTexte] = useState('analyse')
+  const [maxArtworks, setMaxArtworks] = useState(10)
+
+  const ageOptions = [
+    { value: 'enfant', label: '👶 Enfant (6-10 ans)' },
+    { value: 'ado', label: '🧑 Ado (11-17 ans)' },
+    { value: 'adulte', label: '👤 Adulte' },
+    { value: 'senior', label: '👴 Senior' }
+  ]
+
+  const themeOptions = [
+    { value: 'technique_picturale', label: '🎨 Technique Picturale' },
+    { value: 'biographie', label: '👨‍🎨 Biographie' },
+    { value: 'historique', label: '📜 Historique' }
+  ]
+
+  const styleOptions = [
+    { value: 'analyse', label: '🔍 Analyse' },
+    { value: 'decouverte', label: '✨ Découverte' },
+    { value: 'anecdote', label: '📖 Anecdote' }
+  ]
+
+  async function generateParcours() {
+    setLoading(true)
+    setParcours(null)
+    
+    try {
+      const response = await fetch('/api/parcours/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          age_cible: ageCible,
+          thematique: thematique,
+          style_texte: styleTexte,
+          max_artworks: maxArtworks
+        })
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        setParcours(data.parcours)
+      } else {
+        alert(`Erreur: ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Erreur génération parcours:', error)
+      alert(`Erreur: ${error}`)
+    }
+    
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-2">🗺️ Test Générateur de Parcours</h1>
+          <p className="text-gray-600">
+            Générez un parcours personnalisé en fonction du profil visiteur
+          </p>
+        </div>
+
+        {/* Configuration */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>⚙️ Configuration du Profil</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Âge cible */}
+              <div>
+                <Label className="mb-2 block">Âge Cible</Label>
+                <div className="space-y-2">
+                  {ageOptions.map(option => (
+                    <label key={option.value} className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="age"
+                        value={option.value}
+                        checked={ageCible === option.value}
+                        onChange={(e) => setAgeCible(e.target.value)}
+                        className="w-4 h-4"
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Thématique */}
+              <div>
+                <Label className="mb-2 block">Thématique</Label>
+                <div className="space-y-2">
+                  {themeOptions.map(option => (
+                    <label key={option.value} className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="theme"
+                        value={option.value}
+                        checked={thematique === option.value}
+                        onChange={(e) => setThematique(e.target.value)}
+                        className="w-4 h-4"
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Style */}
+              <div>
+                <Label className="mb-2 block">Style de Texte</Label>
+                <div className="space-y-2">
+                  {styleOptions.map(option => (
+                    <label key={option.value} className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="style"
+                        value={option.value}
+                        checked={styleTexte === option.value}
+                        onChange={(e) => setStyleTexte(e.target.value)}
+                        className="w-4 h-4"
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Nombre max */}
+              <div>
+                <Label htmlFor="maxArtworks" className="mb-2 block">
+                  Nombre Max d&apos;Œuvres
+                </Label>
+                <input
+                  id="maxArtworks"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={maxArtworks}
+                  onChange={(e) => setMaxArtworks(parseInt(e.target.value))}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <Button
+                onClick={generateParcours}
+                disabled={loading}
+                className="w-full md:w-auto"
+                size="lg"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Génération en cours...
+                  </>
+                ) : (
+                  <>
+                    <Route className="mr-2 h-4 w-4" />
+                    Générer le Parcours
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Résultats */}
+        {parcours && (
+          <div className="space-y-6">
+            {/* Métadonnées */}
+            <Card>
+              <CardHeader>
+                <CardTitle>📊 Résumé du Parcours</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {parcours.metadata.artwork_count}
+                    </div>
+                    <div className="text-sm text-gray-600">Œuvres</div>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">
+                      {parcours.metadata.total_distance_meters.toFixed(0)}m
+                    </div>
+                    <div className="text-sm text-gray-600">Distance</div>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {parcours.metadata.total_duration_minutes} min
+                    </div>
+                    <div className="text-sm text-gray-600">Durée</div>
+                  </div>
+                  <div className="text-center p-4 bg-orange-50 rounded-lg">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {parcours.metadata.floors_visited}
+                    </div>
+                    <div className="text-sm text-gray-600">Étages</div>
+                  </div>
+                  <div className="text-center p-4 bg-pink-50 rounded-lg">
+                    <div className="text-2xl font-bold text-pink-600">
+                      {parcours.metadata.rooms_visited}
+                    </div>
+                    <div className="text-sm text-gray-600">Salles</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Parcours détaillé */}
+            <Card>
+              <CardHeader>
+                <CardTitle>🎯 Parcours Détaillé</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {parcours.artworks.map((artwork, idx) => (
+                    <div key={artwork.oeuvre_id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
+                              {artwork.order}
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-lg">{artwork.title}</h3>
+                              <p className="text-sm text-gray-600">{artwork.artist} • {artwork.date}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-4 text-sm text-gray-600 mb-3">
+                            <div className="flex items-center gap-1">
+                              <MapPin className="h-4 w-4" />
+                              Salle {artwork.position.room} • Étage {artwork.position.floor}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-4 w-4" />
+                              {artwork.narration_word_count} mots
+                            </div>
+                          </div>
+
+                          <p className="text-sm text-gray-700 line-clamp-2">
+                            {artwork.narration.substring(0, 150)}...
+                          </p>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => setSelectedNarration(artwork)}
+                          >
+                            Lire la narration complète
+                          </Button>
+                        </div>
+                      </div>
+
+                      {idx < parcours.artworks.length - 1 && (
+                        <div className="mt-4 pt-4 border-t flex items-center gap-2 text-sm text-gray-500">
+                          <ArrowRight className="h-4 w-4" />
+                          <span>Distance suivante: {artwork.distance_to_next.toFixed(1)}m</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Modal narration */}
+        {selectedNarration && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+              <div className="p-6 border-b">
+                <h3 className="text-xl font-bold mb-1">{selectedNarration.title}</h3>
+                <p className="text-gray-600">{selectedNarration.artist}</p>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-1">
+                <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {selectedNarration.narration}
+                </p>
+              </div>
+
+              <div className="p-4 border-t bg-gray-50 flex justify-end">
+                <Button onClick={() => setSelectedNarration(null)}>
+                  Fermer
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

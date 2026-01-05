@@ -1,14 +1,41 @@
 # ============================================
-# DOCKER COMPOSE - PRODUCTION MODE
+# DOCKER COMPOSE - PRODUCTION MODE avec Ollama
 # ============================================
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
-# Build optimisé, pas de volumes source
+# Build optimisé avec Ollama intégré pour VPS autonome
 # ============================================
 
 services:
+  # Ollama - Configuration production
+  ollama:
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 6G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    environment:
+      OLLAMA_NUM_PARALLEL: 2
+      OLLAMA_MAX_LOADED_MODELS: 1
+      OLLAMA_KEEP_ALIVE: 24h
+  
+  # Backend - Production
+  backend:
+    build:
+      target: prod
+    environment:
+      FLASK_ENV: production
+      PYTHONOPTIMIZE: 1
+      OLLAMA_API_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma:2b
+  
+  # App - Production
   app:
     build:
       target: runner
     environment:
       NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: 1
     # Pas de volumes de code source en prod

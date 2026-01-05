@@ -11,9 +11,26 @@ import type { Artwork } from '@/core/entities'
 
 interface ArtworkData {
   name: string
+  artist?: string  // NEW: Artiste extrait du PDF
   pdfFile?: File | null
   pdfPath?: string  // Chemin du PDF uploadé
   existingPdfPath?: string  // Pour suppression lors de modification
+  metadata?: {  // NEW: Métadonnées extraites du PDF
+    title?: string
+    artist?: string
+    date_oeuvre?: string
+    materiaux?: string
+    mouvement?: string
+    description?: string
+    lieu_naissance?: string
+    provenance?: string
+    contexte?: string
+    analyse?: string
+    iconographie?: string
+    reception?: string
+    parcours?: string
+    anecdotes?: string[]
+  }
 }
 
 interface ArtworkPropertiesModalProps {
@@ -81,28 +98,86 @@ export function ArtworkPropertiesModal({
         formData.append('oldPdfPath', existingPath)
       }
 
-      const response = await fetch('/api/artwork-pdf', {
+      // 1. Upload du fichier
+      const uploadResponse = await fetch('/api/artwork-pdf', {
         method: 'POST',
         body: formData
       })
 
-      const result = await response.json()
+      const uploadResult = await uploadResponse.json()
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Erreur upload')
+      if (!uploadResponse.ok) {
+        throw new Error(uploadResult.error || 'Erreur upload')
       }
 
-      // Mettre à jour avec le chemin du fichier uploadé
-      setArtworks(prev => prev.map((artwork, i) => 
-        i === index ? { 
-          ...artwork, 
-          pdfFile: file,
-          pdfPath: result.pdfPath,
-          existingPdfPath: result.pdfPath
-        } : artwork
-      ))
+      console.log('✅ PDF uploadé:', uploadResult.pdfPath)
 
-      console.log('✅ PDF uploadé:', result.pdfPath)
+      // 2. Extraire les métadonnées du PDF via le backend
+      try {
+        const metadataFormData = new FormData()
+        metadataFormData.append('file', file)
+        metadataFormData.append('pdf_path', uploadResult.pdfPath)
+
+        const metadataResponse = await fetch('/api/extract-pdf-metadata', {
+          method: 'POST',
+          body: metadataFormData
+        })
+
+        if (metadataResponse.ok) {
+          const metadataResult = await metadataResponse.json()
+          
+          if (metadataResult.success && metadataResult.metadata) {
+            const { title, artist } = metadataResult.metadata
+            
+            // Mettre à jour avec le chemin ET les métadonnées extraites
+            setArtworks(prev => prev.map((artwork, i) => 
+              i === index ? { 
+                ...artwork, 
+                name: title || artwork.name || '',
+                artist: artist || '',
+                pdfFile: file,
+                pdfPath: uploadResult.pdfPath,
+                existingPdfPath: uploadResult.pdfPath,
+                metadata: metadataResult.metadata
+              } : artwork
+            ))
+
+            console.log('✅ Métadonnées extraites:', { title, artist })
+          } else {
+            // Métadonnées non extraites, juste le chemin
+            setArtworks(prev => prev.map((artwork, i) => 
+              i === index ? { 
+                ...artwork, 
+                pdfFile: file,
+                pdfPath: uploadResult.pdfPath,
+                existingPdfPath: uploadResult.pdfPath
+              } : artwork
+            ))
+          }
+        } else {
+          console.warn('⚠️ Extraction métadonnées échouée, utilisation du nom manuel')
+          // Juste mettre à jour le chemin sans métadonnées
+          setArtworks(prev => prev.map((artwork, i) => 
+            i === index ? { 
+              ...artwork, 
+              pdfFile: file,
+              pdfPath: uploadResult.pdfPath,
+              existingPdfPath: uploadResult.pdfPath
+            } : artwork
+          ))
+        }
+      } catch (metadataError) {
+        console.error('❌ Erreur extraction métadonnées:', metadataError)
+        // Continuer sans métadonnées
+        setArtworks(prev => prev.map((artwork, i) => 
+          i === index ? { 
+            ...artwork, 
+            pdfFile: file,
+            pdfPath: uploadResult.pdfPath,
+            existingPdfPath: uploadResult.pdfPath
+          } : artwork
+        ))
+      }
       
     } catch (error) {
       console.error('❌ Erreur upload PDF:', error)

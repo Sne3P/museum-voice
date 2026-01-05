@@ -9,16 +9,25 @@ let pool: Pool | null = null
 
 export async function getPostgresPool(): Promise<Pool> {
   if (!pool) {
-    pool = new Pool({
+    const config = {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '5432'),
       database: process.env.DB_NAME || 'museumvoice',
       user: process.env.DB_USER || 'museum_admin',
-      password: process.env.DB_PASSWORD,
+      password: process.env.DB_PASSWORD || 'Museum@2026!Secure',
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
+    }
+    
+    console.log('[PostgreSQL] Connexion avec:', {
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      user: config.user
     })
+    
+    pool = new Pool(config)
 
     pool.on('error', (err) => {
       console.error('❌ Unexpected PostgreSQL error:', err)

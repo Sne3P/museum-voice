@@ -6,7 +6,31 @@
 
 services:
   # ==========================================
-  # SERVICE 1 : POSTGRESQL DATABASE
+  # SERVICE 1 : OLLAMA LLM LOCAL
+  # ==========================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: museum-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - museum-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          memory: 8G  # Limite mémoire pour Ollama + Mistral
+
+  # ==========================================
+  # SERVICE 2 : POSTGRESQL DATABASE
   # ==========================================
   database:
     image: postgres:16-alpine
@@ -31,7 +55,7 @@ services:
       - museum-network
 
   # ==========================================
-  # SERVICE 2 : BACKEND PYTHON FLASK + RAG
+  # SERVICE 3 : BACKEND PYTHON FLASK + RAG
   # ==========================================
   backend:
     build:
@@ -43,6 +67,8 @@ services:
     depends_on:
       database:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
     environment:
       # Database PostgreSQL
       DB_HOST: database
@@ -53,13 +79,19 @@ services:
       
       # Flask
       FLASK_ENV: development
-      FLASK_APP: rag/main.py
+      FLASK_APP: rag.main_postgres
       
-      # LLM API Keys
+      # Ollama LOCAL
+      OLLAMA_API_URL: http://ollama:11434
+      OLLAMA_MODEL: mistral
+      
+      # LLM API Keys (non utilisées si Ollama actif)
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
       - "5000:5000"
+    volumes:
+      - uploads_data:/app/uploads
     networks:
       - museum-network
     healthcheck:
@@ -70,7 +102,7 @@ services:
       start_period: 40s
 
   # ==========================================
-  # SERVICE 3 : NEXT.JS EDITOR/DASHBOARD
+  # SERVICE 4 : NEXT.JS EDITOR/DASHBOARD
   # ==========================================
   app:
     build:
@@ -122,6 +154,8 @@ volumes:
     name: museum-postgres-data
   uploads_data:
     name: museum-uploads-data
+  ollama_data:
+    name: museum-ollama-models
 
 # ==========================================
 # RÉSEAU INTERNE

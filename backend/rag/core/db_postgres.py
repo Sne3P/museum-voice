@@ -32,8 +32,11 @@ def _connect_postgres():
         database=config['database'],
         user=config['user'],
         password=config['password'],
-        cursor_factory=RealDictCursor
+        cursor_factory=RealDictCursor,
+        client_encoding='UTF8'
     )
+    # S'assurer que le client utilise UTF-8
+    conn.set_client_encoding('UTF8')
     return conn
 
 

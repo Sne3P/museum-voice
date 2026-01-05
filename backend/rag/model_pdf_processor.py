@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Processeur PDF conforme au modèle standardisé (version corrigée)
+Compatible PostgreSQL et SQLite
 """
 
 import re
@@ -8,15 +9,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import PyPDF2
 
-from model_db import add_artwork, add_artist, add_movement, add_anecdote, _connect_structured
-
 
 class ModelCompliantPDFProcessor:
-    """Processeur PDF conforme au modèle standardisé"""
+    """
+    Processeur PDF conforme au modèle standardisé
+    Extrait les métadonnées des PDFs selon le modèle Museum Voice
+    """
     
-    def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path
-        
+    def __init__(self):
         # Patterns optimisés basés sur la vraie structure du PDF
         self.patterns = {
             'titre': r'Titre\s*:?\s*(.+?)(?=\nArtiste\s*:|$)',
@@ -48,57 +48,52 @@ class ModelCompliantPDFProcessor:
             return ""
     
     def extract_field(self, text: str, field_name: str) -> Optional[str]:
-        """Extrait un champ du texte avec capture complète par recherche directe"""
+        """
+        Extrait un champ du texte de manière flexible et universelle.
+        Tolère les variations : avec/sans ":", avec parenthèses explicatives, etc.
+        Gère les PDFs avec espaces entre caractères et les formats complexes.
+        """
         
-        # Délimiteurs de sections dans l'ordre du modèle PDF
-        field_mappings = {
-            'titre': ('Titre :', 'Artiste :'),
-            'artiste': ('Artiste :', 'Lieu de naissance'),
-            'lieu_naissance': ('Lieu de naissance', 'Date de l'),
-            'date_oeuvre': ('Date de l', 'Matériaux'),
-            'materiaux': ('Matériaux', 'Période'),
-            'mouvement': ('Période', 'Provenance'),
-            'provenance': ('Provenance :', 'Contexte'),
-            'contexte': ('Contexte', 'Description'),
-            'description': ('Description :', 'Analyse'),
-            'analyse': ('Analyse', 'Iconographie'),
-            'iconographie': ('Iconographie', 'Réception'),
-            'reception': ('Réception', 'Parcours'),
-            'parcours': ('Parcours', 'Anecdote')
+        # Patterns flexibles adaptés à la structure réelle des PDFs
+        # Capturent le contenu jusqu'à la prochaine section identifiable
+        # Utilisent \s pour capturer tous types d'espaces et retours à la ligne
+        patterns = {
+            'titre': r'(?i)Titre\s*:?\s*(.+?)(?=\s*Période|$)',
+            'artiste': r'(?i)Artiste\s*(?:\([^)]*\))?\s*:\s*(.+?)(?=\s*Lieu\s+de\s+naissance|$)',
+            'lieu_naissance': r'(?i)Lieu\s+de\s+naissance\s+(?:de\s+l.artiste,?\s*)?(?:dates?\s+de\s+vie\s*)?:?\s*(.+?)(?=\s*Datation|$)',
+            'date_oeuvre': r'(?i)Datation\s+de\s+l.œuvre\s*:?\s*(.+?)(?=\s*Matériau|$)',
+            'materiaux': r'(?i)Matériau\s*/?\s*Technique\s*(?:\([^)]*\))?\s*:?\s*(.+?)(?=\s*Localisation|$)',
+            'mouvement': r'(?i)Période\s*/?\s*Mouvement\s*:?\s*(.+?)(?=\s*Artiste|$)',
+            'provenance': r'(?i)Provenance\s*/?\s*Mode[^:]*:?\s*(.+?)(?=\s*Contexte|$)',
+            'contexte': r'(?i)Contexte\s*&\s*commande\s*(?:\([^)]*\))?\s*(.+?)(?=\s*Description\s+objective|$)',
+            'description': r'(?i)Description\s+objective\s*(?:\([^)]*\))?\s*(.+?)(?=\s*Analyse\s+matérielle|$)',
+            'analyse': r'(?i)Analyse\s+matérielle\s*&?\s*technique\s*(?:\([^)]*\))?\s*(.+?)(?=\s*Iconographie|$)',
+            'iconographie': r'(?i)Iconographie\s*(?:[,&]?\s*symbolique)?\s*(?:\([^)]*\))?\s*(.+?)(?=\s*Réception|$)',
+            'reception': r'(?i)Réception\s*(?:[,&]?\s*circulation)?\s*(?:\([^)]*\))?\s*(.+?)(?=\s*Parcours|$)',
+            'parcours': r'(?i)Parcours\s*(?:[,&]?\s*conservation)?\s*(?:\([^)]*\))?\s*(.+?)(?=\s*Anecdote|$)'
         }
         
-        if field_name not in field_mappings:
+        if field_name not in patterns:
             return None
-            
-        start_marker, end_marker = field_mappings[field_name]
         
-        # Recherche directe des positions
-        start_pos = text.find(start_marker)
-        if start_pos == -1:
+        match = re.search(patterns[field_name], text, re.DOTALL)
+        if not match:
             return None
-            
-        # Position après le marqueur de début et les ':'
-        content_start = start_pos + len(start_marker)
         
-        # Trouver la fin - chercher le marqueur de fin
-        end_pos = text.find(end_marker, content_start)
-        if end_pos == -1:
-            # Si pas de marqueur de fin, prendre jusqu'à la fin
-            content = text[content_start:].strip()
-        else:
-            # Extraire jusqu'au marqueur de fin
-            content = text[content_start:end_pos].strip()
+        content = match.group(1).strip()
         
-        if content:
-            # Nettoyer le contenu et supprimer les préfixes
-            original_content = content
-            content = self.clean_extracted_content(content, field_name)
-            # Log du nettoyage si nécessaire
-            if original_content != content:
-                print(f"🧹 Nettoyage {field_name}: '{original_content}' -> '{content}'")
-            return content if content and len(content) > 3 else None
+        # Nettoyage intelligent : gérer les espaces multiples et retours à la ligne
+        content = re.sub(r'\s+', ' ', content)
         
-        return None
+        # Supprimer les préfixes/suffixes inutiles
+        content = re.sub(r'^[\s:;\-]+', '', content)
+        content = re.sub(r'[\s:;\-]+$', '', content)
+        
+        if len(content) < 2:
+            return None
+        
+        print(f"✓ {field_name}: {content[:80]}{'...' if len(content) > 80 else ''}")
+        return content
     
     def clean_extracted_content(self, content: str, field_name: str) -> str:
         """Nettoie le contenu extrait en supprimant les préfixes spécifiques"""
@@ -132,23 +127,27 @@ class ModelCompliantPDFProcessor:
         return content
     
     def extract_anecdotes(self, text: str) -> List[str]:
-        """Extrait les anecdotes complètes"""
+        """Extrait les anecdotes complètes du PDF"""
         anecdotes = []
         
-        # Pattern pour capturer toutes les anecdotes complètes (multi-lignes)
-        # Utilise [\s\S]*? pour capturer tout caractère y compris les retours à la ligne
-        pattern = r'Anecdote\s*\d*\s*:\s*([\s\S]*?)(?=\nAnecdote|$)'
+        # Pattern flexible pour capturer les anecdotes
+        # Peut avoir ou non un numéro, un ":", etc.
+        # Capture depuis "Anecdote" jusqu'à la fin ou une autre section
+        pattern = r'(?:^|\n)\s*Anecdote\s*\d*\s*:?\s*([\s\S]+?)(?=\n\s*(?:Anecdote|Références|Sources|$))'
         matches = re.findall(pattern, text, re.IGNORECASE)
         
         for match in matches:
             anecdote = match.strip()
             # Nettoyer les retours à la ligne multiples mais conserver la structure
-            anecdote = re.sub(r'\n+', ' ', anecdote)  # Remplacer retours à la ligne par espaces
-            anecdote = re.sub(r'\s+', ' ', anecdote)   # Nettoyer espaces multiples
+            anecdote = re.sub(r'\s+', ' ', anecdote)
             anecdote = anecdote.strip(' :-\n\r\t')
             
-            if anecdote and len(anecdote) > 10:  # Filtrer les anecdotes trop courtes
-                anecdotes.append(anecdote)
+            # Filtrer les anecdotes trop courtes ou vides
+            if anecdote and len(anecdote) > 10:
+                # Vérifier qu'on n'a pas capturé d'autre section principale
+                if not re.search(r'^(Titre|Artiste|Description|Analyse|Contexte|Période|Matériau)\s*:', anecdote, re.IGNORECASE):
+                    anecdotes.append(anecdote)
+                    print(f"✓ Anecdote extraite ({len(anecdote)} caractères)")
         
         # Si pas d'anecdotes avec le pattern principal, essayer un pattern alternatif
         if not anecdotes:
@@ -159,7 +158,7 @@ class ModelCompliantPDFProcessor:
             
             for line in lines:
                 line = line.strip()
-                if re.match(r'Anecdote\s*\d*\s*:', line, re.IGNORECASE):
+                if re.match(r'Anecdote\s*\d*\s*:?', line, re.IGNORECASE):
                     # Sauvegarder l'anecdote précédente si elle existe
                     if current_anecdote and len(current_anecdote) > 10:
                         anecdotes.append(current_anecdote.strip())
@@ -178,128 +177,10 @@ class ModelCompliantPDFProcessor:
                 anecdotes.append(current_anecdote.strip())
         
         return anecdotes
-    
-    def process_pdf_file(self, pdf_path: str, title_override: Optional[str] = None) -> Optional[int]:
-        """Traite un fichier PDF selon le modèle avec gestion des doublons"""
-        
-        print(f"🔍 Traitement PDF modèle: {pdf_path}")
-        
-        # Vérifier si ce PDF a déjà été traité (anti-doublon)
-        pdf_filename = Path(pdf_path).name
-        try:
-            conn = _connect_structured(self.db_path)
-            cur = conn.cursor()
-            cur.execute("SELECT oeuvre_id, titre FROM oeuvres WHERE file_name = ?", (pdf_filename,))
-            existing = cur.fetchone()
-            if existing:
-                print(f"⚠️ PDF déjà traité: {pdf_filename} → {existing[1]} (ID: {existing[0]})")
-                print("💡 Utilisez cli.py option 6 pour nettoyer avant de retraiter")
-                conn.close()
-                return existing[0]
-            conn.close()
-        except Exception as e:
-            print(f"⚠️ Erreur vérification doublons: {e}")
-        
-        # Extraire le texte
-        text = self.extract_text_from_pdf(pdf_path)
-        if not text:
-            return None
-        
-        # Extraire les champs
-        data = {}
-        for field in self.patterns.keys():
-            value = self.extract_field(text, field)
-            if value:
-                data[field] = value
-        
-        print(f"📊 Données extraites: {data}")
-        
-        # Titre
-        titre = title_override or data.get('titre') or Path(pdf_path).stem
-        
-        # Artiste
-        artiste_nom = data.get('artiste')
-        artiste_id = None
-        if artiste_nom:
-            artiste_id = add_artist(
-                nom=artiste_nom,
-                lieu_naissance=data.get('lieu_naissance'),
-                db_path=self.db_path
-            )
-            print(f"👨‍🎨 Artiste: {artiste_nom} (ID: {artiste_id})")
-        
-        # Mouvement
-        mouvement_nom = data.get('mouvement')
-        mouvement_id = None
-        if mouvement_nom:
-            mouvement_id = add_movement(mouvement_nom, db_path=self.db_path)
-            print(f"🎭 Mouvement: {mouvement_nom} (ID: {mouvement_id})")
-        
-        try:
-            # Créer l'œuvre
-            artwork_id = add_artwork(
-                titre=titre,
-                artiste_nom=artiste_nom,
-                artiste_id=artiste_id,
-                date_oeuvre=data.get('date_oeuvre'),
-                materiaux_technique=data.get('materiaux'),
-                periode_mouvement=mouvement_nom,
-                mouvement_id=mouvement_id,
-                provenance=data.get('provenance'),
-                contexte_commande=data.get('contexte'),
-                description=data.get('description'),
-                analyse_materielle_technique=data.get('analyse'),
-                iconographie_symbolique=data.get('iconographie'),
-                reception_circulation_posterite=data.get('reception'),
-                parcours_conservation_doc=data.get('parcours'),
-                pdf_link=Path(pdf_path).name,
-                file_name=Path(pdf_path).name,
-                file_path=pdf_path,
-                db_path=self.db_path
-            )
-            
-            print(f"✅ Œuvre créée: {titre} (ID: {artwork_id})")
-            
-            # Ajouter les anecdotes
-            anecdotes = self.extract_anecdotes(text)
-            for i, anecdote in enumerate(anecdotes, 1):
-                anecdote_id = add_anecdote(
-                    oeuvre_id=artwork_id,
-                    contenu=anecdote,
-                    numero=i,
-                    db_path=self.db_path
-                )
-                print(f"📝 Anecdote {i} ajoutée (ID: {anecdote_id})")
-            
-            return artwork_id
-            
-        except Exception as e:
-            print(f"❌ Erreur création œuvre: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-    
-    def process_pdf_directory(self, directory_path: str) -> List[int]:
-        """Traite tous les PDFs d'un répertoire"""
-        directory = Path(directory_path)
-        if not directory.exists():
-            print(f"❌ Répertoire {directory_path} non trouvé")
-            return []
-        
-        pdf_files = list(directory.glob("*.pdf"))
-        processed_ids = []
-        
-        for pdf_file in pdf_files:
-            print(f"\n🔄 Traitement de {pdf_file.name}...")
-            artwork_id = self.process_pdf_file(str(pdf_file))
-            if artwork_id:
-                processed_ids.append(artwork_id)
-        
-        return processed_ids
 
 
-# Fonction de compatibilité
-def process_structured_pdf_file(pdf_path: str, title: Optional[str] = None, 
-                               db_path: Optional[str] = None) -> Optional[int]:
-    processor = ModelCompliantPDFProcessor(db_path)
-    return processor.process_pdf_file(pdf_path, title)
+# NOTE: Les méthodes process_pdf_file() et process_pdf_directory() ont été supprimées
+# car elles dépendaient de model_db (SQLite).
+# L'enregistrement en base de données PostgreSQL est géré par le backend Flask
+# via les fonctions dans core/db_postgres.py
+# Voir main_postgres.py pour l'implémentation complète
