@@ -62,8 +62,12 @@ export async function POST(request: NextRequest) {
     await client.query('BEGIN')
 
     try {
-      // Clear existing data
-      await client.query('TRUNCATE TABLE points, relations, entities, plans, oeuvres, chunk CASCADE')
+      // Clear existing plan data (entities, points, relations) but KEEP oeuvres and pregenerations
+      // First, remove oeuvre_id from entities to break FK cascade
+      await client.query('UPDATE entities SET oeuvre_id = NULL WHERE oeuvre_id IS NOT NULL')
+      
+      // Now truncate plan geometry safely
+      await client.query('TRUNCATE TABLE points, relations, entities, plans, chunk CASCADE')
 
       // Insert plans
       for (const plan of exportData.plan_editor.plans) {
@@ -73,7 +77,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Insert oeuvres (from oeuvres_contenus) avec métadonnées enrichies
+      // UPSERT oeuvres (update if exists, insert if new) - PRESERVE pregenerations
       if (exportData.oeuvres_contenus?.oeuvres) {
         for (const oeuvre of exportData.oeuvres_contenus.oeuvres) {
           const metadata = oeuvre.metadata || {}
@@ -85,7 +89,25 @@ export async function POST(request: NextRequest) {
               date_oeuvre, materiaux_technique, provenance, contexte_commande,
               analyse_materielle_technique, iconographie_symbolique, 
               reception_circulation_posterite, parcours_conservation_doc
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            ON CONFLICT (oeuvre_id) DO UPDATE SET
+              title = EXCLUDED.title,
+              artist = EXCLUDED.artist,
+              description = EXCLUDED.description,
+              image_link = EXCLUDED.image_link,
+              pdf_link = EXCLUDED.pdf_link,
+              file_name = EXCLUDED.file_name,
+              file_path = EXCLUDED.file_path,
+              room = EXCLUDED.room,
+              date_oeuvre = EXCLUDED.date_oeuvre,
+              materiaux_technique = EXCLUDED.materiaux_technique,
+              provenance = EXCLUDED.provenance,
+              contexte_commande = EXCLUDED.contexte_commande,
+              analyse_materielle_technique = EXCLUDED.analyse_materielle_technique,
+              iconographie_symbolique = EXCLUDED.iconographie_symbolique,
+              reception_circulation_posterite = EXCLUDED.reception_circulation_posterite,
+              parcours_conservation_doc = EXCLUDED.parcours_conservation_doc,
+              updated_at = CURRENT_TIMESTAMP`,
             [
               oeuvre.oeuvre_id,
               oeuvre.title || metadata.title || '',

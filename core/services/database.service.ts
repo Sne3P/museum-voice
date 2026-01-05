@@ -121,8 +121,12 @@ export function convertStateToExportData(state: EditorState): ExportData {
   // Map roomId (UUID) -> entity_id for artwork association
   const roomIdToEntityId: Map<string, number> = new Map()
   
-  // Compteur global pour numéroter les salles de façon séquentielle
+  // Compteurs globaux pour noms lisibles
   let roomCounter = 1
+  let doorCounter = 1
+  let wallCounter = 1
+  let stairsCounter = 1
+  let elevatorCounter = 1
 
   state.floors.forEach((floor, floorIndex) => {
     const planId = floorIndex + 1
@@ -229,13 +233,46 @@ export function convertStateToExportData(state: EditorState): ExportData {
         oeuvre_id: oeuvreId
       })
 
-      // Points (position xy)
+      // Points (rectangle complet de l'artwork: 4 coins)
+      const artworkWidth = artwork.size?.[0] || 40
+      const artworkHeight = artwork.size?.[1] || 40
+      const artworkX = artwork.xy[0]
+      const artworkY = artwork.xy[1]
+      
+      // Coin haut-gauche
       points.push({
         point_id: pointIdCounter++,
         entity_id: entityId,
-        x: artwork.xy[0],
-        y: artwork.xy[1],
+        x: artworkX,
+        y: artworkY,
         ordre: 1
+      })
+      
+      // Coin haut-droit
+      points.push({
+        point_id: pointIdCounter++,
+        entity_id: entityId,
+        x: artworkX + artworkWidth,
+        y: artworkY,
+        ordre: 2
+      })
+      
+      // Coin bas-droit
+      points.push({
+        point_id: pointIdCounter++,
+        entity_id: entityId,
+        x: artworkX + artworkWidth,
+        y: artworkY + artworkHeight,
+        ordre: 3
+      })
+      
+      // Coin bas-gauche
+      points.push({
+        point_id: pointIdCounter++,
+        entity_id: entityId,
+        x: artworkX,
+        y: artworkY + artworkHeight,
+        ordre: 4
       })
 
       // Chunks (texte associé)
@@ -251,20 +288,24 @@ export function convertStateToExportData(state: EditorState): ExportData {
     // DOORS
     floor.doors.forEach((door) => {
       const entityId = entityIdCounter++
+      
       entities.push({
         entity_id: entityId,
         plan_id: planId,
-        name: `Porte ${door.id}`,
+        name: `Porte ${doorCounter}`,  // Nom lisible: Porte 1, Porte 2, etc.
         entity_type: 'DOOR',
         description: JSON.stringify({
           id: door.id,
           width: door.width,
           room_a: door.room_a,
           room_b: door.room_b,
-          roomId: door.roomId
+          roomId: door.roomId,
+          door_number: doorCounter
         }),
         oeuvre_id: null
       })
+      
+      doorCounter++  // Incrémenter pour la prochaine porte
 
       door.segment.forEach((point, index) => {
         points.push({
@@ -275,15 +316,43 @@ export function convertStateToExportData(state: EditorState): ExportData {
           ordre: index + 1
         })
       })
+      
+      // CRÉER LES RELATIONS ENTRE LES SALLES VIA LA PORTE
+      // Trouver les entity_id des deux salles connectées
+      const roomAEntityId = door.room_a ? roomIdToEntityId.get(door.room_a) : null
+      const roomBEntityId = door.room_b ? roomIdToEntityId.get(door.room_b) : null
+      
+      if (roomAEntityId && roomBEntityId) {
+        // Relation bidirectionnelle: Room A → Room B
+        relations.push({
+          relation_id: relationIdCounter++,
+          source_id: roomAEntityId,
+          cible_id: roomBEntityId,
+          type_relation: 'DOOR'
+        })
+        
+        // Relation bidirectionnelle: Room B → Room A
+        relations.push({
+          relation_id: relationIdCounter++,
+          source_id: roomBEntityId,
+          cible_id: roomAEntityId,
+          type_relation: 'DOOR'
+        })
+      }
     })
 
     // VERTICAL LINKS
     floor.verticalLinks.forEach((link) => {
       const entityId = entityIdCounter++
+      
+      const isStairs = link.type === 'stairs'
+      const counter = isStairs ? stairsCounter++ : elevatorCounter++
+      const name = isStairs ? `Escalier ${counter}` : `Ascenseur ${counter}`
+      
       entities.push({
         entity_id: entityId,
         plan_id: planId,
-        name: `${link.type === 'stairs' ? 'Escalier' : 'Ascenseur'} ${link.id}`,
+        name: name,  // Nom lisible: Escalier 1, Ascenseur 1, etc.
         entity_type: 'VERTICAL_LINK',
         description: JSON.stringify({
           id: link.id,
@@ -293,7 +362,8 @@ export function convertStateToExportData(state: EditorState): ExportData {
           connectedFloorIds: link.connectedFloorIds,
           roomId: link.roomId,
           linkGroupId: link.linkGroupId,
-          linkNumber: link.linkNumber
+          linkNumber: link.linkNumber,
+          number: counter
         }),
         oeuvre_id: null
       })
@@ -311,20 +381,24 @@ export function convertStateToExportData(state: EditorState): ExportData {
     // WALLS
     floor.walls.forEach((wall) => {
       const entityId = entityIdCounter++
+      
       entities.push({
         entity_id: entityId,
         plan_id: planId,
-        name: `Mur ${wall.id}`,
+        name: `Mur ${wallCounter}`,  // Nom lisible: Mur 1, Mur 2, etc.
         entity_type: 'WALL',
         description: JSON.stringify({
           id: wall.id,
           thickness: wall.thickness,
           isLoadBearing: wall.isLoadBearing,
           roomId: wall.roomId,
-          path: wall.path
+          path: wall.path,
+          wall_number: wallCounter
         }),
         oeuvre_id: null
       })
+      
+      wallCounter++  // Incrémenter pour le prochain mur
 
       // Si multi-points, sauvegarder path, sinon segment
       const wallPoints = wall.path || wall.segment

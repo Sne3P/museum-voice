@@ -76,7 +76,10 @@ export default function TestParcoursPage() {
     setParcours(null)
     
     try {
-      const response = await fetch('/api/parcours/generate', {
+      const backendUrl = 'http://localhost:5000/api/parcours/generate'
+      console.log('🔄 Appel API parcours:', backendUrl)
+      
+      const response = await fetch(backendUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -87,24 +90,30 @@ export default function TestParcoursPage() {
         })
       })
 
+      console.log('📡 Réponse reçue:', response.status, response.statusText)
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
       const data = await response.json()
       
       if (data.success) {
         setParcours(data.parcours)
       } else {
-        alert(`Erreur: ${data.error}`)
+        alert(`Erreur: ${data.error || 'Erreur inconnue'}`)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur génération parcours:', error)
-      alert(`Erreur: ${error}`)
+      alert(`Erreur: ${error.message}`)
     }
     
     setLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="h-full overflow-y-auto bg-gray-50">
+      <div className="max-w-7xl mx-auto p-6 pb-20">
         <div className="mb-6">
           <h1 className="text-3xl font-bold mb-2">🗺️ Test Générateur de Parcours</h1>
           <p className="text-gray-600">

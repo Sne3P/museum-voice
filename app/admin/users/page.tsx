@@ -78,7 +78,7 @@ export default function UsersManagementPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-full overflow-y-auto bg-gray-50">
       <div className="container mx-auto p-6">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
