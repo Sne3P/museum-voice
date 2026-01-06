@@ -815,6 +815,161 @@ def generate_intelligent_parcours():
         }), 500
 
 
+@app.route('/api/parcours/map', methods=['POST'])
+def get_parcours_map():
+    """
+    Récupère les données du plan pour visualiser un parcours
+    
+    Body JSON:
+    {
+        "artworks": [{oeuvre_id, order}, ...]
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "map_data": {
+            "rooms": [{room_id, name, polygon_points: [{x, y}]}],
+            "artworks": [{oeuvre_id, title, x, y, room, order}]
+        }
+    }
+    """
+    
+    try:
+        from .core.db_postgres import _connect_postgres
+        
+        data = request.get_json()
+        artworks_input = data.get('artworks', [])
+        
+        if not artworks_input:
+            return jsonify({
+                'success': False,
+                'error': 'No artworks provided'
+            }), 400
+        
+        conn = _connect_postgres()
+        cur = conn.cursor()
+        
+        # Récupérer les IDs des œuvres
+        oeuvre_ids = [a['oeuvre_id'] for a in artworks_input]
+        order_map = {a['oeuvre_id']: a['order'] for a in artworks_input}
+        
+        # Récupérer les positions des œuvres (centre calculé)
+        # Les ARTWORK ont 4 points (rectangle), on calcule le centre
+        cur.execute("""
+            SELECT 
+                o.oeuvre_id,
+                o.title,
+                o.artist,
+                o.room,
+                AVG(p.x) as center_x,
+                AVG(p.y) as center_y,
+                COUNT(p.point_id) as point_count
+            FROM oeuvres o
+            LEFT JOIN entities e ON e.oeuvre_id = o.oeuvre_id AND e.entity_type = 'ARTWORK'
+            LEFT JOIN points p ON p.entity_id = e.entity_id
+            WHERE o.oeuvre_id = ANY(%s)
+            GROUP BY o.oeuvre_id, o.title, o.artist, o.room
+        """, (oeuvre_ids,))
+        
+        artworks_data = []
+        artworks_without_position = []
+        
+        for row in cur.fetchall():
+            if row['center_x'] is not None and row['center_y'] is not None:
+                artworks_data.append({
+                    'oeuvre_id': row['oeuvre_id'],
+                    'title': row['title'],
+                    'artist': row['artist'],
+                    'room': row['room'],
+                    'x': float(row['center_x']),
+                    'y': float(row['center_y']),
+                    'order': order_map.get(row['oeuvre_id'], 0)
+                })
+            else:
+                artworks_without_position.append(row)
+        
+        # Si des œuvres n'ont pas de position, les placer au centre de leur salle (entity ROOM)
+        if artworks_without_position:
+            for artwork in artworks_without_position:
+                # Trouver la salle ROOM entity qui correspond
+                cur.execute("""
+                    SELECT AVG(p.x) as center_x, AVG(p.y) as center_y
+                    FROM entities e
+                    JOIN points p ON p.entity_id = e.entity_id
+                    WHERE e.entity_type = 'ROOM'
+                    LIMIT 1
+                """)
+                
+                center = cur.fetchone()
+                if center and center['center_x']:
+                    artworks_data.append({
+                        'oeuvre_id': artwork['oeuvre_id'],
+                        'title': artwork['title'],
+                        'artist': artwork['artist'],
+                        'room': artwork['room'],
+                        'x': float(center['center_x']),
+                        'y': float(center['center_y']),
+                        'order': order_map.get(artwork['oeuvre_id'], 0)
+                    })
+                else:
+                    # Fallback: position arbitraire
+                    artworks_data.append({
+                        'oeuvre_id': artwork['oeuvre_id'],
+                        'title': artwork['title'],
+                        'artist': artwork['artist'],
+                        'room': artwork['room'],
+                        'x': 100.0 + (artwork['oeuvre_id'] * 50),
+                        'y': 100.0,
+                        'order': order_map.get(artwork['oeuvre_id'], 0)
+                    })
+        
+        # Récupérer TOUTES les salles du plan (pour avoir le contexte complet)
+        cur.execute("""
+            SELECT DISTINCT
+                e.entity_id as room_id,
+                e.name as room_name,
+                p.x,
+                p.y,
+                p.ordre
+            FROM entities e
+            JOIN points p ON e.entity_id = p.entity_id
+            WHERE e.entity_type = 'ROOM'
+            ORDER BY e.entity_id, p.ordre
+        """)
+        
+        rooms_dict = {}
+        for row in cur.fetchall():
+            room_id = row['room_id']
+            if room_id not in rooms_dict:
+                rooms_dict[room_id] = {
+                    'room_id': room_id,
+                    'name': row['room_name'] or f"Salle {room_id}",
+                    'polygon_points': []
+                }
+            rooms_dict[room_id]['polygon_points'].append({
+                'x': float(row['x']),
+                'y': float(row['y'])
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'map_data': {
+                'rooms': list(rooms_dict.values()),
+                'artworks': sorted(artworks_data, key=lambda a: a['order'])
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/parcours/preview', methods=['GET'])
 def preview_parcours_options():
     """

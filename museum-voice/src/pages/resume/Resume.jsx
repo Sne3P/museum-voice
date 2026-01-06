@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import ResumeProgressBar from "../../components/resume_progress_bar/ResumeProgressBar";
 import ResumeArtWorkCard from "../../components/resume_art_work_card/ResumeArtWorkCard";
 import ResumeArt from "../../components/resume_art/ResumeArt";
+import MapModal from "../../components/map_modal/MapModal";
 import "./Resume.css";
 
 const Resume = () => {
@@ -10,6 +11,7 @@ const Resume = () => {
     const [parcours, setParcours] = useState(null);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [isMapOpen, setIsMapOpen] = useState(false);
 
     useEffect(() => {
         // Charger le parcours depuis localStorage
@@ -69,7 +71,55 @@ const Resume = () => {
                 total={metadata.artwork_count} 
                 timeLeft={timeLeft}
             />
+            
             <ResumeArt />
+            
+            {/* Bouton Plan du musée */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                padding: '15px 20px',
+                background: '#f9f9f9'
+            }}>
+                <button
+                    onClick={() => setIsMapOpen(true)}
+                    style={{
+                        background: 'white',
+                        color: '#16163F',
+                        border: '2px solid #5dace2',
+                        borderRadius: '6px',
+                        padding: '12px 24px',
+                        fontSize: '1rem',
+                        fontWeight: 600,
+                        fontFamily: 'serif',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.target.style.background = '#5dace2';
+                        e.target.style.color = 'white';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.target.style.background = 'white';
+                        e.target.style.color = '#16163F';
+                    }}
+                >
+                    <span style={{ fontSize: '1.2rem' }}>🗺️</span>
+                    Plan du musée
+                </button>
+            </div>
+            
+            {/* Modal du plan */}
+            <MapModal 
+                isOpen={isMapOpen}
+                onClose={() => setIsMapOpen(false)}
+                parcours={parcours}
+                currentIndex={currentIndex}
+            />
             <ResumeArtWorkCard
                 title={currentArtwork.title || "Titre inconnu"}
                 artist={currentArtwork.artist || "Artiste inconnu"}
