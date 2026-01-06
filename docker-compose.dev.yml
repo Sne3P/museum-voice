@@ -8,6 +8,7 @@
 volumes:
   dev_node_modules:
   uploads_data:
+  audio_data:
   ollama_data:
 
 services:
@@ -49,6 +50,7 @@ services:
     volumes:
       - ./backend/rag:/app/rag:cached
       - uploads_data:/app/uploads  # Volume partagé pour PDFs
+      - audio_data:/app/uploads/audio  # Volume partagé pour audios TTS
     command: python -m flask --app rag/main_postgres.py run --host=0.0.0.0 --port=5000 --reload
 
   # Next.js App - Hot-reload  

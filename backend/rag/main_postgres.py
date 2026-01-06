@@ -25,8 +25,14 @@ from .core.pregeneration_db import (
 # Import du processeur PDF
 from .model_pdf_processor import ModelCompliantPDFProcessor
 
+# Import des routes TTS
+from .tts.routes import tts_bp
+
 app = Flask(__name__)
 CORS(app)  # Permettre requêtes depuis Next.js
+
+# Enregistrer les blueprints
+app.register_blueprint(tts_bp)
 
 # Initialiser PostgreSQL au démarrage
 print("🔄 Initialisation PostgreSQL...")
@@ -736,6 +742,7 @@ def get_artwork_chunks_api(oeuvre_id):
 def generate_intelligent_parcours():
     """
     Génère un parcours intelligent optimisé basé sur une durée cible
+    AVEC génération automatique des fichiers audio TTS
     
     Body JSON:
     {
@@ -743,7 +750,8 @@ def generate_intelligent_parcours():
         "thematique": "technique_picturale",
         "style_texte": "analyse",
         "target_duration_minutes": 60,  # 15-180 par paliers de 15min
-        "variation_seed": 1234  # Optionnel (pour reproductibilité)
+        "variation_seed": 1234,  # Optionnel (pour reproductibilité)
+        "generate_audio": true   # Optionnel (défaut: true)
     }
     
     Returns:
@@ -765,12 +773,22 @@ def generate_intelligent_parcours():
                 "artworks_detail": [...]
             },
             "artworks": [...]
+        },
+        "audio": {
+            "generated": true,
+            "count": 8,
+            "paths": {
+                "1": "/uploads/audio/parcours_1234/oeuvre_1.wav",
+                ...
+            }
         }
     }
     """
     
     try:
         from .parcours.intelligent_path_generator import generer_parcours_intelligent
+        from .tts import get_piper_service
+        import time
         
         data = request.get_json()
         
@@ -788,6 +806,7 @@ def generate_intelligent_parcours():
         # Paramètres optionnels
         target_duration = data.get('target_duration_minutes', 60)  # Défaut 1h
         variation_seed = data.get('variation_seed')
+        generate_audio = data.get('generate_audio', True)  # Par défaut, générer l'audio
         
         # Générer le parcours
         parcours_json = generer_parcours_intelligent(
@@ -798,9 +817,56 @@ def generate_intelligent_parcours():
             variation_seed=variation_seed
         )
         
+        audio_result = {
+            'generated': False,
+            'count': 0,
+            'paths': {}
+        }
+        
+        # Générer les audios si demandé
+        if generate_audio:
+            try:
+                # Extraire le parcours_id (format: "parcours_1234")
+                parcours_id_str = parcours_json.get('parcours_id', '')
+                parcours_id = int(parcours_id_str.split('_')[-1]) if '_' in parcours_id_str else int(time.time())
+                
+                # Préparer les narrations pour TTS
+                narrations = []
+                for artwork in parcours_json.get('artworks', []):
+                    narrations.append({
+                        'oeuvre_id': artwork['oeuvre_id'],
+                        'narration_text': artwork['narration']
+                    })
+                
+                # Générer les audios
+                piper = get_piper_service('fr_FR')
+                audio_paths = piper.generate_parcours_audio(
+                    parcours_id=parcours_id,
+                    narrations=narrations,
+                    language='fr_FR'
+                )
+                
+                # Intégrer les chemins audio dans les artworks
+                for artwork in parcours_json.get('artworks', []):
+                    oeuvre_id = artwork['oeuvre_id']
+                    if oeuvre_id in audio_paths:
+                        artwork['audio_path'] = audio_paths[oeuvre_id]
+                
+                audio_result = {
+                    'generated': True,
+                    'count': len(audio_paths),
+                    'paths': audio_paths
+                }
+                
+            except Exception as audio_error:
+                # Si erreur audio, on continue quand même avec le parcours
+                print(f"⚠️ Erreur génération audio: {audio_error}")
+                audio_result['error'] = str(audio_error)
+        
         return jsonify({
             'success': True,
-            'parcours': parcours_json
+            'parcours': parcours_json,
+            'audio': audio_result
         })
         
     except ValueError as e:

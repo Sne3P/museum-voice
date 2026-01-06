@@ -1,11 +1,15 @@
 import React from "react";
 import "./ResumeArt.css";
 
-const ResumeArtImage = () => {
+const ResumeArtImage = ({ imageUrl, title }) => {
+  // Utiliser l'image de l'œuvre si disponible, sinon image par défaut
+  const imageSrc = imageUrl || "/assets/images/testmuseum.png";
+  const imageAlt = title || "Museum Artwork";
+
   return (
     <img
-      src="/assets/images/testmuseum.png"
-      alt="Test Museum"
+      src={imageSrc}
+      alt={imageAlt}
       className="resume-art-image"
     />
   );

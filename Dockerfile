@@ -47,8 +47,8 @@ COPY package.json pnpm-lock.yaml* ./
 # Installer pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Installer les dépendances production uniquement
-RUN pnpm install --frozen-lockfile --prod
+# Installer TOUTES les dépendances (prod + dev) pour le build
+RUN pnpm install --frozen-lockfile
 
 # ============================================
 # ÉTAPE 2 : BUILD DE L'APPLICATION

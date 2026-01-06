@@ -94,6 +94,7 @@ services:
       - "5000:5000"
     volumes:
       - uploads_data:/app/uploads
+      - audio_data:/app/uploads/audio
     networks:
       - museum-network
     healthcheck:
@@ -140,6 +141,7 @@ services:
       - "3000:3000"
     volumes:
       - uploads_data:/app/public/uploads
+      - audio_data:/app/public/uploads/audio
     networks:
       - museum-network
     healthcheck:
@@ -162,6 +164,8 @@ services:
         condition: service_healthy
     ports:
       - "8080:80"
+    volumes:
+      - audio_data:/usr/share/nginx/html/uploads/audio:ro
     networks:
       - museum-network
     healthcheck:
@@ -178,6 +182,8 @@ volumes:
     name: museum-postgres-data
   uploads_data:
     name: museum-uploads-data
+  audio_data:
+    name: museum-audio-data
   ollama_data:
     name: museum-ollama-models
 

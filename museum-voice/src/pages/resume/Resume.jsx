@@ -72,7 +72,7 @@ const Resume = () => {
                 timeLeft={timeLeft}
             />
             
-            <ResumeArt />
+            <ResumeArt artwork={currentArtwork} />
             
             {/* Bouton Plan du musée */}
             <div style={{
