@@ -4,6 +4,8 @@
 
 export interface ThemeItem {
   name: string
+  description?: string
+  aiIndication?: string
   image?: string
 }
 
@@ -22,6 +24,7 @@ export interface MouvementArtistique extends ThemeItem {
 export interface ThematiquesData {
   centresInterets: ThemeItem[]
   mouvementsPreferes: ThemeItem[]
+  themes?: ThemeItem[]
 }
 
 export interface UploadThemeImageResponse {
