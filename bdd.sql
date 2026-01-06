@@ -1,4 +1,17 @@
 -- ===============================
+-- TABLE : museum_settings
+-- ===============================
+CREATE TABLE IF NOT EXISTS museum_settings (
+    setting_id SERIAL PRIMARY KEY,
+    setting_key TEXT UNIQUE NOT NULL,
+    setting_value JSONB NOT NULL,
+    description TEXT,
+    category TEXT DEFAULT 'general',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===============================
 -- TABLE : Stats
 -- ===============================
 CREATE TABLE IF NOT EXISTS stats (
