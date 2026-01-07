@@ -7,6 +7,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
 from typing import Optional, List, Dict, Any
+from collections import defaultdict
 
 
 def get_pg_config() -> Dict[str, str]:
@@ -381,6 +382,82 @@ def get_artwork_chunks(oeuvre_id: int) -> List[Dict[str, Any]]:
             ORDER BY chunk_index
         """, (oeuvre_id,))
         return cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+def get_criteres() -> Dict[str, List[Any]]:
+    """
+    Retourne les critères groupés par nom, triés par ordre.
+    Exemple:
+    {
+      "style_narration": ["Enfant", "Ado", "Adulte"],
+      etc
+    }
+    """
+    conn = _connect_postgres()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT *
+            FROM criterias
+            ORDER BY criteria_id
+        """)
+        rows = cur.fetchall()
+
+        options = defaultdict(list)
+        for r in rows:
+            # 1. On identifie la clé de regroupement
+            group_key = r["type"]
+        
+            item_data = dict(r)
+            
+            options[group_key].append(item_data)
+
+        return dict(options)
+
+    finally:
+        cur.close()
+        conn.close()
+        
+        
+def add_criteria(
+    cat_type: str, 
+    name: str, 
+    description: Optional[str] = None, 
+    image_link: Optional[str] = None
+) -> Optional[int]:
+    """
+    Ajoute un critère dans la base de données.
+    Retourne l'ID du nouveau critère ou None en cas d'erreur.
+    """
+    conn = _connect_postgres()
+    cur = conn.cursor()
+    
+    try:
+        # SQL avec des placeholders (%s)
+        query = """
+            INSERT INTO criterias (type, name, description, image_link)
+            VALUES (%s, %s, %s, %s)
+            RETURNING criteria_id;
+        """
+        
+        # Exécution : on passe les variables dans un tuple
+        cur.execute(query, (cat_type, name, description, image_link))
+        
+        # On récupère l'ID généré grâce au "RETURNING"
+        new_id = cur.fetchone()['criteria_id']
+        
+        # Valider la transaction
+        conn.commit()
+        print(f"Succès : '{name}' ajouté avec l'ID {new_id}")
+        return new_id
+
+    except Exception as e:
+        conn.rollback() 
+        print(f"Erreur lors de l'ajout de {name}: {e}")
+        return None
+        
     finally:
         cur.close()
         conn.close()

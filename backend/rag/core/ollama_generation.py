@@ -1,0 +1,441 @@
+import os
+import time
+import itertools
+from typing import Dict, Any, List, Optional, Tuple
+
+import requests
+from rag.core.pregeneration_db import add_pregeneration
+
+
+
+class OllamaMediationSystem:
+    """
+    Système de génération de médiations avec Ollama (inspiré du style de ton script).
+    Flux: (optionnel) setup → préparation entrée → génération par combinaisons → stats.
+
+    ⚠️ Ici, pas de RAG/BDD : on reste au plus proche de TON code initial (ollama + prompt).
+    """
+
+    def __init__(
+        self,
+        *,
+        ollama_url: Optional[str] = None,
+        default_model: str = "gemma3:4b",
+        timeout_s: int = 15000,
+        temperature: float = 0.5,
+        num_predict: int = -1,
+        verbose: bool = True,
+    ) -> None:
+        self.ollama_url = (ollama_url or os.getenv("OLLAMA_API_URL", "http://localhost:11434")).rstrip("/")
+        self.default_model = default_model
+        self.timeout_s = timeout_s
+        self.temperature = temperature
+        self.num_predict = num_predict
+        self.verbose = verbose
+
+        print("🚀 OllamaMediationSystem initialisé")
+        print(f"   Ollama URL: {self.ollama_url}")
+        print(f"   Modèle défaut: {self.default_model}")
+
+    # ---------------------------------------------------------------------
+    # Utils
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def normalize_str(x: Any) -> str:
+        return str(x).strip() if x is not None else ""
+
+    @staticmethod
+    def truncate(text: str, max_chars: int) -> str:
+        text = (text or "").strip()
+        if len(text) <= max_chars:
+            return text
+        cut = text[:max_chars]
+        if " " in cut:
+            cut = cut.rsplit(" ", 1)[0]
+        return cut + "…"
+
+    @staticmethod
+    def generate_combinaisons(criteres_dict: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
+        keys = criteres_dict.keys()
+        values = criteres_dict.values()
+        return [dict(zip(keys, combination)) for combination in itertools.product(*values)]
+
+    @staticmethod
+    def formater_parametres_criteres(combinaison: Dict[str, Dict[str, Any]]) -> str:
+        """
+        Transforme le dictionnaire de combinaison en texte formaté pour le prompt.
+        data ressemble à : {'name': 'Enfant', 'description': '...', 'id': 1}
+        """
+        lignes: List[str] = []
+        for type_critere, data in combinaison.items():
+            nom = data.get("name", "")
+            desc = data.get("description")
+            regle = data.get("regle", "")
+            label = type_critere.replace("_", " ").capitalize()
+
+            if desc or regle:
+                lignes.append(f"- {label} : {nom} (Description : {desc}, Règle : {regle})")
+            else:
+                lignes.append(f"- {label} : {nom}")
+
+        return "\n".join(lignes)
+    
+    def _check_existing(self, oeuvre_id: int, contexte: Dict[str, Any]) -> bool:
+    
+        try:
+            from rag.core.pregeneration_db import _connect_postgres
+
+            conn = _connect_postgres()
+            cur = conn.cursor()
+
+            # ✅ jsonb : on compare l'égalité stricte
+            cur.execute(
+                """
+                SELECT 1
+                FROM pregenerations
+                WHERE oeuvre_id = %s
+                AND contexte = %s::jsonb
+                LIMIT 1
+                """,
+                (oeuvre_id, contexte),
+            )
+
+            exists = cur.fetchone() is not None
+            cur.close()
+            conn.close()
+            return exists
+
+        except Exception:
+            return False
+
+
+    # ---------------------------------------------------------------------
+    # Ollama
+    # ---------------------------------------------------------------------
+    def check_ollama_available(self) -> bool:
+        """
+        Vérifie si l'API Ollama répond (simple ping).
+        """
+        try:
+            r = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    def ollama_chat(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, str]],
+        temperature: Optional[float] = None,
+        stream: bool = False,
+        timeout_s: Optional[int] = None,
+    ) -> str:
+        url = f"{self.ollama_url}/api/chat"
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": stream,
+            "options": {
+                "temperature": self.temperature if temperature is None else temperature,
+                "num_predict": self.num_predict,
+                "num_threads": 4,
+            },
+        }
+        r = requests.post(url, json=payload, timeout=(timeout_s or self.timeout_s))
+        r.raise_for_status()
+        data = r.json()
+        return data["message"]["content"]
+
+    # ---------------------------------------------------------------------
+    # Formatting oeuvre → texte prompt
+    # ---------------------------------------------------------------------
+    def oeuvre_to_prompt_text(self, payload: Dict[str, Any], *, max_chars: int = 7000) -> str:
+        titre = self.normalize_str(payload.get("title") or "Inconnu")
+        artiste = self.normalize_str(payload.get("artist") or "Inconnu")
+        date = self.normalize_str(payload.get("date_oeuvre") or "Inconnue")
+        localisation = self.normalize_str(payload.get("room") or "Non précisée")
+        technique = self.normalize_str(payload.get("materiaux_technique") or "")
+        provenance = self.normalize_str(payload.get("provenance") or "")
+
+        description = self.truncate(payload.get("description") or "", max_chars)
+        analyse = self.truncate(payload.get("analyse_materielle_technique") or "", max_chars)
+        iconographie = self.truncate(payload.get("iconographie_symbolique") or "", max_chars)
+        contexte = self.truncate(payload.get("contexte_commande") or "", max_chars)
+
+        lines: List[str] = []
+        lines.append("ENTRÉE")
+        lines.append(f"- Titre : {titre}")
+        lines.append(f"- Artiste : {artiste}")
+        lines.append(f"- Date : {date}")
+        lines.append(f"- Salle / Localisation : {localisation}")
+        if technique:
+            lines.append(f"- Technique : {technique}")
+        if provenance:
+            lines.append(f"- Provenance : {provenance}")
+
+        if description:
+            lines.append("\nDescription visuelle (à reformuler, ne pas citer mot à mot) :")
+            lines.append(description)
+
+        if analyse:
+            lines.append("\nAnalyse matérielle et technique (à reformuler) :")
+            lines.append(analyse)
+
+        if iconographie:
+            lines.append("\nIconographie et interprétation (à reformuler) :")
+            lines.append(iconographie)
+
+        if contexte:
+            lines.append("\nContexte de création (à reformuler) :")
+            lines.append(contexte)
+
+        return "\n".join(lines)
+
+    # ---------------------------------------------------------------------
+    # Prompt building
+    # ---------------------------------------------------------------------
+    def build_single_work_mediation_prompt(
+        self,
+        work_text: str,
+        *,
+        combinaison: Dict[str, Dict[str, Any]],
+        duree_minutes: int = 3,
+    ) -> List[Dict[str, str]]:
+        bloc_criteres = self.formater_parametres_criteres(combinaison)
+
+        system = (
+            "Tu es médiateur culturel et rédacteur d’audioguide de musée. "
+            "Tu respectes STRICTEMENT la contrainte : aucune info externe, aucune invention. "
+            "Tu écris pour l’oral : phrases claires, progressives, fluides."
+        )
+
+        user = f"""
+        PARAMÈTRES
+        - Langue : Français
+        - Durée cible : {duree_minutes} minute(s)
+
+        PROFIL ET ANGLE (Respecter impérativement)
+        {bloc_criteres}
+
+        SOURCE UNIQUE
+        Utilise UNIQUEMENT les informations présentes dans l’entrée d’œuvre ci-dessous.
+        N’ajoute aucune information externe. Ne déduis rien.
+        Reformule : ne cite jamais mot à mot.
+
+        INTERDICTIONS STRICTES
+        - Ne commence JAMAIS le texte par « Bienvenue ».
+        - Ne commence JAMAIS par une phrase d'introduction comme « Voici », « Je vous propose », « Voici une proposition », etc.
+        - Commence DIRECTEMENT par le texte de médiation.
+        - N’inclus AUCUNE indication sonore ou scénique
+        - N’utilise PAS de didascalies entre parenthèses ou crochets.
+        - Écris UNIQUEMENT un texte de médiation descriptif continu.
+
+        Source de données (source unique)
+        {work_text}
+
+        SORTIE ATTENDUE (TEXTE UNIQUEMENT)
+        Écris un texte de MEDIATION AUDIOGUIDE prêt à être lu à voix haute.
+        - Description progressive : de loin → de près → matière/lumière/geste → sens (uniquement si présent)
+        - Ton sobre et accessible
+        - Pas de titres, pas de listes, pas de markdown
+        - Pas d’injonctions émotionnelles (“ressentez”, “imaginez”…)
+        - Longueur adaptée à {duree_minutes} minute(s) de lecture (approx. 120–160 mots/min)
+        """.strip()
+
+        return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+    # ---------------------------------------------------------------------
+    # Génération (une narration)
+    # ---------------------------------------------------------------------
+    def generate_mediation_for_one_work(
+        self,
+        *,
+        artwork: Dict[str, Any],
+        combinaison: Dict[str, Dict[str, Any]],
+        duree_minutes: int = 3,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_chars: int = 7000,
+    ) -> Dict[str, Any]:
+        """
+        Génère UNE médiation pour une œuvre + une combinaison de critères.
+        Retour: {'success': bool, 'text': str, 'error': str|None}
+        """
+        try:
+            work_text = self.oeuvre_to_prompt_text(artwork, max_chars=max_chars)
+            
+            messages = self.build_single_work_mediation_prompt(
+                work_text,
+                combinaison=combinaison,
+                duree_minutes=duree_minutes,
+            )
+            
+            print("Prompt messages:")
+            for message in messages:
+                print(f"{message['role']}: {message['content']}")
+
+            text = self.ollama_chat(
+                model=(model or self.default_model),
+                messages=messages,
+                temperature=temperature,
+                stream=False,
+            )
+
+            if not text or len(text.strip()) < 30:
+                return {"success": False, "error": "Médiation vide ou trop courte", "text": ""}
+
+            return {"success": True, "text": text, "error": None}
+
+        except Exception as e:
+            return {"success": False, "error": str(e), "text": ""}
+
+    # ---------------------------------------------------------------------
+    # Génération style "pregenerate_artwork" (comme ton script)
+    # ---------------------------------------------------------------------
+    def pregenerate_artwork(
+        self,
+        *,
+        oeuvre_id: int,
+        artwork: Dict[str, Any],
+        combinaisons: List[Dict[str, Dict[str, Any]]],
+        duree_minutes: int = 3,
+        model: Optional[str] = None,
+        force_regenerate: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        "Prégénère" une liste de narrations (une par combinaison).
+        Ici, pas de BDD: on retourne un dict résultats + stats, mais structure très proche de ton script.
+        """
+
+        start_time = time.time()
+
+        title = artwork.get("title", f"ID {oeuvre_id}")
+        
+        self.default_model = model
+
+        print(f"\n{'='*80}")
+        print(f"🎨 GÉNÉRATION ŒUVRE ID {oeuvre_id}")
+        print(f"{'='*80}")
+        print(f"📖 Œuvre: {title}")
+        
+        print(f"Modèle utilisé: {self.default_model}")
+        
+
+        # Vérif Ollama
+        if not self.check_ollama_available():
+            print("⚠️  ATTENTION: Ollama non disponible (vérifie OLLAMA_API_URL / service)")
+
+        print("\n🤖 Génération Ollama (séquentiel)")
+
+        stats = {"generated": 0, "updated": 0, "skipped": 0, "errors": 0}
+        results: List[Dict[str, Any]] = []
+
+        total = len(combinaisons)
+        for i, combinaison in enumerate(combinaisons, 1):
+            label = self._format_combinaison_label(combinaison)
+            print(f"   [{i}/{total}] {label}...", end=" ", flush=True)
+
+            # Ici "skip" n'a de sens que si tu branches une BDD/cache.
+            # On le garde pour ressembler au script.
+            # if not force_regenerate:
+            #     stats["skipped"] += 1
+            #     print("⏭️  Skip (force_regenerate=False)")
+            #     continue
+            
+            if not force_regenerate:
+                # existing = self._check_existing(oeuvre_id, age, theme, style)
+                existing = self._check_existing(oeuvre_id, combinaison)
+                if existing:
+                    stats['skipped'] += 1
+                    continue
+
+            res = self.generate_mediation_for_one_work(
+                artwork=artwork,
+                combinaison=combinaison,
+                duree_minutes=duree_minutes,
+                model=model,
+            )
+
+            if res["success"]:
+                stats["generated"] += 1
+                print("✅ OK")
+                results.append(
+                    {
+                        "oeuvre_id": oeuvre_id,
+                        "title": title,
+                        "combinaison": combinaison,
+                        "text": res["text"],
+                    }
+                )
+                
+                
+                print(" combinaison : " + str(combinaison))
+                print("texte généré : " + res["text"])
+                
+                # SAUVEGARDER
+                pregen_id = add_pregeneration(
+                    oeuvre_id=oeuvre_id,
+                    criteria_dict=combinaison,
+                    pregeneration_text=res["text"]
+                )
+                
+                
+                
+                
+                if pregen_id:
+                    if force_regenerate:
+                        stats['updated'] += 1
+                        print(f"✅ MAJ (ID: {pregen_id})")
+                    else:
+                        stats['generated'] += 1
+                        print(f"✨ OK (ID: {pregen_id})")
+            else:
+                stats["errors"] += 1
+                print(f"❌ {str(res['error'])[:60]}")
+                results.append(
+                    {
+                        "oeuvre_id": oeuvre_id,
+                        "title": title,
+                        "combinaison": combinaison,
+                        "error": res["error"],
+                        "text": "",
+                    }
+                )
+
+        duration = time.time() - start_time
+
+        print(f"\n{'='*80}")
+        print("📊 RÉSUMÉ GÉNÉRATION")
+        print(f"{'='*80}")
+        print(f"✨ Générées: {stats['generated']}")
+        print(f"🔄 Mises à jour: {stats['updated']}")
+        print(f"⏭️  Ignorées: {stats['skipped']}")
+        print(f"❌ Erreurs: {stats['errors']}")
+        print(f"⏱️  Durée: {duration:.1f}s")
+
+        if stats["generated"] > 0 and duration > 0:
+            print(f"⚡ Vitesse: {stats['generated']/duration:.2f} narrations/seconde")
+
+        return {    # il manque la section sauvegardr
+            "success": True,
+            "oeuvre_id": oeuvre_id,
+            "title": title,
+            "stats": stats,
+            "duration": duration,
+            "results": results,
+        }
+
+    # ---------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def _format_combinaison_label(combinaison: Dict[str, Dict[str, Any]]) -> str:
+        """
+        Petit label lisible pour l'affichage console.
+        Exemple: "age=Enfant | theme=Technique | style=Découverte"
+        """
+        parts = []
+        for k, v in combinaison.items():
+            parts.append(f"{k}={v.get('name', '')}")
+        return " | ".join(parts)
