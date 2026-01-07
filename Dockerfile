@@ -28,11 +28,11 @@ COPY app ./app
 COPY components ./components
 COPY core ./core
 COPY features ./features
-COPY infrastructure ./infrastructure
+# COPY infrastructure ./infrastructure
 COPY lib ./lib
 COPY public ./public
 COPY shared ./shared
-COPY styles ./styles
+# COPY styles ./styles
 
 # Créer répertoires uploads
 RUN mkdir -p /app/public/uploads/pdfs /app/public/uploads/audio
@@ -77,11 +77,11 @@ COPY app ./app
 COPY components ./components
 COPY core ./core
 COPY features ./features
-COPY infrastructure ./infrastructure
+# COPY infrastructure ./infrastructure
 COPY lib ./lib
 COPY public ./public
 COPY shared ./shared
-COPY styles ./styles
+# COPY styles ./styles
 
 # Variables d'environnement pour le build
 ENV NEXT_TELEMETRY_DISABLED=1
