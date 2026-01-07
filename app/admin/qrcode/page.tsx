@@ -11,7 +11,7 @@ import { ArrowLeft, QrCode, Maximize2, X } from 'lucide-react'
 import QRCodeLib from 'qrcode'
 
 export default function QRCodePage() {
-  const { isAuthenticated, currentUser, hasPermission } = useAuth()
+  const { isAuthenticated, currentUser, hasPermission, isLoading } = useAuth()
   const router = useRouter()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const modalCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -22,10 +22,12 @@ export default function QRCodePage() {
   const [showModal, setShowModal] = useState(false)
 
   useEffect(() => {
+    if (isLoading) return
+    
     if (!isAuthenticated || (!hasPermission('edit_maps') && !hasPermission('manage_accueil') && !hasPermission('view_only'))) {
       router.push('/admin')
     }
-  }, [isAuthenticated, hasPermission, router])
+  }, [isLoading, isAuthenticated, hasPermission, router])
 
   const generateQRCode = async () => {
     setIsGenerating(true)

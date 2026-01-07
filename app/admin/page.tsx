@@ -8,14 +8,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Settings, Edit, Users, FileText, LogOut, QrCode, Database } from 'lucide-react'
 
 export default function AdminPage() {
-  const { isAuthenticated, logout, currentUser, hasPermission } = useAuth()
+  const { isAuthenticated, logout, currentUser, hasPermission, isLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
+    if (isLoading) return
+    
     if (!isAuthenticated) {
       router.push('/login')
     }
-  }, [isAuthenticated, router])
+  }, [isLoading, isAuthenticated, router])
 
   const handleLogout = () => {
     logout()
@@ -26,8 +28,15 @@ export default function AdminPage() {
     router.push('/editor')
   }
 
-  if (!isAuthenticated || !currentUser) {
-    return null // ou un spinner de chargement
+  if (isLoading || !isAuthenticated || !currentUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Chargement...</p>
+        </div>
+      </div>
+    )
   }
 
   const getRoleDisplay = (role: string) => {
@@ -118,22 +127,22 @@ export default function AdminPage() {
             </Card>
           )}
 
-          {/* Thématiques - Visible pour super_admin et admin_musee */}
-          {hasPermission('manage_themes') && (
+          {/* Profils de Narrations - Visible pour super_admin et admin_musee */}
+          {hasPermission('manage_profils') && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Thématiques</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Profils de Narrations</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <CardDescription className="mb-4">
-                  Gérer les centres d'intérêts et mouvements artistiques du musée
+                  Gérer les critères et paramètres de profils (âge, thématique, style de texte)
                 </CardDescription>
                 <Button 
-                  onClick={() => router.push('/admin/thematiques')} 
+                  onClick={() => router.push('/admin/profils')} 
                   className="w-full"
                 >
-                  Gérer les thématiques
+                  Gérer les profils
                 </Button>
               </CardContent>
             </Card>

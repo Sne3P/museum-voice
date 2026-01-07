@@ -202,30 +202,66 @@ CREATE TABLE IF NOT EXISTS anecdotes (
 );
 
 -- ===============================
--- TABLE : Pregenerations (COMPLÈTE)
+-- TABLE : Pregenerations (VRAIMENT DYNAMIQUE - N critères variables)
 -- ===============================
 CREATE TABLE IF NOT EXISTS pregenerations (
     pregeneration_id SERIAL PRIMARY KEY,
     oeuvre_id INTEGER NOT NULL REFERENCES oeuvres(oeuvre_id) ON DELETE CASCADE,
-    age_cible TEXT NOT NULL CHECK (age_cible IN ('enfant', 'ado', 'adulte', 'senior')),
-    thematique TEXT NOT NULL CHECK (thematique IN ('technique_picturale', 'biographie', 'historique')),
-    style_texte TEXT NOT NULL CHECK (style_texte IN ('analyse', 'decouverte', 'anecdote')),
+    criteria_combination JSONB NOT NULL,  -- {"age": 1, "thematique": 4, "style_texte": 7} - FLEXIBLE !
     pregeneration_text TEXT NOT NULL,
     voice_link TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(oeuvre_id, age_cible, thematique, style_texte)
+    UNIQUE(oeuvre_id, criteria_combination)  -- Combinaison unique par œuvre
+);
+
+-- Index pour recherche rapide par combinaison de critères
+CREATE INDEX IF NOT EXISTS idx_pregenerations_criteria_combination 
+    ON pregenerations USING GIN (criteria_combination);
+
+-- ===============================
+-- TABLE : Museum Settings (Paramètres globaux du musée)
+-- ===============================
+CREATE TABLE IF NOT EXISTS museum_settings (
+    setting_id SERIAL PRIMARY KEY,
+    setting_key TEXT NOT NULL UNIQUE,
+    setting_value JSONB,
+    description TEXT,
+    category TEXT DEFAULT 'general',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ===============================
--- TABLE : Criterias
+-- TABLE : Criteria Types (Types de critères)
+-- ===============================
+CREATE TABLE IF NOT EXISTS criteria_types (
+    type_id SERIAL PRIMARY KEY,
+    type TEXT NOT NULL UNIQUE,         -- 'age', 'thematique', 'style_texte', etc.
+    label TEXT NOT NULL,               -- 'Âge du visiteur', 'Thématique', 'Style de texte'
+    description TEXT,                  -- Description du critère
+    ordre INTEGER DEFAULT 0,           -- Ordre d'affichage dans les formulaires
+    is_required BOOLEAN DEFAULT TRUE,  -- Si le critère est obligatoire pour générer
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===============================
+-- TABLE : Criterias (Paramètres de chaque critère)
 -- ===============================
 CREATE TABLE IF NOT EXISTS criterias (
     criteria_id SERIAL PRIMARY KEY,
-    type TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    image_link TEXT
+    type TEXT NOT NULL,                -- 'age', 'thematique', 'style_texte'
+    name TEXT NOT NULL,                -- 'enfant', 'technique_picturale', 'analyse'
+    label TEXT NOT NULL,               -- Libellé affichage (ex: "Enfant (6-12 ans)")
+    description TEXT,                  -- Description longue
+    image_link TEXT,                   -- URL image/icône
+    ai_indication TEXT,                -- Indication pour l'IA lors de la génération
+    ordre INTEGER DEFAULT 0,           -- Ordre d'affichage
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(type, name),                -- Un paramètre unique par type
+    FOREIGN KEY (type) REFERENCES criteria_types(type) ON DELETE CASCADE
 );
 
 -- ===============================
@@ -246,6 +282,19 @@ CREATE TABLE IF NOT EXISTS oeuvre_criterias (
         REFERENCES criterias(criteria_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 );
+
+-- ===============================
+-- TABLE : Pregeneration_Criterias (Table de liaison pour requêtes)
+-- ===============================
+CREATE TABLE IF NOT EXISTS pregeneration_criterias (
+    pregeneration_id INTEGER NOT NULL REFERENCES pregenerations(pregeneration_id) ON DELETE CASCADE,
+    criteria_id INTEGER NOT NULL REFERENCES criterias(criteria_id) ON DELETE CASCADE,
+    PRIMARY KEY (pregeneration_id, criteria_id)
+);
+
+-- Index pour JOIN rapides
+CREATE INDEX IF NOT EXISTS idx_pregeneration_criterias_criteria 
+    ON pregeneration_criterias(criteria_id);
 
 -- ===============================
 -- TABLE : Generated_Guide
@@ -277,7 +326,6 @@ CREATE TABLE IF NOT EXISTS criterias_guide (
 CREATE INDEX IF NOT EXISTS idx_oeuvres_artiste ON oeuvres(artiste_id);
 CREATE INDEX IF NOT EXISTS idx_oeuvres_mouvement ON oeuvres(mouvement_id);
 CREATE INDEX IF NOT EXISTS idx_pregenerations_oeuvre ON pregenerations(oeuvre_id);
-CREATE INDEX IF NOT EXISTS idx_pregenerations_criteres ON pregenerations(age_cible, thematique, style_texte);
 CREATE INDEX IF NOT EXISTS idx_sections_oeuvre ON sections(oeuvre_id);
 CREATE INDEX IF NOT EXISTS idx_anecdotes_oeuvre ON anecdotes(oeuvre_id);
 
@@ -317,6 +365,28 @@ CREATE INDEX IF NOT EXISTS idx_relations_cible ON relations(cible_id);
 -- ===============================
 INSERT INTO stats (stats_id) VALUES (1) ON CONFLICT DO NOTHING;
 
--- ===============================
--- FIN DU SCHÉMA
--- ===============================
+-- Insertion des types de critères par défaut
+INSERT INTO criteria_types (type, label, description, ordre, is_required) VALUES
+('age', 'Âge du visiteur', 'Profil d''âge pour adapter le niveau de langage', 1, true),
+('thematique', 'Thématique', 'Angle d''approche de l''œuvre', 2, true),
+('style_texte', 'Style de narration', 'Ton et structure du texte généré', 3, true)
+ON CONFLICT (type) DO NOTHING;
+
+-- Insertion des paramètres de critères par défaut
+INSERT INTO criterias (type, name, label, description, ordre) VALUES
+-- Paramètres AGE
+('age', 'enfant', 'Enfant', 'Parcours adapté aux enfants (6-12 ans)', 1),
+('age', 'ado', 'Adolescent', 'Parcours pour adolescents (13-17 ans)', 2),
+('age', 'adulte', 'Adulte', 'Parcours adulte standard', 3),
+('age', 'senior', 'Senior', 'Parcours adapté aux seniors (65+ ans)', 4),
+
+-- Paramètres THEMATIQUE
+('thematique', 'technique_picturale', 'Technique Picturale', 'Focus sur les techniques artistiques et matérielles', 1),
+('thematique', 'biographie', 'Biographie', 'Histoire de vie des artistes', 2),
+('thematique', 'historique', 'Contexte Historique', 'Contexte historique et culturel des œuvres', 3),
+
+-- Paramètres STYLE_TEXTE
+('style_texte', 'analyse', 'Analyse', 'Analyse approfondie et structurée', 1),
+('style_texte', 'decouverte', 'Découverte', 'Ton engageant et exploratoire', 2),
+('style_texte', 'anecdote', 'Anecdote', 'Récits et histoires captivantes', 3)
+ON CONFLICT (type, name) DO NOTHING;

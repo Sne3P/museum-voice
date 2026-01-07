@@ -8,18 +8,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Eye, LogOut, Info, MapPin, QrCode } from 'lucide-react'
 
 export default function AccueilPage() {
-  const { isAuthenticated, logout, currentUser } = useAuth()
+  const { isAuthenticated, logout, currentUser, isLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
+    console.log('🔐 Accueil page - Vérification auth', { isLoading, isAuthenticated })
+    
+    // Attendre que le chargement de l'auth soit terminé
+    if (isLoading) {
+      console.log('⏳ Auth en cours de chargement, attente...')
+      return
+    }
+    
     if (!isAuthenticated) {
+      console.log('❌ Non authentifié, redirection vers /login')
       router.push('/login')
     }
-  }, [isAuthenticated, router])
+  }, [isLoading, isAuthenticated, router])
 
   const handleLogout = () => {
     logout()
     router.push('/login')
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Chargement...</p>
+        </div>
+      </div>
+    )
   }
 
   if (!isAuthenticated || !currentUser) {

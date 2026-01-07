@@ -23,7 +23,7 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr); /* Grille 3 colonnes de taille égale */
   gap: 0; /* Pas d'espace entre les tuiles */
-  background-color: #000; /* Fond noir pour les séparations si non géré par les bords */
+  background-color: #fff; /* Fond blanc pour le reste du grid */
 }
 
 /* --- Tuile de la Grille (SelectorGridItem) --- */

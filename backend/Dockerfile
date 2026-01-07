@@ -57,6 +57,10 @@ FROM deps AS dev
 # Copier code backend (volume monté en dev, donc changements live)
 COPY rag/ ./rag/
 
+# Copier scripts de seed et utilitaires
+COPY seed_narrations_dynamic.py .
+COPY seed_narrations.py .
+
 # Exposer port Flask
 EXPOSE 5000
 
@@ -75,6 +79,10 @@ FROM deps AS prod
 
 # Copier UNIQUEMENT le code backend (pas les deps - déjà dans deps stage)
 COPY rag/ ./rag/
+
+# Copier scripts de seed
+COPY seed_narrations_dynamic.py .
+COPY seed_narrations.py .
 
 # User non-root pour sécurité
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app

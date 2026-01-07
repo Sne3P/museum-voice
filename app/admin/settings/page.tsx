@@ -11,7 +11,7 @@ import { ArrowLeft, Save, Clock, Building2 } from 'lucide-react'
 import type { OpeningHours, MuseumSetting } from '@/core/entities/museum-settings.types'
 
 export default function SystemSettingsPage() {
-  const { isAuthenticated, hasPermission } = useAuth()
+  const { isAuthenticated, hasPermission, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const [settings, setSettings] = useState<MuseumSetting[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -33,12 +33,14 @@ export default function SystemSettingsPage() {
   ]
 
   useEffect(() => {
+    if (authLoading) return
+    
     if (!isAuthenticated || !hasPermission('system_settings')) {
       router.push('/admin')
       return
     }
     loadSettings()
-  }, [isAuthenticated, hasPermission, router])
+  }, [authLoading, isAuthenticated, hasPermission, router])
 
   // Initialiser les horaires par défaut si vides
   useEffect(() => {

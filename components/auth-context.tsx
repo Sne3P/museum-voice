@@ -61,52 +61,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Vérifier si l'utilisateur est déjà connecté au chargement
     console.log('🔐 Vérification de l\'authentification au chargement')
-    const authData = localStorage.getItem('museum-auth-data')
-    console.log('📱 Données d\'auth trouvées:', !!authData)
     
-    if (authData) {
-      try {
+    // Vérifier que nous sommes bien côté client
+    if (typeof window === 'undefined') {
+      console.log('⚠️ Pas côté client, skip restoration')
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      const authData = localStorage.getItem('museum-auth-data')
+      console.log('📱 Données d\'auth trouvées:', !!authData)
+      console.log('📱 Contenu authData:', authData)
+      
+      if (authData) {
         const userData = JSON.parse(authData)
         console.log('✅ Utilisateur restauré:', userData.username, userData.role)
         setCurrentUser(userData)
         setIsAuthenticated(true)
-      } catch (error) {
-        console.error('❌ Erreur lors du parsing des données d\'auth:', error)
-        localStorage.removeItem('museum-auth-data')
+      } else {
+        console.log('ℹ️ Aucune session trouvée dans localStorage')
       }
-    } else {
-      console.log('ℹ️ Aucune session trouvée')
+    } catch (error) {
+      console.error('❌ Erreur lors de la restauration de session:', error)
+      try {
+        localStorage.removeItem('museum-auth-data')
+      } catch (e) {
+        console.error('❌ Impossible de nettoyer localStorage:', e)
+      }
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }, [])
 
   const login = (username: string, password: string): boolean => {
     const user = USERS_DB.find(u => u.username === username)
     if (user && USER_PASSWORDS[username] === password) {
+      console.log('✅ Login réussi pour:', username, 'Role:', user.role)
       setCurrentUser(user)
       setIsAuthenticated(true)
-      localStorage.setItem('museum-auth-data', JSON.stringify(user))
+      
+      // Sauvegarder dans localStorage
+      try {
+        const userDataStr = JSON.stringify(user)
+        localStorage.setItem('museum-auth-data', userDataStr)
+        console.log('💾 Session sauvegardée dans localStorage:', userDataStr)
+        
+        // Vérification immédiate
+        const checkData = localStorage.getItem('museum-auth-data')
+        console.log('🔍 Vérification immédiate - données présentes:', !!checkData)
+      } catch (error) {
+        console.error('❌ Erreur lors de la sauvegarde dans localStorage:', error)
+      }
+      
       return true
     }
+    console.log('❌ Login échoué pour:', username)
     return false
   }
 
   const logout = () => {
+    console.log('🚪 Déconnexion de l\'utilisateur')
     setIsAuthenticated(false)
     setCurrentUser(null)
-    localStorage.removeItem('museum-auth-data')
+    try {
+      localStorage.removeItem('museum-auth-data')
+      console.log('💾 Session supprimée de localStorage')
+    } catch (error) {
+      console.error('❌ Erreur lors de la suppression de localStorage:', error)
+    }
   }
 
   const hasPermission = (action: string): boolean => {
-    if (!currentUser) return false
+    if (!currentUser) {
+      console.log('❌ hasPermission: Pas d\'utilisateur connecté')
+      return false
+    }
     
     const permissions: Record<UserRole, string[]> = {
-      super_admin: ['edit_maps', 'manage_admin_musee', 'manage_themes', 'system_settings'],
-      admin_musee: ['edit_maps', 'manage_accueil', 'manage_themes'],
+      super_admin: [
+        'edit_maps', 
+        'manage_admin_musee',  // Gérer TOUS les utilisateurs (admin_musee + accueil)
+        'manage_themes', 
+        'system_settings',
+        'manage_profils'       // Gestion des critères et profils
+        // PAS manage_accueil - c'est pour admin_musee
+      ],
+      admin_musee: [
+        'edit_maps', 
+        'manage_accueil',      // Gérer uniquement les agents d'accueil
+        'manage_themes',
+        'manage_profils'
+      ],
       accueil: ['view_only']
     }
     
-    return permissions[currentUser.role]?.includes(action) || false
+    const hasAccess = permissions[currentUser.role]?.includes(action) || false
+    console.log(`🔐 hasPermission("${action}") pour ${currentUser.role}:`, hasAccess)
+    return hasAccess
   }
 
   return (

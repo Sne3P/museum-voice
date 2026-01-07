@@ -1,37 +1,59 @@
 """
 Gestion des prégénérations dans PostgreSQL
+SYSTÈME VRAIMENT DYNAMIQUE - Support de N critères variables (pas seulement 3)
 """
 
 import psycopg2
+import json
 from typing import Optional, List, Dict, Any, Tuple
 from .db_postgres import _connect_postgres
 
 
-def add_pregeneration(oeuvre_id: int, age_cible: str, thematique: str,
-                     style_texte: str, pregeneration_text: str,
+def add_pregeneration(oeuvre_id: int, criteria_dict: Dict[str, int],
+                     pregeneration_text: str,
                      voice_link: Optional[str] = None) -> int:
-    """Ajoute une prégénération"""
+    """Ajoute une prégénération avec N critères DYNAMIQUES
+    
+    Args:
+        oeuvre_id: ID de l'œuvre
+        criteria_dict: Dict de criteria_ids par type, ex: {"age": 1, "thematique": 4, "style_texte": 7}
+        pregeneration_text: Texte prégénéré
+        voice_link: Lien audio optionnel
+        
+    Returns:
+        ID de la prégénération créée/mise à jour
+    """
     conn = _connect_postgres()
     cur = conn.cursor()
     
     try:
-        # Insert or update (ON CONFLICT)
+        # Convertir le dict en JSONB pour stockage
+        criteria_json = json.dumps(criteria_dict, sort_keys=True)
+        
+        # Insert or update (ON CONFLICT sur la combinaison unique)
         cur.execute("""
             INSERT INTO pregenerations (
-                oeuvre_id, age_cible, thematique, style_texte, 
-                pregeneration_text, voice_link
+                oeuvre_id, criteria_combination, pregeneration_text, voice_link
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
-            ON CONFLICT (oeuvre_id, age_cible, thematique, style_texte)
+            VALUES (%s, %s::jsonb, %s, %s)
+            ON CONFLICT (oeuvre_id, criteria_combination)
             DO UPDATE SET
                 pregeneration_text = EXCLUDED.pregeneration_text,
                 voice_link = EXCLUDED.voice_link,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING pregeneration_id
-        """, (oeuvre_id, age_cible, thematique, style_texte, 
-              pregeneration_text, voice_link))
+        """, (oeuvre_id, criteria_json, pregeneration_text, voice_link))
         
         pregeneration_id = cur.fetchone()['pregeneration_id']
+        
+        # Insérer dans la table de liaison pour faciliter les JOIN
+        for criteria_id in criteria_dict.values():
+            cur.execute("""
+                INSERT INTO pregeneration_criterias (pregeneration_id, criteria_id)
+                VALUES (%s, %s)
+                ON CONFLICT (pregeneration_id, criteria_id) DO NOTHING
+            """, (pregeneration_id, criteria_id))
+        
         conn.commit()
         return pregeneration_id
         
@@ -42,8 +64,8 @@ def add_pregeneration(oeuvre_id: int, age_cible: str, thematique: str,
 
 def add_pregenerations_batch(batch_data: List[Tuple], force_update: bool = False) -> List[int]:
     """
-    Ajoute plusieurs prégénérations en batch
-    batch_data: List[(oeuvre_id, age_cible, thematique, style_texte, pregeneration_text)]
+    Ajoute plusieurs prégénérations en batch avec N critères DYNAMIQUES
+    batch_data: List[(oeuvre_id, criteria_dict, pregeneration_text)]
     """
     conn = _connect_postgres()
     cur = conn.cursor()
@@ -51,21 +73,33 @@ def add_pregenerations_batch(batch_data: List[Tuple], force_update: bool = False
     created_ids = []
     
     try:
-        for oeuvre_id, age_cible, thematique, style_texte, pregeneration_text in batch_data:
+        for oeuvre_id, criteria_dict, pregeneration_text in batch_data:
+            criteria_json = json.dumps(criteria_dict, sort_keys=True)
+            
             cur.execute("""
                 INSERT INTO pregenerations (
-                    oeuvre_id, age_cible, thematique, style_texte, pregeneration_text
+                    oeuvre_id, criteria_combination, pregeneration_text
                 )
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (oeuvre_id, age_cible, thematique, style_texte)
+                VALUES (%s, %s::jsonb, %s)
+                ON CONFLICT (oeuvre_id, criteria_combination)
                 DO UPDATE SET
                     pregeneration_text = EXCLUDED.pregeneration_text,
                     updated_at = CURRENT_TIMESTAMP
                 RETURNING pregeneration_id
-            """, (oeuvre_id, age_cible, thematique, style_texte, pregeneration_text))
+            """, (oeuvre_id, criteria_json, pregeneration_text))
             
             result = cur.fetchone()
-            created_ids.append(result['pregeneration_id'] if result else None)
+            pregeneration_id = result['pregeneration_id'] if result else None
+            created_ids.append(pregeneration_id)
+            
+            # Table de liaison
+            if pregeneration_id:
+                for criteria_id in criteria_dict.values():
+                    cur.execute("""
+                        INSERT INTO pregeneration_criterias (pregeneration_id, criteria_id)
+                        VALUES (%s, %s)
+                        ON CONFLICT DO NOTHING
+                    """, (pregeneration_id, criteria_id))
         
         conn.commit()
         return created_ids
@@ -78,20 +112,27 @@ def add_pregenerations_batch(batch_data: List[Tuple], force_update: bool = False
         conn.close()
 
 
-def get_pregeneration(oeuvre_id: int, age_cible: str, 
-                      thematique: str, style_texte: str) -> Optional[Dict[str, Any]]:
-    """Récupère une prégénération spécifique"""
+def get_pregeneration(oeuvre_id: int, criteria_dict: Dict[str, int]) -> Optional[Dict[str, Any]]:
+    """Récupère une prégénération spécifique avec N critères DYNAMIQUES
+    
+    Args:
+        oeuvre_id: ID de l'œuvre
+        criteria_dict: Dict de criteria_ids, ex: {"age": 1, "thematique": 4}
+        
+    Returns:
+        Dict contenant la prégénération ou None
+    """
     conn = _connect_postgres()
     cur = conn.cursor()
     
     try:
+        criteria_json = json.dumps(criteria_dict, sort_keys=True)
+        
         cur.execute("""
             SELECT * FROM pregenerations
             WHERE oeuvre_id = %s 
-              AND age_cible = %s 
-              AND thematique = %s 
-              AND style_texte = %s
-        """, (oeuvre_id, age_cible, thematique, style_texte))
+              AND criteria_combination = %s::jsonb
+        """, (oeuvre_id, criteria_json))
         return cur.fetchone()
     finally:
         cur.close()
@@ -99,15 +140,42 @@ def get_pregeneration(oeuvre_id: int, age_cible: str,
 
 
 def get_artwork_pregenerations(oeuvre_id: int) -> List[Dict[str, Any]]:
-    """Récupère toutes les prégénérations d'une œuvre"""
+    """Récupère toutes les prégénérations d'une œuvre avec critères DYNAMIQUES
+    
+    Args:
+        oeuvre_id: ID de l'œuvre
+        
+    Returns:
+        Liste des prégénérations avec critères enrichis
+    """
     conn = _connect_postgres()
     cur = conn.cursor()
     
     try:
         cur.execute("""
-            SELECT * FROM pregenerations
-            WHERE oeuvre_id = %s
-            ORDER BY age_cible, thematique, style_texte
+            SELECT 
+                p.pregeneration_id,
+                p.oeuvre_id,
+                p.criteria_combination,
+                p.pregeneration_text,
+                p.voice_link,
+                p.created_at,
+                p.updated_at,
+                ARRAY_AGG(
+                    JSON_BUILD_OBJECT(
+                        'criteria_id', c.criteria_id,
+                        'type_name', c.type_name,
+                        'name', c.name,
+                        'label', c.label,
+                        'ai_indication', c.ai_indication
+                    )
+                ) as criterias
+            FROM pregenerations p
+            LEFT JOIN pregeneration_criterias pc ON p.pregeneration_id = pc.pregeneration_id
+            LEFT JOIN criterias c ON pc.criteria_id = c.criteria_id
+            WHERE p.oeuvre_id = %s
+            GROUP BY p.pregeneration_id
+            ORDER BY p.created_at DESC
         """, (oeuvre_id,))
         return cur.fetchall()
     finally:

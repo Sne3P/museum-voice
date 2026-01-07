@@ -14,7 +14,8 @@ from .core.db_postgres import (
     init_postgres_db, get_artwork, get_all_artworks,
     search_artworks, add_artwork, add_artist, add_movement,
     get_artwork_sections, get_artwork_anecdotes,
-    add_section, add_anecdote, add_chunk, get_artwork_chunks
+    add_section, add_anecdote, add_chunk, get_artwork_chunks,
+    _connect_postgres
 )
 
 from .core.pregeneration_db import (
@@ -55,22 +56,177 @@ def health():
     })
 
 
+# ===== API CRITÈRES DYNAMIQUES =====
+
+@app.route('/api/criteria-types', methods=['GET'])
+def get_criteria_types_legacy():
+    """
+    Compat client React: retourne les types de critères
+    Format attendu: { success: true, types: [{ type_name, label, ordre, is_required }] }
+    """
+    try:
+        from .core.criteria_service import criteria_service
+
+        types = criteria_service.get_criteria_types()
+
+        # Adapter le format pour le frontend client (type_name au lieu de type)
+        adapted = [
+            {
+                'type_name': t['type'],
+                'label': t['label'],
+                'ordre': t['ordre'],
+                'is_required': t['is_required']
+            }
+            for t in types
+        ]
+
+        return jsonify({
+            'success': True,
+            'types': adapted
+        })
+    except Exception as e:
+        return jsonify({ 'success': False, 'error': str(e) }), 500
+
+
+@app.route('/api/criterias', methods=['GET'])
+def get_criterias_query():
+    """
+    Compat client React: GET /api/criterias?type=age
+    Retourne la liste des paramètres pour un type donné
+    """
+    try:
+        type_name = request.args.get('type')
+        if not type_name:
+            return jsonify({ 'success': False, 'error': 'type query param requis' }), 400
+
+        from .core.criteria_service import criteria_service
+        criterias = criteria_service.get_criteria_by_type(type_name)
+
+        return jsonify({
+            'success': True,
+            'criterias': criterias
+        })
+    except Exception as e:
+        return jsonify({ 'success': False, 'error': str(e) }), 500
+
+@app.route('/api/criterias/types', methods=['GET'])
+def get_criteria_types():
+    """
+    Récupère tous les types de critères disponibles
+    SYSTÈME DYNAMIQUE
+    """
+    try:
+        from .core.criteria_service import criteria_service
+        
+        criteria_types = criteria_service.get_criteria_types()
+        
+        return jsonify({
+            'success': True,
+            'criteria_types': criteria_types
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/criterias/by-type/<string:type_name>', methods=['GET'])
+def get_criterias_by_type(type_name):
+    """
+    Récupère tous les critères d'un type spécifique
+    SYSTÈME DYNAMIQUE
+    
+    Args:
+        type_name: Type de critère (age, thematique, accessibilite, etc.)
+    """
+    try:
+        from .core.criteria_service import criteria_service
+        
+        criterias = criteria_service.get_criteria_by_type(type_name)
+        
+        return jsonify({
+            'success': True,
+            'type': type_name,
+            'criterias': criterias,
+            'count': len(criterias)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/criterias/all', methods=['GET'])
+def get_all_criterias():
+    """
+    Récupère tous les critères groupés par type
+    SYSTÈME DYNAMIQUE - Parfait pour alimenter un formulaire de sélection
+    """
+    try:
+        from .core.criteria_service import criteria_service
+        
+        # Récupérer tous les types
+        criteria_types = criteria_service.get_criteria_types()
+        
+        # Pour chaque type, récupérer ses critères
+        result = []
+        for ctype in criteria_types:
+            criterias = criteria_service.get_criteria_by_type(ctype['type'])
+            result.append({
+                'type': ctype['type'],
+                'label': ctype['label'],
+                'ordre': ctype['ordre'],
+                'is_required': ctype['is_required'],
+                'options': criterias
+            })
+        
+        return jsonify({
+            'success': True,
+            'criteria_groups': result,
+            'total_types': len(result),
+            'total_criterias': sum(len(g['options']) for g in result)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/debug/pregenerations/<int:oeuvre_id>', methods=['GET'])
 def debug_pregenerations(oeuvre_id):
-    """Debug: vérifier les prégénérations en BDD"""
+    """Debug: vérifier les prégénérations en BDD avec N critères DYNAMIQUES"""
     try:
         from .core.db_postgres import _connect_postgres
         
         conn = _connect_postgres()
         cur = conn.cursor()
         
+        # Requête avec criterias en JSONB
         cur.execute("""
-            SELECT pregeneration_id, age_cible, thematique, style_texte, 
-                   LENGTH(pregeneration_text) as longueur, 
-                   LEFT(pregeneration_text, 200) as debut 
-            FROM pregenerations 
-            WHERE oeuvre_id = %s 
-            ORDER BY pregeneration_id
+            SELECT 
+                p.pregeneration_id,
+                p.criteria_combination,
+                LENGTH(p.pregeneration_text) as longueur, 
+                LEFT(p.pregeneration_text, 200) as debut,
+                ARRAY_AGG(
+                    JSON_BUILD_OBJECT(
+                        'type', c.type_name,
+                        'name', c.name,
+                        'label', c.label
+                    )
+                ) as criterias_detail
+            FROM pregenerations p
+            LEFT JOIN pregeneration_criterias pc ON p.pregeneration_id = pc.pregeneration_id
+            LEFT JOIN criterias c ON pc.criteria_id = c.criteria_id
+            WHERE p.oeuvre_id = %s 
+            GROUP BY p.pregeneration_id
+            ORDER BY p.pregeneration_id
         """, (oeuvre_id,))
         
         rows = cur.fetchall()
@@ -79,9 +235,8 @@ def debug_pregenerations(oeuvre_id):
         for row in rows:
             pregenerations.append({
                 'pregeneration_id': row['pregeneration_id'],
-                'age_cible': row['age_cible'],
-                'thematique': row['thematique'],
-                'style_texte': row['style_texte'],
+                'criteria_combination': row['criteria_combination'],
+                'criterias_detail': row['criterias_detail'],
                 'longueur': row['longueur'],
                 'debut': row['debut']
             })
@@ -251,12 +406,14 @@ def get_artwork_pregen(oeuvre_id):
 
 @app.route('/api/pregenerations', methods=['POST'])
 def create_pregeneration():
-    """Crée une prégénération"""
+    """Crée une prégénération avec N critères DYNAMIQUES"""
     try:
+        from .core.criteria_service import criteria_service
+        
         data = request.get_json()
         
-        # Validation
-        required = ['oeuvre_id', 'age_cible', 'thematique', 'style_texte', 'pregeneration_text']
+        # Validation des champs requis - FORMAT DYNAMIQUE avec dict
+        required = ['oeuvre_id', 'criteria', 'pregeneration_text']
         for field in required:
             if field not in data:
                 return jsonify({
@@ -264,12 +421,34 @@ def create_pregeneration():
                     'error': f'Champ requis: {field}'
                 }), 400
         
+        # criteria doit être un dict, ex: {"age": 1, "thematique": 4, "style_texte": 7}
+        criteria_dict = data['criteria']
+        
+        if not isinstance(criteria_dict, dict):
+            return jsonify({
+                'success': False,
+                'error': 'Le champ "criteria" doit être un objet JSON {type: id}'
+            }), 400
+        
+        # Valider que tous les critères obligatoires sont présents
+        is_valid, missing = criteria_service.validate_required_criteria(criteria_dict)
+        if not is_valid:
+            return jsonify({
+                'success': False,
+                'error': f'Critères obligatoires manquants: {", ".join(missing)}'
+            }), 400
+        
+        # Valider que les critères existent et sont actifs
+        if not criteria_service.validate_criteria_combination(criteria_dict):
+            return jsonify({
+                'success': False,
+                'error': 'Combinaison de critères invalide ou critères inactifs'
+            }), 400
+        
         # Créer
         pregeneration_id = add_pregeneration(
             oeuvre_id=data['oeuvre_id'],
-            age_cible=data['age_cible'],
-            thematique=data['thematique'],
-            style_texte=data['style_texte'],
+            criteria_dict=criteria_dict,
             pregeneration_text=data['pregeneration_text'],
             voice_link=data.get('voice_link')
         )
@@ -743,76 +922,68 @@ def generate_intelligent_parcours():
     """
     Génère un parcours intelligent optimisé basé sur une durée cible
     AVEC génération automatique des fichiers audio TTS
+    SYSTÈME VRAIMENT DYNAMIQUE - Accepte N critères variables
     
     Body JSON:
     {
-        "age_cible": "adulte",
-        "thematique": "technique_picturale",
-        "style_texte": "analyse",
-        "target_duration_minutes": 60,  # 15-180 par paliers de 15min
-        "variation_seed": 1234,  # Optionnel (pour reproductibilité)
-        "generate_audio": true   # Optionnel (défaut: true)
+        "criteria": {               # Dict flexible de N critères
+            "age": "adulte",        # Noms des critères (seront résolus vers IDs)
+            "thematique": "technique_picturale",
+            "style_texte": "analyse"
+            // Peut avoir 2, 5, ou N critères !
+        },
+        "target_duration_minutes": 60,
+        "variation_seed": 1234,
+        "generate_audio": true
     }
     
-    Returns:
-    {
-        "success": true,
-        "parcours": {
-            "parcours_id": "parcours_1234",
-            "profil": {...},
-            "metadata": {
-                "target_duration_minutes": 60,
-                "artwork_count": 8,
-                "total_distance_meters": 125.5,
-                "total_duration_minutes": 58,
-                "duration_breakdown": {
-                    "walking_minutes": 10.5,
-                    "narration_minutes": 38.2,
-                    "observation_minutes": 12.0
-                },
-                "artworks_detail": [...]
-            },
-            "artworks": [...]
-        },
-        "audio": {
-            "generated": true,
-            "count": 8,
-            "paths": {
-                "1": "/uploads/audio/parcours_1234/oeuvre_1.wav",
-                ...
-            }
-        }
-    }
+    Returns: { success, parcours {...}, audio {...} }
     """
     
     try:
         from .parcours.intelligent_path_generator import generer_parcours_intelligent
+        from .core.criteria_service import criteria_service
         from .tts import get_piper_service
         import time
         
         data = request.get_json()
         
-        # Paramètres obligatoires
-        age_cible = data.get('age_cible')
-        thematique = data.get('thematique')
-        style_texte = data.get('style_texte')
+        # Paramètres obligatoires - FORMAT DYNAMIQUE
+        criteria_names = data.get('criteria')  # Dict {type: name}
         
-        if not all([age_cible, thematique, style_texte]):
+        if not criteria_names or not isinstance(criteria_names, dict):
             return jsonify({
                 'success': False,
-                'error': 'Paramètres requis: age_cible, thematique, style_texte'
+                'error': 'Paramètre requis: "criteria" (objet {type: name})'
+            }), 400
+        
+        # Résoudre les noms vers IDs via criteria_service
+        criteria_dict = {}  # {type: id}
+        for type_name, criteria_name in criteria_names.items():
+            criteria = criteria_service.get_criteria_by_name(type_name, criteria_name)
+            if not criteria:
+                return jsonify({
+                    'success': False,
+                    'error': f'Critère invalide: {type_name}={criteria_name}'
+                }), 400
+            criteria_dict[type_name] = criteria['criteria_id']
+        
+        # Valider que tous les critères obligatoires sont présents
+        is_valid, missing = criteria_service.validate_required_criteria(criteria_dict)
+        if not is_valid:
+            return jsonify({
+                'success': False,
+                'error': f'Critères obligatoires manquants: {", ".join(missing)}'
             }), 400
         
         # Paramètres optionnels
-        target_duration = data.get('target_duration_minutes', 60)  # Défaut 1h
+        target_duration = data.get('target_duration_minutes', 60)
         variation_seed = data.get('variation_seed')
-        generate_audio = data.get('generate_audio', True)  # Par défaut, générer l'audio
+        generate_audio = data.get('generate_audio', True)
         
-        # Générer le parcours
+        # Générer le parcours avec dict de critères
         parcours_json = generer_parcours_intelligent(
-            age_cible=age_cible,
-            thematique=thematique,
-            style_texte=style_texte,
+            criteria_dict=criteria_dict,
             target_duration_minutes=target_duration,
             variation_seed=variation_seed
         )
@@ -1102,6 +1273,237 @@ def preview_parcours_options():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@app.route('/api/parcours', methods=['GET'])
+def list_parcours():
+    """
+    Liste tous les parcours générés
+    
+    Returns:
+    [
+        {
+            "group_id": "uuid",
+            "segment_count": 5,
+            "criteria": {"age": "Adulte", "thematique": "Technique picturale"},
+            "created_at": "2024-01-15T10:30:00"
+        },
+        ...
+    ]
+    """
+    try:
+        from .core.db_postgres import _connect_postgres
+        
+        conn = _connect_postgres()
+        cur = conn.cursor()
+        
+        # Récupérer la liste des parcours avec leurs infos
+        cur.execute("""
+            SELECT 
+                group_id,
+                COUNT(*) as segment_count,
+                criteria_combination,
+                MIN(created_at) as created_at
+            FROM parcours_segments
+            WHERE group_id IS NOT NULL
+            GROUP BY group_id, criteria_combination
+            ORDER BY created_at DESC
+        """)
+        
+        rows = cur.fetchall()
+        parcours_list = []
+        
+        for row in rows:
+            criteria_dict = row[2] if row[2] else {}
+            parcours_list.append({
+                'group_id': row[0],
+                'segment_count': row[1],
+                'criteria': criteria_dict,
+                'created_at': row[3].isoformat() if row[3] else None
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify(parcours_list), 200
+        
+    except Exception as e:
+        print(f"❌ Erreur liste parcours: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/parcours/<group_id>', methods=['GET'])
+def get_parcours_details(group_id):
+    """
+    Récupère les détails d'un parcours spécifique
+    
+    Returns:
+    {
+        "group_id": "uuid",
+        "segments": [
+            {
+                "id": 1,
+                "segment_order": 1,
+                "segment_type": "artwork",
+                "guide_text": "...",
+                "duration_minutes": 5,
+                "oeuvre_info": {...}
+            },
+            ...
+        ],
+        "criteria": {"age": "Adulte", "thematique": "Technique picturale"}
+    }
+    """
+    try:
+        from .core.db_postgres import _connect_postgres
+        
+        conn = _connect_postgres()
+        cur = conn.cursor()
+        
+        # Récupérer tous les segments du parcours
+        cur.execute("""
+            SELECT 
+                id, segment_order, segment_type, guide_text,
+                total_duration_minutes, oeuvre_info, criteria_combination
+            FROM parcours_segments
+            WHERE group_id = %s
+            ORDER BY segment_order
+        """, (group_id,))
+        
+        rows = cur.fetchall()
+        
+        if not rows:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Parcours not found'}), 404
+        
+        segments = []
+        criteria = rows[0][6] if rows[0][6] else {}
+        
+        for row in rows:
+            segments.append({
+                'id': row[0],
+                'segment_order': row[1],
+                'segment_type': row[2],
+                'guide_text': row[3],
+                'duration_minutes': row[4] or 5,
+                'oeuvre_info': row[5] or {}
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'group_id': group_id,
+            'segments': segments,
+            'criteria': criteria
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Erreur détails parcours: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ===== ADMIN ROUTES =====
+
+@app.route('/api/admin/seed-narrations', methods=['POST'])
+@app.route('/api/admin/seed-narrations/<int:oeuvre_id>', methods=['POST'])
+def admin_seed_narrations(oeuvre_id=None):
+    """
+    Seed narrations avec script Python intelligent
+    
+    POST /api/admin/seed-narrations - Seed toutes les œuvres
+    POST /api/admin/seed-narrations/<oeuvre_id> - Seed une œuvre spécifique
+    """
+    try:
+        import subprocess
+        import json as json_module
+        
+        # Construire la commande Python
+        script_path = Path(__file__).parent.parent / 'seed_narrations_dynamic.py'
+        
+        if not script_path.exists():
+            return jsonify({
+                'success': False,
+                'error': f'Script seed introuvable: {script_path}'
+            }), 404
+        
+        # Exécuter le script Python
+        result = subprocess.run(
+            ['python', str(script_path)],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            return jsonify({
+                'success': False,
+                'error': f'Script seed failed: {result.stderr}'
+            }), 500
+        
+        # Parser la sortie pour extraire les stats
+        output = result.stdout
+        inserted = 0
+        skipped = 0
+        
+        # Chercher les lignes de résultat
+        for line in output.split('\n'):
+            if 'nouvelles narrations insérées' in line:
+                try:
+                    inserted = int(line.split('-')[1].strip().split()[0])
+                except:
+                    pass
+            if 'combinaisons déjà existantes' in line:
+                try:
+                    skipped = int(line.split('-')[1].strip().split()[0])
+                except:
+                    pass
+        
+        return jsonify({
+            'success': True,
+            'inserted': inserted,
+            'skipped': skipped,
+            'message': 'Seed terminé avec succès'
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Erreur seed narrations: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/delete-all-narrations', methods=['DELETE'])
+def admin_delete_all_narrations():
+    """
+    Supprime TOUTES les narrations de la base
+    Action irréversible !
+    """
+    try:
+        conn = _connect_postgres()
+        cur = conn.cursor()
+        
+        # Compter avant suppression
+        cur.execute("SELECT COUNT(*) as count FROM pregenerations")
+        result = cur.fetchone()
+        count = result['count'] if result else 0
+        
+        # Supprimer (CASCADE supprimera aussi pregeneration_criterias)
+        cur.execute("TRUNCATE TABLE pregenerations CASCADE")
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'deleted': count,
+            'message': f'{count} narrations supprimées'
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Erreur suppression narrations: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ===== DÉMARRAGE =====

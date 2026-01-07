@@ -10,10 +10,19 @@ export async function GET(
 
   try {
     // Récupérer toutes les prégénérations pour cette œuvre
+    // Nouvelle structure avec criteria_combination JSONB
     const result = await client.query(
-      `SELECT * FROM pregenerations 
+      `SELECT 
+        pregeneration_id,
+        oeuvre_id,
+        criteria_combination,
+        pregeneration_text,
+        voice_link,
+        created_at,
+        updated_at
+       FROM pregenerations 
        WHERE oeuvre_id = $1 
-       ORDER BY age_cible, thematique, style_texte`,
+       ORDER BY pregeneration_id`,
       [oeuvreId]
     )
 

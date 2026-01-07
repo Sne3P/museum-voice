@@ -1,67 +1,83 @@
-// MesChoix.jsx - ADAPTÉ AUX VRAIS PARAMÈTRES API
-import React, { useState, useCallback } from 'react';
+// MesChoix.jsx - SYSTÈME 100% DYNAMIQUE
+import React, { useState, useCallback, useEffect } from 'react';
 import TimeRegulator from '../../components/time_regulator/TimeRegulator';
-import AgeSelector from '../../components/age_selector/AgeSelector';
-import ThematiqueSelector from '../../components/thematique_selector/ThematiqueSelector';
-import StyleTexteSelector from '../../components/style_texte_selector/StyleTexteSelector';
+import CriteriaSelector from '../../components/criteria_selector/CriteriaSelector';
 import Header from '../../components/header/Header';
 import InterestNotice from '../../components/interest_notice/InterestNotice';
 import GenParcours from '../../components/gen_parcours/GenParcours';
 import './MesChoix.css';
 
 const MesChoix = () => {
-  // États pour les 4 paramètres EXACTS de l'API
-  const [timeValue, setTimeValue] = useState(1); // Heures (sera converti en minutes)
-  const [ageCible, setAgeCible] = useState('adulte'); // enfant / ado / adulte / senior
-  const [thematique, setThematique] = useState('technique_picturale'); // technique_picturale / biographie / historique
-  const [styleTexte, setStyleTexte] = useState('analyse'); // analyse / decouverte / anecdote
+  const [timeValue, setTimeValue] = useState(1); // Heures
+  const [criteriaTypes, setCriteriaTypes] = useState([]); // Types de critères chargés depuis l'API
+  const [selectedCriterias, setSelectedCriterias] = useState({}); // { age: 'adulte', thematique: 'biographie', ... }
+  const [loading, setLoading] = useState(true);
 
-  // Handlers
+  // Charger les types de critères depuis l'API
+  useEffect(() => {
+    const fetchCriteriaTypes = async () => {
+      try {
+        const response = await fetch('/api/criteria-types');
+        const data = await response.json();
+        
+        if (data.success && data.types) {
+          // Trier par ordre
+          const sorted = data.types.sort((a, b) => a.ordre - b.ordre);
+          setCriteriaTypes(sorted);
+        }
+      } catch (error) {
+        console.error('Erreur chargement types de critères:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCriteriaTypes();
+  }, []);
+
   const handleTimeValueChange = useCallback((newValue) => {
     setTimeValue(newValue);
   }, []);
 
-  const handleAgeChange = useCallback((age) => {
-    setAgeCible(age);
+  const handleCriteriaSelect = useCallback((criteriaData) => {
+    setSelectedCriterias(prev => ({
+      ...prev,
+      [criteriaData.type]: criteriaData.name
+    }));
   }, []);
 
-  const handleThematiqueChange = useCallback((theme) => {
-    setThematique(theme);
-  }, []);
-
-  const handleStyleChange = useCallback((style) => {
-    setStyleTexte(style);
-  }, []);
-
-  // Validation avant envoi
+  // Validation : tous les critères requis doivent être sélectionnés
   const isFormValid = () => {
-    return timeValue > 0 && ageCible && thematique && styleTexte;
+    if (timeValue <= 0) return false;
+    
+    const requiredTypes = criteriaTypes.filter(t => t.is_required);
+    return requiredTypes.every(type => selectedCriterias[type.type_name]);
   };
 
-  // Envoi à l'API /api/parcours/generate
   const handleSendData = async () => {
     if (!isFormValid()) {
-      alert('⚠️ Veuillez remplir tous les choix avant de générer le parcours');
+      alert('⚠️ Veuillez remplir tous les choix requis avant de générer le parcours');
       return;
     }
 
-    // Payload exact de l'API
+    // Construction du payload API VRAIMENT DYNAMIQUE avec dict de critères
+    const criteria = {};
+    for (const [type, name] of Object.entries(selectedCriterias)) {
+      criteria[type] = name;  // {age: "adulte", thematique: "technique_picturale", ...}
+    }
+
     const apiPayload = {
-      age_cible: ageCible,  // 'enfant', 'ado', 'adulte', 'senior'
-      thematique: thematique,  // 'technique_picturale', 'biographie', 'historique'
-      style_texte: styleTexte,  // 'analyse', 'decouverte', 'anecdote'
-      target_duration_minutes: timeValue * 60  // Convertir heures en minutes
+      criteria: criteria,  // Format dict flexible pour N critères
+      target_duration_minutes: timeValue * 60,
+      generate_audio: true
     };
 
-    console.log("📤 Sending to /api/parcours/generate:", apiPayload);
+    console.log("📤 Sending to /api/parcours/generate (dynamic N criteria):", apiPayload);
 
     try {
-      // Utiliser une URL relative car nginx fait le proxy vers museum-backend:5000
       const response = await fetch('/api/parcours/generate', {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(apiPayload),
       });
 
@@ -74,10 +90,7 @@ const MesChoix = () => {
       console.log("✅ Parcours generated:", data);
       
       if (data.success && data.parcours) {
-        // Stocker le parcours généré dans localStorage
         localStorage.setItem('generatedParcours', JSON.stringify(data.parcours));
-        
-        // Rediriger vers la page de résumé
         window.location.href = '/resume';
       } else {
         throw new Error("Invalid response format");
@@ -88,26 +101,39 @@ const MesChoix = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="mes-choix-container">
+        <Header />
+        <div className="text-center py-8">
+          <p className="text-gray-500">Chargement des critères...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mes-choix-container">
       <Header />
 
-      {/* 1. DURÉE - TimeRegulator */}
+      {/* Durée */}
       <TimeRegulator onValueChange={handleTimeValueChange} />
 
-      {/* 2. ÂGE CIBLE - AgeSelector */}
-      <AgeSelector onAgeChange={handleAgeChange} />
+      {/* Critères dynamiques */}
+      {criteriaTypes.map((criteriaType) => (
+        <CriteriaSelector
+          key={criteriaType.type_name}
+          criteriaType={criteriaType.type_name}
+          title={criteriaType.label}
+          icon={criteriaType.icon || '📋'}
+          onSelect={handleCriteriaSelect}
+        />
+      ))}
 
-      {/* 3. STYLE DE TEXTE - StyleTexteSelector */}
-      <StyleTexteSelector onStyleChange={handleStyleChange} />
-
-      {/* 4. THÉMATIQUE - ThematiqueSelector */}
-      <ThematiqueSelector onThematiqueChange={handleThematiqueChange} />
-
-      {/* BOUTON DE GÉNÉRATION */}
+      {/* Bouton de génération */}
       <GenParcours onClick={handleSendData} disabled={!isFormValid()} />
 
-      {/* Notice d'information */}
+      {/* Notice */}
       <InterestNotice />
     </div>
   );

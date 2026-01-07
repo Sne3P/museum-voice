@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { ArrowLeft, Users, Plus, UserCheck, ShoppingCart } from 'lucide-react'
 
 export default function UsersManagementPage() {
-  const { isAuthenticated, hasPermission, currentUser } = useAuth()
+  const { isAuthenticated, hasPermission, currentUser, isLoading } = useAuth()
   const router = useRouter()
   const [selectedUserType, setSelectedUserType] = useState<'admin_musee' | 'accueil' | null>(null)
   const [formData, setFormData] = useState({
@@ -22,10 +22,12 @@ export default function UsersManagementPage() {
   const [createdUsers, setCreatedUsers] = useState<any[]>([])
 
   useEffect(() => {
+    if (isLoading) return
+    
     if (!isAuthenticated || !hasPermission('manage_admin_musee')) {
       router.push('/admin')
     }
-  }, [isAuthenticated, hasPermission, router])
+  }, [isLoading, isAuthenticated, hasPermission, router])
 
   const generatePassword = () => {
     const adjectives = ['Rouge', 'Bleu', 'Vert', 'Jaune', 'Rose']

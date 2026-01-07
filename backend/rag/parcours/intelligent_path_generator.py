@@ -682,18 +682,16 @@ class IntelligentPathGenerator:
         return graph
     
     def generate_parcours(self,
-                         age_cible: str,
-                         thematique: str,
-                         style_texte: str,
-                         target_duration_minutes: int = 60,  # Par défaut 1h
+                         criteria_dict: Dict[str, int],
+                         target_duration_minutes: int = 60,
                          variation_seed: Optional[int] = None) -> Parcours:
         """
         Génère un parcours personnalisé et optimisé basé sur une durée cible
+        SYSTÈME VRAIMENT DYNAMIQUE - Support de N critères variables (pas seulement 3)
         
         Args:
-            age_cible: Âge du visiteur (enfant, ado, adulte, senior)
-            thematique: Thématique du parcours (technique_picturale, biographie, historique)
-            style_texte: Style narratif (analyse, decouverte, anecdote)
+            criteria_dict: Dict de criteria_ids par type, ex: {"age": 1, "thematique": 4}
+                          Peut contenir 1 à N critères selon la configuration
             target_duration_minutes: Durée cible en minutes (15-180, paliers de 15min)
             variation_seed: Seed pour reproductibilité (optionnel)
             
@@ -721,7 +719,7 @@ class IntelligentPathGenerator:
         print(f"\n{'='*80}")
         print(f"🎯 GÉNÉRATION PARCOURS INTELLIGENT")
         print(f"{'='*80}")
-        print(f"Profil: {age_cible} / {thematique} / {style_texte}")
+        print(f"Profil: {criteria_dict}")
         print(f"Durée cible: {target_duration_minutes} minutes ({target_duration_minutes//60}h{target_duration_minutes%60:02d})")
         print(f"Seed variation: {variation_seed}")
         
@@ -734,26 +732,24 @@ class IntelligentPathGenerator:
         except Exception as e:
             print(f"⚠️  Impossible de charger le graphe des salles: {e}")
             print(f"   → Utilisation des distances euclidiennes")
-            self.room_graph = RoomGraph()  # Graphe vide
+            self.room_graph = RoomGraph()
         
-        # 1. RÉCUPÉRER LES ŒUVRES AVEC NARRATIONS
-        artworks = self._fetch_artworks_with_narrations(
-            cur, age_cible, thematique, style_texte
-        )
+        # 1. RÉCUPÉRER LES ŒUVRES AVEC NARRATIONS (dynamique avec N critères)
+        artworks = self._fetch_artworks_with_narrations(cur, criteria_dict)
         
         cur.close()
         
         if not artworks:
-            raise ValueError("Aucune œuvre trouvée avec narrations pour ce profil")
+            raise ValueError(f"Aucune œuvre trouvée avec narrations pour ce profil: {criteria_dict}")
         
         print(f"📚 Œuvres disponibles: {len(artworks)}")
         
-        # 2. SÉLECTION INTELLIGENTE BASÉE SUR LA DURÉE (avec scoring profil)
+        # 2. SÉLECTION INTELLIGENTE BASÉE SUR LA DURÉE
+        # Le scoring se fera sur les métadonnées de l'œuvre, pas sur des critères hardcodés
         selected = self._select_artworks_by_duration(
             artworks,
             target_duration_minutes,
-            age_cible=age_cible,
-            thematique=thematique
+            criteria_dict=criteria_dict
         )
         
         print(f"✅ Œuvres sélectionnées: {len(selected)}")
@@ -770,11 +766,7 @@ class IntelligentPathGenerator:
         # 5. CONSTRUIRE LE PARCOURS FINAL
         parcours = Parcours(
             parcours_id=f"parcours_{variation_seed}",
-            profil={
-                'age_cible': age_cible,
-                'thematique': thematique,
-                'style_texte': style_texte
-            },
+            profil=criteria_dict,  # Profil dynamique avec N critères
             artworks=optimized_path,
             total_distance=round(total_distance, 2),
             total_duration_minutes=duration_details['total_minutes'],
@@ -807,14 +799,22 @@ class IntelligentPathGenerator:
         
         return parcours
     
-    def _fetch_artworks_with_narrations(self,
-                                       cur,
-                                       age_cible: str,
-                                       thematique: str,
-                                       style_texte: str) -> List[Artwork]:
+    def _fetch_artworks_with_narrations(self, cur, criteria_dict: Dict[str, int]) -> List[Artwork]:
         """
         Récupère toutes les œuvres avec narrations pour le profil
+        SYSTÈME VRAIMENT DYNAMIQUE - Support de N critères variables
+        
+        Args:
+            cur: Curseur PostgreSQL
+            criteria_dict: Dict de criteria_ids par type, ex: {"age": 1, "thematique": 4}
+            
+        Returns:
+            Liste des œuvres avec narrations pré-générées
         """
+        
+        # Construire la requête dynamique pour matcher criteria_combination en JSONB
+        import json
+        criteria_json = json.dumps(criteria_dict, sort_keys=True)
         
         query = """
         SELECT 
@@ -830,14 +830,12 @@ class IntelligentPathGenerator:
         INNER JOIN pregenerations p ON o.oeuvre_id = p.oeuvre_id
         LEFT JOIN entities e ON o.oeuvre_id = e.oeuvre_id
         WHERE 
-            p.age_cible = %s
-            AND p.thematique = %s
-            AND p.style_texte = %s
+            p.criteria_combination = %s::jsonb
             AND o.room IS NOT NULL
         ORDER BY o.oeuvre_id
         """
         
-        cur.execute(query, (age_cible, thematique, style_texte))
+        cur.execute(query, (criteria_json,))
         rows = cur.fetchall()
         
         artworks = []
@@ -848,7 +846,7 @@ class IntelligentPathGenerator:
             if not position:
                 # Position par défaut si pas d'entité
                 position = Position(
-                    x=float(row['room'] * 100),  # Position estimée
+                    x=float(row['room'] * 100),
                     y=100.0,
                     room=row['room'],
                     floor=0
@@ -866,7 +864,7 @@ class IntelligentPathGenerator:
                 room=row['room']
             ))
         
-        # FILTRER LES SALLES INACCESSIBLES (sans porte/connexion)
+        # FILTRER LES SALLES INACCESSIBLES
         if self.room_graph and len(self.room_graph.doors) > 0:
             accessible_rooms = self.room_graph.get_accessible_rooms()
             before_filter = len(artworks)
@@ -874,9 +872,7 @@ class IntelligentPathGenerator:
             filtered_count = before_filter - len(artworks)
             
             if filtered_count > 0:
-                print(f"⚠️  {filtered_count} œuvre(s) exclue(s) (salle(s) inaccessible(s) sans porte)")
-                print(f"   Salles accessibles: {sorted(accessible_rooms)}")
-                print(f"   Salles avec œuvres filtrées: {sorted(set(a.room for a in artworks if a.room not in accessible_rooms))}")
+                print(f"⚠️  {filtered_count} œuvre(s) exclue(s) (salle(s) inaccessible(s))")
         
         return artworks
     
@@ -912,38 +908,38 @@ class IntelligentPathGenerator:
         
         return None
     
-    def _score_artwork_for_profile(self, artwork: Artwork, age_cible: str, thematique: str) -> float:
+    def _score_artwork_for_profile(self, artwork: Artwork, criteria_dict: Dict[str, int]) -> float:
         """
-        Score une œuvre selon sa pertinence pour le profil
-        Retourne un score 0.0-1.0 basé sur des keywords dans les métadonnées
+        Score une œuvre selon sa pertinence pour le profil DYNAMIQUE
+        Retourne un score 0.0-1.0 basé sur les métadonnées de l'œuvre
+        Plus de hardcoding - utilise les métadonnées générales
         """
         score = 0.5  # Score de base
         
-        # Keywords par thématique
-        theme_keywords = {
-            'technique_picturale': ['huile', 'acrylique', 'aquarelle', 'peinture', 'toile', 'technique', 'couleur'],
-            'biographie': ['autoportrait', 'portrait', 'vie', 'artiste', 'période'],
-            'historique': ['guerre', 'révolution', 'siècle', 'époque', 'histoire', 'politique']
-        }
+        # Bonus basé sur la qualité des métadonnées (plus l'œuvre a de contexte, mieux c'est)
+        text = f"{artwork.title} {artwork.materiaux_technique} {artwork.narration}".lower()
         
-        # Vérifier si les keywords de la thématique apparaissent
-        if thematique in theme_keywords:
-            text = f"{artwork.title} {artwork.materiaux_technique} {artwork.narration}".lower()
-            matches = sum(1 for kw in theme_keywords[thematique] if kw in text)
-            score += min(matches * 0.1, 0.3)  # +0.1 par match, max +0.3
+        # Mots-clés généraux qui indiquent une œuvre riche en contenu
+        rich_keywords = ['technique', 'histoire', 'contexte', 'analyse', 'biographie', 
+                        'période', 'mouvement', 'influence', 'symbolique']
         
-        # Bonus pour certains âges (préférer œuvres plus colorées/narratives pour enfants)
-        if age_cible == 'enfant':
-            if any(word in artwork.title.lower() for word in ['couleur', 'animal', 'nature']):
-                score += 0.2
+        matches = sum(1 for kw in rich_keywords if kw in text)
+        score += min(matches * 0.05, 0.3)  # +0.05 par match, max +0.3
+        
+        # Bonus pour narration détaillée (longueur)
+        narration_words = len(artwork.narration.split())
+        if narration_words > 200:
+            score += 0.2
+        elif narration_words > 100:
+            score += 0.1
         
         return min(score, 1.0)
     
     def _select_artworks_by_duration(self, artworks: List[Artwork], target_duration_minutes: int, 
-                                     age_cible: str = None, thematique: str = None) -> List[Artwork]:
+                                     criteria_dict: Dict[str, int] = None) -> List[Artwork]:
         """
         Sélectionne les œuvres pour atteindre la durée cible
-        Utilise un scoring basé sur le profil pour une sélection intelligente
+        Utilise un scoring basé sur les métadonnées pour une sélection intelligente
         
         Calcule le temps pour chaque œuvre (narration + observation) et ajoute
         progressivement des œuvres jusqu'à approcher la durée cible
@@ -953,8 +949,8 @@ class IntelligentPathGenerator:
             return []
         
         # Scorer chaque œuvre selon le profil (si fourni)
-        if age_cible and thematique:
-            scored_artworks = [(a, self._score_artwork_for_profile(a, age_cible, thematique)) for a in artworks]
+        if criteria_dict:
+            scored_artworks = [(a, self._score_artwork_for_profile(a, criteria_dict)) for a in artworks]
             # Trier par score (meilleurs en premier) puis shuffle partiel pour variété
             scored_artworks.sort(key=lambda x: x[1], reverse=True)
             # Prendre les 60% meilleurs et shuffle parmi eux pour variété
@@ -1261,18 +1257,16 @@ class IntelligentPathGenerator:
 
 # ===== FONCTION HELPER =====
 
-def generer_parcours_intelligent(age_cible: str,
-                                 thematique: str,
-                                 style_texte: str,
+def generer_parcours_intelligent(criteria_dict: Dict[str, int],
                                  target_duration_minutes: int = 60,
                                  variation_seed: Optional[int] = None) -> Dict:
     """
     Fonction helper pour générer un parcours intelligent basé sur une durée cible
+    SYSTÈME VRAIMENT DYNAMIQUE - Support de N critères variables
     
     Args:
-        age_cible: Âge cible du public
-        thematique: Thématique du parcours
-        style_texte: Style des narrations
+        criteria_dict: Dict de criteria_ids par type, ex: {"age": 1, "thematique": 4, "style_texte": 7}
+                       Peut contenir 1 à N critères selon la configuration
         target_duration_minutes: Durée cible en minutes (15-180, paliers de 15min)
         variation_seed: Seed optionnel pour la génération
     
@@ -1284,9 +1278,7 @@ def generer_parcours_intelligent(age_cible: str,
     
     try:
         parcours = generator.generate_parcours(
-            age_cible=age_cible,
-            thematique=thematique,
-            style_texte=style_texte,
+            criteria_dict=criteria_dict,
             target_duration_minutes=target_duration_minutes,
             variation_seed=variation_seed
         )
@@ -1300,12 +1292,11 @@ def generer_parcours_intelligent(age_cible: str,
 # ===== TEST =====
 
 if __name__ == '__main__':
-    # Test du générateur
+    # Test du générateur avec critères dynamiques
+    # Exemple: {"age": 1, "thematique": 4} ou {"age": 1, "thematique": 4, "style_texte": 7}
     result = generer_parcours_intelligent(
-        age_cible='adulte',
-        thematique='technique_picturale',
-        style_texte='analyse',
-        max_artworks=10
+        criteria_dict={"age": 1, "thematique": 4, "style_texte": 7},
+        target_duration_minutes=60
     )
     
     print(json.dumps(result, indent=2, ensure_ascii=False))

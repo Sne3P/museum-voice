@@ -10,7 +10,7 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # ============================================
-# ÉTAPE DEV : DÉVELOPPEMENT AVEC HOT-RELOAD
+# ÉTAPE DEV : DÉVELOPPEMENT OPTIMISÉ
 # ============================================
 FROM base AS dev
 
@@ -23,18 +23,27 @@ COPY components.json postcss.config.mjs ./
 RUN corepack enable && corepack prepare pnpm@latest --activate && \
     pnpm install
 
-# Le code source sera monté via volumes docker-compose.dev.yml
-# Les fichiers de config ci-dessus seront overridés par les volumes si modifiés
+# Copier tout le code source pour dev (rebuild rapide)
+COPY app ./app
+COPY components ./components
+COPY core ./core
+COPY features ./features
+COPY infrastructure ./infrastructure
+COPY lib ./lib
+COPY public ./public
+COPY shared ./shared
+COPY styles ./styles
+
+# Créer répertoires uploads
+RUN mkdir -p /app/public/uploads/pdfs /app/public/uploads/audio
 
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV WATCHPACK_POLLING=true
-ENV CHOKIDAR_USEPOLLING=true
 
 EXPOSE 3000
 
-# Utiliser forme shell pour exécuter pnpm correctement
-CMD pnpm dev
+# Dev server avec Turbopack
+CMD ["pnpm", "dev"]
 
 # ============================================
 # ÉTAPE 1 : INSTALLATION DÉPENDANCES (PROD)
@@ -60,8 +69,19 @@ WORKDIR /app
 # Copier node_modules depuis deps
 COPY --from=deps /app/node_modules ./node_modules
 
-# Copier le code source
-COPY . .
+# Copier TOUS les fichiers nécessaires pour le build
+COPY package.json pnpm-lock.yaml* ./
+COPY tsconfig.json next.config.mjs next-env.d.ts ./
+COPY components.json postcss.config.mjs ./
+COPY app ./app
+COPY components ./components
+COPY core ./core
+COPY features ./features
+COPY infrastructure ./infrastructure
+COPY lib ./lib
+COPY public ./public
+COPY shared ./shared
+COPY styles ./styles
 
 # Variables d'environnement pour le build
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -74,7 +94,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate && \
 # ============================================
 # ÉTAPE 3 : RUNNER PRODUCTION
 # ============================================
-FROM base AS runner
+FROM base AS production
 
 WORKDIR /app
 
