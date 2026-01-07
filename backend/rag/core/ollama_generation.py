@@ -66,19 +66,25 @@ class OllamaMediationSystem:
         Transforme le dictionnaire de combinaison en texte formaté pour le prompt.
         data ressemble à : {'name': 'Enfant', 'description': '...', 'id': 1}
         """
-        lignes: List[str] = []
+        instructions = []
         for type_critere, data in combinaison.items():
             nom = data.get("name", "")
-            desc = data.get("description")
-            regle = data.get("regle", "")
-            label = type_critere.replace("_", " ").capitalize()
-
-            if desc or regle:
-                lignes.append(f"- {label} : {nom} (Description : {desc}, Règle : {regle})")
+            desc = data.get("description", "")
+            ai_indication = data.get("ai_indication", "")
+            
+            # Formatage plus impératif pour le LLM
+            instructions.append(f" CONTRAINTE : {type_critere.upper()} : {nom}")
+            
+            # On ajoute la description si elle existe (C'est ce qui manquait)
+            if desc:
+                instructions.append(f"   (Définition : {desc})")
+            
+            if ai_indication:
+                instructions.append(f"- INSTRUCTION STYLE : {ai_indication}")
             else:
-                lignes.append(f"- {label} : {nom}")
+                instructions.append(f"- Adapte le ton pour correspondre à : {nom}")
 
-        return "\n".join(lignes)
+        return "\n".join(instructions)
     
     def _check_existing(self, oeuvre_id: int, contexte: Dict[str, Any]) -> bool:
     
@@ -205,9 +211,10 @@ class OllamaMediationSystem:
         bloc_criteres = self.formater_parametres_criteres(combinaison)
 
         system = (
-            "Tu es médiateur culturel et rédacteur d’audioguide de musée. "
-            "Tu respectes STRICTEMENT la contrainte : aucune info externe, aucune invention. "
-            "Tu écris pour l’oral : phrases claires, progressives, fluides."
+            "Role : Tu es un guide de musée expert, capable d'improviser des visites captivantes."
+            "Contexte : Le visiteur est DEBOUT devant l'œuvre. Il la regarde en ce moment même."
+            "Tu respectes STRICTEMENT la contrainte : aucune info externe, aucune invention."
+            " Objectif : Tu écris pour l’oral, écris un script d'audioguide avec phrases claires, progressives, fluides."
         )
 
         user = f"""
@@ -215,31 +222,36 @@ class OllamaMediationSystem:
         - Langue : Français
         - Durée cible : {duree_minutes} minute(s)
 
-        PROFIL ET ANGLE (Respecter impérativement)
+        --- INSTRUCTIONS DE PERSONNALISATION (CRUCIAL) ---
+        Tu dois modifier radicalement ton vocabulaire et ton approche selon ces règles :
         {bloc_criteres}
 
         SOURCE UNIQUE
         Utilise UNIQUEMENT les informations présentes dans l’entrée d’œuvre ci-dessous.
         N’ajoute aucune information externe. Ne déduis rien.
         Reformule : ne cite jamais mot à mot.
-
-        INTERDICTIONS STRICTES
-        - Ne commence JAMAIS le texte par « Bienvenue ».
-        - Ne commence JAMAIS par une phrase d'introduction comme « Voici », « Je vous propose », « Voici une proposition », etc.
-        - Commence DIRECTEMENT par le texte de médiation.
-        - N’inclus AUCUNE indication sonore ou scénique
-        - N’utilise PAS de didascalies entre parenthèses ou crochets.
-        - Écris UNIQUEMENT un texte de médiation descriptif continu.
-
+        
         Source de données (source unique)
         {work_text}
+
+        --- RÈGLES D'ÉCRITURE ---
+        1. ORALITÉ : Écris pour être lu à voix haute. Fais des phrases courtes. Respire.
+        2. GUIDAGE : Utilise des verbes de perception ("Regardez, voyez, observez"). Guide l'œil du visiteur.
+        3. VÉRACITÉ : N'utilise QUE les informations fournies ci-dessus. N'invente AUCUNE date ou fait historique.
+        4. STRUCTURE :
+        - Accroche visuelle immédiate (détail ou impression générale).
+        - Description guidée (ce qu'on voit).
+        - Contexte/Sens (ce qui est compris à travers le filtre thématique choisi).
+        - Conclusion ouverte.
+    
 
         SORTIE ATTENDUE (TEXTE UNIQUEMENT)
         Écris un texte de MEDIATION AUDIOGUIDE prêt à être lu à voix haute.
         - Description progressive : de loin → de près → matière/lumière/geste → sens (uniquement si présent)
+        - Aucun astérisque, aucune didascalie, aucun geste
         - Ton sobre et accessible
-        - Pas de titres, pas de listes, pas de markdown
         - Pas d’injonctions émotionnelles (“ressentez”, “imaginez”…)
+        - PAS de titres, PAS de listes,  PAS dse Markdown (ni gras, ni italique)
         - Longueur adaptée à {duree_minutes} minute(s) de lecture (approx. 120–160 mots/min)
         """.strip()
 
