@@ -170,11 +170,7 @@ class OllamaMediationSystem:
             "options": {
                 "temperature": self.temperature if temperature is None else temperature,
                 "num_predict": self.num_predict,
-<<<<<<< HEAD
-                "num_threads": num_threads,  # ⚡ OPTIMISÉ : Utilise tous les CPU cores
-=======
-                "num_threads": num_threads,
->>>>>>> a44b9d1b7837e46cfcd2e338b8d25298e7391213
+                "num_threads": num_threads,  
             },
         }
         r = requests.post(url, json=payload, timeout=(timeout_s or self.timeout_s))
