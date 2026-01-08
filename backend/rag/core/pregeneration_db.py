@@ -8,6 +8,56 @@ import json
 from typing import Optional, List, Dict, Any, Tuple
 from .db_postgres import _connect_postgres
 
+def _normalize_criteria_dict(criteria_dict: Dict[str, Any]) -> Dict[str, int]:
+    """
+    Garantit un dict {type_name: criteria_id(int)}.
+    Accepte aussi {type_name: {"criteria_id": ...}} et convertit en int.
+    """
+    if criteria_dict is None:
+        return {}
+
+    normalized: Dict[str, int] = {}
+
+    for type_name, value in criteria_dict.items():
+        # Cas OK: int
+        if isinstance(value, int) and not isinstance(value, bool):
+            normalized[type_name] = value
+            continue
+
+        # Cas: "12"
+        if isinstance(value, str) and value.isdigit():
+            normalized[type_name] = int(value)
+            continue
+
+        # Cas: dict venant de la DB/API
+        if isinstance(value, dict):
+            if "criteria_id" in value:
+                cid = value["criteria_id"]
+                if isinstance(cid, int) and not isinstance(cid, bool):
+                    normalized[type_name] = cid
+                    continue
+                if isinstance(cid, str) and cid.isdigit():
+                    normalized[type_name] = int(cid)
+                    continue
+            raise ValueError(
+                f"criteria_dict['{type_name}'] doit contenir un 'criteria_id' (int). Reçu: {value!r}"
+            )
+
+        # Cas problématique: datetime/date
+        if isinstance(value, (datetime, date)):
+            raise ValueError(
+                f"criteria_dict['{type_name}'] est un datetime/date ({value!r}). "
+                f"Attendu: un criteria_id (int)."
+            )
+
+        raise ValueError(
+            f"criteria_dict['{type_name}'] a un type non supporté: {type(value).__name__} ({value!r}). "
+            f"Attendu: int ou dict avec 'criteria_id'."
+        )
+
+    return normalized
+
+
 
 def add_pregeneration(oeuvre_id: int, criteria_dict: Dict[str, int],
                      pregeneration_text: str,
@@ -28,6 +78,9 @@ def add_pregeneration(oeuvre_id: int, criteria_dict: Dict[str, int],
     
     try:
         # Convertir le dict en JSONB pour stockage
+        criteria_dict = _normalize_criteria_dict(criteria_dict)
+
+        # Convertir le dict en JSONB pour stockage (clé canonique)
         criteria_json = json.dumps(criteria_dict, sort_keys=True)
         
         # Insert or update (ON CONFLICT sur la combinaison unique)

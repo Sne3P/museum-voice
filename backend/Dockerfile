@@ -65,7 +65,8 @@ COPY seed_narrations.py .
 
 # Copier script init Piper
 COPY init-piper.sh /usr/local/bin/init-piper.sh
-RUN chmod +x /usr/local/bin/init-piper.sh
+# RUN chmod +x /usr/local/bin/init-piper.sh
+RUN sed -i 's/\r$//' /usr/local/bin/init-piper.sh && chmod +x /usr/local/bin/init-piper.sh
 
 # Télécharger modèles Piper TTS (PERMANENT - ne change pas)
 RUN /usr/local/bin/init-piper.sh
@@ -95,7 +96,8 @@ COPY seed_narrations.py .
 
 # Copier script init Piper
 COPY init-piper.sh /usr/local/bin/init-piper.sh
-RUN chmod +x /usr/local/bin/init-piper.sh
+# RUN chmod +x /usr/local/bin/init-piper.sh
+RUN sed -i 's/\r$//' /usr/local/bin/init-piper.sh && chmod +x /usr/local/bin/init-piper.sh
 
 # Télécharger modèles Piper TTS
 RUN /usr/local/bin/init-piper.sh

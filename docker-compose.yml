@@ -166,6 +166,17 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+  adminer:       # on pourra l'enlever plus tard c'est juste pour la visualisation
+    image: adminer
+    container_name: museum-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - museum-network
+    depends_on:
+      database:
+        condition: service_healthy
 
   # ==========================================
   # SERVICE 5 : REACT FRONTEND CLIENT

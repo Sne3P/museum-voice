@@ -24,12 +24,12 @@ for i in {1..30}; do
 done
 
 # Vérifier si le modèle mistral est installé
-if ollama list | grep -q "mistral"; then
-    echo "✅ Modèle mistral déjà installé - skip pull"
+if ollama list | grep -q "ministral"; then
+    echo "✅ Modèle ministral déjà installé - skip pull"
 else
-    echo "📥 Téléchargement du modèle mistral (~4GB)..."
+    echo "📥 Téléchargement du modèle mistral (~3GB)..."
     echo "   Première installation - cela peut prendre 5-10 minutes..."
-    ollama pull mistral
+    ollama pull ministral-3:3b
     
     if [ $? -eq 0 ]; then
         echo "✅ Modèle mistral installé avec succès!"

@@ -9,13 +9,15 @@ import sys
 import os
 from pathlib import Path
 
+from .core.ollama_generation import OllamaMediationSystem
+
 # Import modules PostgreSQL (relatifs depuis rag/)
 from .core.db_postgres import (
     init_postgres_db, get_artwork, get_all_artworks,
     search_artworks, add_artwork, add_artist, add_movement,
     get_artwork_sections, get_artwork_anecdotes,
     add_section, add_anecdote, add_chunk, get_artwork_chunks,
-    _connect_postgres
+    _connect_postgres, get_criteres
 )
 
 from .core.pregeneration_db import (
@@ -622,24 +624,64 @@ def process_pdf_full():
 
 # ===== API PRÉGÉNÉRATION AUTOMATIQUE =====
 
+# @app.route('/api/pregenerate-artwork/<int:oeuvre_id>', methods=['POST'])
+# def pregenerate_single_artwork(oeuvre_id):
+#     """Lance la prégénération COMPLÈTE avec Ollama pour une œuvre
+#     Flux: Chunks → Embeddings → FAISS → RAG → Ollama → 36 narrations uniques"""
+#     try:
+#         from .core.ollama_pregeneration_complete import get_ollama_pregeneration_system
+        
+#         # Options
+#         data = request.get_json() or {}
+#         force_regenerate = data.get('force_regenerate', False)
+#         skip_rag_setup = data.get('skip_rag_setup', False)
+        
+#         # Lancer la prégénération COMPLÈTE
+#         system = get_ollama_pregeneration_system()
+#         result = system.pregenerate_artwork(
+#             oeuvre_id=oeuvre_id,
+#             force_regenerate=force_regenerate,
+#             skip_rag_setup=skip_rag_setup
+#         )
+        
+#         if result.get('success'):
+#             stats = result.get('stats', {})
+#             return jsonify({
+#                 'success': True,
+#                 'oeuvre_id': oeuvre_id,
+#                 'title': result.get('title'),
+#                 'stats': stats,
+#                 'duration': result.get('duration'),
+#                 'message': f"{stats.get('generated', 0)} narrations générées avec Ollama"
+#             })
+#         else:
+#             return jsonify({
+#                 'success': False,
+#                 'error': result.get('error')
+#             }), 500
+        
+#     except Exception as e:
+#         import traceback
+#         print(f"❌ Erreur prégénération Ollama: {e}")
+#         print(traceback.format_exc())
+#         return jsonify({
+#             'success': False,
+#             'error': str(e)
+#         }), 500
+
 @app.route('/api/pregenerate-artwork/<int:oeuvre_id>', methods=['POST'])
 def pregenerate_single_artwork(oeuvre_id):
-    """Lance la prégénération COMPLÈTE avec Ollama pour une œuvre
-    Flux: Chunks → Embeddings → FAISS → RAG → Ollama → 36 narrations uniques"""
     try:
-        from .core.ollama_pregeneration_complete import get_ollama_pregeneration_system
-        
-        # Options
         data = request.get_json() or {}
-        force_regenerate = data.get('force_regenerate', False)
-        skip_rag_setup = data.get('skip_rag_setup', False)
         
-        # Lancer la prégénération COMPLÈTE
-        system = get_ollama_pregeneration_system()
+        system = OllamaMediationSystem()
+        all_criteres = get_criteres()
         result = system.pregenerate_artwork(
             oeuvre_id=oeuvre_id,
-            force_regenerate=force_regenerate,
-            skip_rag_setup=skip_rag_setup
+            artwork=get_artwork(oeuvre_id),
+            combinaisons=system.generate_combinaisons(all_criteres),
+            model="ministral-3:3b",
+            force_regenerate=data.get('force_regenerate', False)
         )
         
         if result.get('success'):
@@ -657,7 +699,6 @@ def pregenerate_single_artwork(oeuvre_id):
                 'success': False,
                 'error': result.get('error')
             }), 500
-        
     except Exception as e:
         import traceback
         print(f"❌ Erreur prégénération Ollama: {e}")
@@ -666,6 +707,7 @@ def pregenerate_single_artwork(oeuvre_id):
             'success': False,
             'error': str(e)
         }), 500
+
 
 
 @app.route('/api/pregenerate-all', methods=['POST'])

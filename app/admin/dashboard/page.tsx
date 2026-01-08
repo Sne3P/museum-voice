@@ -266,7 +266,12 @@ export default function NarrationsDashboard() {
 
     setLoading(true)
     try {
-      const res = await fetch('/api/admin/seed-narrations', {
+      // const res = await fetch('/api/admin/seed-narrations', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ oeuvre_id: oeuvreId })
+      // })
+      const res = await fetch(`/api/admin/pregenerate-artwork/${oeuvreId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oeuvre_id: oeuvreId })
