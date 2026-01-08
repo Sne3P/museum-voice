@@ -403,7 +403,7 @@ export function Canvas({
   /**
    * Gestion de la confirmation du modal d'artwork
    */
-  const handleArtworkModalConfirm = useCallback((artworksData: Array<{ name: string; artist?: string; pdfFile?: File | null; pdfPath?: string; metadata?: any }>) => {
+  const handleArtworkModalConfirm = useCallback((artworksData: Array<{ name: string; artist?: string; pdfFile?: File | null; pdfPath?: string; imagePath?: string; metadata?: any }>) => {
     if (!artworkModal) return
 
     const { position, size, existingArtworks } = artworkModal
@@ -425,6 +425,7 @@ export function Canvas({
                       artist: updatedData.artist,
                       pdfPath: updatedData.pdfPath,
                       pdf_id: updatedData.pdfPath || '',
+                      image_link: updatedData.imagePath || '/placeholder.svg',
                       tempPdfFile: updatedData.pdfFile || null,
                       metadata: updatedData.metadata
                     }
@@ -452,6 +453,7 @@ export function Canvas({
         artist: data.artist,
         pdf_id: data.pdfPath || '',
         pdfPath: data.pdfPath,
+        image_link: data.imagePath || '/placeholder.svg',
         tempPdfFile: data.pdfFile || null,
         metadata: data.metadata,
         roomId: containingRoom?.id

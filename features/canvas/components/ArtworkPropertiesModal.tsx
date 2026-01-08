@@ -15,6 +15,9 @@ interface ArtworkData {
   pdfFile?: File | null
   pdfPath?: string  // Chemin du PDF uploadé
   existingPdfPath?: string  // Pour suppression lors de modification
+  imageFile?: File | null  // NEW: Fichier image
+  imagePath?: string  // NEW: Chemin de l'image uploadée
+  existingImagePath?: string  // NEW: Pour suppression lors de modification
   metadata?: {  // NEW: Métadonnées extraites du PDF
     title?: string
     artist?: string
@@ -53,10 +56,12 @@ export function ArtworkPropertiesModal({
       return existingArtworks.map(a => ({
         name: a.name || '',
         pdfPath: a.pdfPath || a.pdfLink || a.pdf_id || '',
-        existingPdfPath: a.pdfPath || a.pdfLink || a.pdf_id || ''
+        existingPdfPath: a.pdfPath || a.pdfLink || a.pdf_id || '',
+        imagePath: a.image_link || '/placeholder.svg',
+        existingImagePath: a.image_link || '/placeholder.svg'
       }))
     }
-    return [{ name: '', pdfPath: '' }]
+    return [{ name: '', pdfPath: '', imagePath: '/placeholder.svg' }]
   })
 
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
@@ -184,6 +189,56 @@ export function ArtworkPropertiesModal({
       alert(`Erreur lors de l'upload du PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`)
     } finally {
       setUploadingIndex(null)
+    }
+  }, [artworks])
+
+  const handleImageChange = useCallback(async (index: number, file: File | null) => {
+    if (!file) {
+      // Suppression de l'image
+      setArtworks(prev => prev.map((artwork, i) => 
+        i === index ? { ...artwork, imageFile: null, imagePath: '/placeholder.svg' } : artwork
+      ))
+      return
+    }
+
+    // Upload de l'image
+    try {
+      const formData = new FormData()
+      formData.append('artworkId', `temp-${Date.now()}-${index}`)
+      formData.append('imageFile', file)
+      
+      // Si modification, ajouter l'ancien chemin pour suppression
+      const existingPath = artworks[index].existingImagePath
+      if (existingPath && existingPath !== '/placeholder.svg') {
+        formData.append('oldImagePath', existingPath)
+      }
+
+      const uploadResponse = await fetch('/api/artwork-image', {
+        method: 'POST',
+        body: formData
+      })
+
+      const uploadResult = await uploadResponse.json()
+
+      if (!uploadResponse.ok) {
+        throw new Error(uploadResult.error || 'Erreur upload image')
+      }
+
+      console.log('✅ Image uploadée:', uploadResult.imagePath)
+
+      // Mettre à jour avec le chemin de l'image
+      setArtworks(prev => prev.map((artwork, i) => 
+        i === index ? { 
+          ...artwork, 
+          imageFile: file,
+          imagePath: uploadResult.imagePath,
+          existingImagePath: uploadResult.imagePath
+        } : artwork
+      ))
+      
+    } catch (error) {
+      console.error('❌ Erreur upload image:', error)
+      alert(`Erreur lors de l'upload de l'image: ${error instanceof Error ? error.message : 'Erreur inconnue'}`)
     }
   }, [artworks])
 
@@ -318,6 +373,60 @@ export function ArtworkPropertiesModal({
                 {!artwork.pdfPath && !uploadingIndex && (
                   <p className="mt-2 text-xs text-gray-500">
                     Sélectionnez un fichier PDF pour cette œuvre
+                  </p>
+                )}
+              </div>
+
+              {/* NOUVEAU : Upload d'image */}
+              <div className="mt-4">
+                <Label htmlFor={`artwork-image-${index}`}>
+                  Image de l'œuvre
+                </Label>
+                
+                {/* Aperçu de l'image */}
+                {artwork.imagePath && (
+                  <div className="mt-2 mb-3">
+                    <img 
+                      src={artwork.imagePath} 
+                      alt={artwork.name || 'Aperçu'}
+                      className="w-full h-48 object-cover rounded-lg border border-gray-200"
+                    />
+                    {artwork.imagePath !== '/placeholder.svg' && (
+                      <div className="mt-2 flex gap-2">
+                        <label
+                          htmlFor={`artwork-image-${index}`}
+                          className="px-3 py-1 text-xs font-medium text-orange-700 bg-orange-50 rounded hover:bg-orange-100 transition-colors cursor-pointer"
+                        >
+                          Modifier l'image
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleImageChange(index, null)}
+                          className="px-3 py-1 text-xs font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 transition-colors"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <input
+                  id={`artwork-image-${index}`}
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleImageChange(index, e.target.files?.[0] || null)}
+                  className={`${artwork.imagePath && artwork.imagePath !== '/placeholder.svg' ? 'hidden' : 'mt-1 block w-full'} text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-purple-50 file:text-purple-700
+                    hover:file:bg-purple-100`}
+                />
+                
+                {(!artwork.imagePath || artwork.imagePath === '/placeholder.svg') && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Image utilisée dans l'application client. Sans image, un placeholder sera affiché.
                   </p>
                 )}
               </div>

@@ -211,7 +211,7 @@ services:
   # ==========================================
   client:
     build:
-      context: ./museum-voice
+      context: ./client-frontend
       dockerfile: Dockerfile
       cache_from:
         - museum-client-prod:latest

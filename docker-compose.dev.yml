@@ -202,7 +202,7 @@ services:
   # ==========================================
   client:
     build:
-      context: ./museum-voice
+      context: ./client-frontend
       dockerfile: Dockerfile
     container_name: museum-client-dev
     restart: unless-stopped

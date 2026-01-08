@@ -1,0 +1,230 @@
+/* MAIN CONTAINER */
+.resume-art {
+  width: 100%;
+  max-width: 100vw;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #fff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  position: relative;
+  font-family: "Poppins", sans-serif;
+}
+
+/* IMAGE WRAPPER */
+.resume-art-image-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+/*  MAIN IMAGE */
+.resume-art-image {
+  width: 100%;
+  height: 80vh;
+  object-fit: contain;
+  display: block;
+  background-color: #f5f5f5;
+}
+
+/*  TOP ICONS */
+.resume-art-top-icons {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: space-between;
+  color: white;
+  font-size: 20px;
+  z-index: 3;
+}
+
+/*  CONTROLS OVERLAY (BOTTOM BAR) */
+.resume-art-controls-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  backdrop-filter: blur(6px);
+  z-index: 4;
+}
+
+/* ⏯ CONTROL BUTTONS */
+.resume-art-controls {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  width: 40%;
+  max-width: 250px;
+  margin-bottom: 8px;
+  /* add spacing before progress bar */
+}
+
+/*  PROGRESS BAR (below controls) */
+.resume-art-progress {
+  width: 85%;
+  height: 5px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 50px;
+  overflow: hidden;
+}
+
+.resume-progress-fill {
+  height: 100%;
+  width: 0;
+  background-color: #0a0a2a;
+  border-radius: 50px;
+  transition: width 0.4s ease;
+}
+
+/*  ICON STYLE */
+.resume-art-top-icons .icon {
+  cursor: pointer;
+  transition: transform 0.2s, color 0.3s;
+  color: #ffffff;
+  font-size: 22px;
+}
+
+.icon {
+  cursor: pointer;
+  transition: transform 0.2s, color 0.3s;
+  color: #060606;
+  font-size: 22px;
+}
+
+.icon:hover {
+  transform: scale(1.2);
+}
+
+/* PLAY BUTTON */
+.play-btn {
+  background-color: #0a0a2a;
+  color: white;
+  padding: 10px;
+  border-radius: 50%;
+  font-size: 18px;
+  transition: transform 0.3s;
+}
+
+.play-btn:hover {
+  transform: scale(1.15);
+}
+
+/* IMAGE ZOOM */
+.resume-art-image-container {
+  position: relative;
+  width: 100%;
+}
+
+.image-zoom-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.image-zoom-btn:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: scale(1.1);
+}
+
+/* ZOOM MODAL */
+.image-zoom-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.zoom-image {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  transition: transform 0.1s ease-out;
+  touch-action: none;
+  user-select: none;
+}
+
+.zoom-close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid white;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  font-size: 24px;
+  color: white;
+  cursor: pointer;
+  z-index: 10000;
+  transition: all 0.2s;
+}
+
+.zoom-close-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+.zoom-controls {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 30px;
+  padding: 10px 20px;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  z-index: 10000;
+  backdrop-filter: blur(10px);
+}
+
+.zoom-controls button {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.zoom-controls button:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.zoom-controls span {
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 60px;
+  text-align: center;
+}
