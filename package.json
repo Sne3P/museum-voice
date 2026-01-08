@@ -19,8 +19,13 @@
     "docker:prod:down": "docker-compose -f docker-compose.prod.yml down",
     "docker:clean": "docker-compose -f docker-compose.dev.yml down -v && docker-compose -f docker-compose.prod.yml down -v && docker system prune -f",
     "docker:ps": "docker ps --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\"",
+    "docker:verify": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-production.ps1",
+    "docker:stats": "docker stats --format \"table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.NetIO}}\"",
     "db:seed": "docker exec museum-backend-dev python seed_narrations_dynamic.py",
-    "db:seed:test": "docker exec museum-backend-dev python -c \"import psycopg2; conn = psycopg2.connect(host='database', port=5432, database='museumvoice', user='museum_admin', password='Museum@2026!Secure'); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM pregenerations'); print(f'Total narrations: {cur.fetchone()[0]}'); cur.execute('SELECT COUNT(*) FROM oeuvres'); print(f'Total oeuvres: {cur.fetchone()[0]}'); conn.close()\""
+    "db:seed:test": "docker exec museum-backend-dev python -c \"import psycopg2; conn = psycopg2.connect(host='database', port=5432, database='museumvoice', user='museum_admin', password='Museum@2026!Secure'); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM pregenerations'); print(f'Total narrations: {cur.fetchone()[0]}'); cur.execute('SELECT COUNT(*) FROM oeuvres'); print(f'Total oeuvres: {cur.fetchone()[0]}'); conn.close()\"",
+    "test:health": "curl -f http://localhost:5000/health",
+    "test:ollama": "docker exec museum-ollama-prod ollama list",
+    "test:piper": "docker exec museum-backend-prod ls -lh /app/piper/models/fr_FR/ /app/piper/models/en_US/"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -25,9 +25,10 @@ onnxruntime>=1.16.0
 requests>=2.28.0
 
 # === RECOMMANDÉES (haute performance) ===
-# Embeddings et recherche vectorielle pour RAG
-sentence-transformers>=2.2.0
-faiss-cpu>=1.7.2
+# LEGACY RAG SYSTEM - SUPPRIMÉ (plus utilisé)
+# Le générateur Ollama utilise directement les métadonnées DB
+# sentence-transformers>=2.2.0
+# faiss-cpu>=1.7.2
 
 # Traitement avancé de texte
 torch>=2.0.0

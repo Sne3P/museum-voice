@@ -23,7 +23,7 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Vérifier si le modèle mistral est installé
+# Vérifier si le modèle ministral est installé
 if ollama list | grep -q "ministral"; then
     echo "✅ Modèle ministral déjà installé - skip pull"
 else
@@ -32,7 +32,7 @@ else
     ollama pull ministral-3:3b
     
     if [ $? -eq 0 ]; then
-        echo "✅ Modèle mistral installé avec succès!"
+        echo "✅ Modèle ministral installé avec succès!"
     else
         echo "❌ Erreur lors du pull du modèle"
         kill $OLLAMA_PID

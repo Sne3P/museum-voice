@@ -17,7 +17,7 @@ services:
       POSTGRES_DB: museumvoice
       POSTGRES_USER: museum_admin
       POSTGRES_PASSWORD: Museum@2026!Secure
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=fr_FR.UTF-8"
     ports:
       - "5432:5432"
     volumes:
@@ -28,8 +28,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     networks:
       - museum-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # ==========================================
   # SERVICE 2 : ADMINER (DATABASE UI)
@@ -48,6 +54,11 @@ services:
         condition: service_healthy
     networks:
       - museum-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
 
   # ==========================================
   # SERVICE 3 : OLLAMA LLM LOCAL
@@ -64,16 +75,22 @@ services:
     networks:
       - museum-network
     entrypoint: ["/bin/bash", "/usr/local/bin/ollama-entrypoint.sh"]
-    # healthcheck:
-    #   test: ["CMD-SHELL", "ollama list | grep -q mistral || exit 1"]
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 3
-    #   start_period: 15s
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
     deploy:
       resources:
         limits:
           memory: 12G
+          cpus: '8'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # ==========================================
   # SERVICE 4 : BACKEND PYTHON FLASK + RAG
@@ -88,8 +105,8 @@ services:
     depends_on:
       database:
         condition: service_healthy
-      # ollama:
-      #   condition: service_healthy
+      ollama:
+        condition: service_healthy
     environment:
       # Database PostgreSQL
       DB_HOST: database
@@ -98,14 +115,15 @@ services:
       DB_USER: museum_admin
       DB_PASSWORD: Museum@2026!Secure
       
-      # Flask
+      # Flask DEV
       FLASK_ENV: development
       FLASK_APP: rag.main_postgres
       FLASK_DEBUG: "1"
+      PYTHONUNBUFFERED: 1
       
       # Ollama LOCAL
       OLLAMA_API_URL: http://ollama:11434
-      OLLAMA_MODEL: mistral
+      OLLAMA_MODEL: ministral-3:3b
     ports:
       - "5000:5000"
     volumes:
@@ -118,8 +136,13 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-    command: python -m flask --app rag/main_postgres.py run --host=0.0.0.0 --port=5000 --reload
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    command: python -m flask --app rag/main_postgres.py run --host=0.0.0.0 --port=5000 --reload --debug
 
   # ==========================================
   # SERVICE 5 : NEXT.JS EDITOR/DASHBOARD
@@ -163,11 +186,16 @@ services:
     networks:
       - museum-network
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # ==========================================
   # SERVICE 6 : REACT FRONTEND CLIENT
@@ -181,6 +209,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      REACT_APP_BACKEND_URL: http://localhost:5000
     ports:
       - "8080:80"
     volumes:
@@ -192,6 +222,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
 # ==========================================
 # VOLUMES PERSISTANTS DEV
@@ -199,12 +235,16 @@ services:
 volumes:
   postgres_data_dev:
     name: museum-postgres-data-dev
+    driver: local
   uploads_data_dev:
     name: museum-uploads-data-dev
+    driver: local
   audio_data_dev:
     name: museum-audio-data-dev
+    driver: local
   ollama_data_dev:
     name: museum-ollama-models-dev
+    driver: local
 
 # ==========================================
 # RÉSEAU INTERNE

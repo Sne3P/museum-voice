@@ -2,6 +2,8 @@
 -- MUSEUM VOICE - DATABASE SCHEMA
 -- PostgreSQL 16
 -- ===============================
+-- PostgreSQL 16 s'auto-optimise automatiquement selon les ressources disponibles
+-- Aucune configuration manuelle requise
 
 -- ===============================
 -- TABLE : Stats

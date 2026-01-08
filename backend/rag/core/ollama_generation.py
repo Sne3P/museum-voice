@@ -1,6 +1,7 @@
 import os
 import time
 import itertools
+import multiprocessing
 from typing import Dict, Any, List, Optional, Tuple
 
 import requests
@@ -138,6 +139,10 @@ class OllamaMediationSystem:
         timeout_s: Optional[int] = None,
     ) -> str:
         url = f"{self.ollama_url}/api/chat"
+        
+        # Optimisation CPU : utiliser tous les cœurs disponibles (max 16)
+        num_threads = min(multiprocessing.cpu_count(), 16)
+        
         payload = {
             "model": model,
             "messages": messages,
@@ -145,7 +150,7 @@ class OllamaMediationSystem:
             "options": {
                 "temperature": self.temperature if temperature is None else temperature,
                 "num_predict": self.num_predict,
-                "num_threads": 4,
+                "num_threads": num_threads,  # ⚡ OPTIMISÉ : Utilise tous les CPU cores
             },
         }
         r = requests.post(url, json=payload, timeout=(timeout_s or self.timeout_s))

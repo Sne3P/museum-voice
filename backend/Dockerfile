@@ -35,20 +35,10 @@ FROM base AS deps
 # Copier requirements EN PREMIER pour cache Docker
 COPY requirements.txt .
 
-# Installer dépendances lourdes ML séparément (PERMANENT CACHE)
-# Torch ~800MB, sentence-transformers ~500MB - Installation 1 fois
-# OPTIMISATION: torch CPU-only + compile optimisé
+# Installer dépendances Python OPTIMISÉ (sans legacy RAG)
+# Utilise cache mount pour pip
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir \
-    torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir \
-    sentence-transformers \
-    faiss-cpu \
-    numpy>=1.23.0
-
-# Installer le reste des dépendances (CACHE si requirements.txt unchanged)
-RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements.txt
 
 # ============================================
@@ -85,7 +75,7 @@ CMD ["python", "-m", "flask", "--app", "rag/main_postgres.py", "run", "--host=0.
 # ============================================
 # STAGE: Production (OPTIMIZED)
 # ============================================
-FROM deps AS prod
+FROM deps AS production
 
 # Copier UNIQUEMENT le code backend (pas les deps - déjà dans deps stage)
 COPY rag/ ./rag/
@@ -96,8 +86,11 @@ COPY seed_narrations.py .
 
 # Copier script init Piper
 COPY init-piper.sh /usr/local/bin/init-piper.sh
-# RUN chmod +x /usr/local/bin/init-piper.sh
 RUN sed -i 's/\r$//' /usr/local/bin/init-piper.sh && chmod +x /usr/local/bin/init-piper.sh
+
+# Copier script entrypoint Gunicorn
+COPY gunicorn-entrypoint.sh /usr/local/bin/gunicorn-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/gunicorn-entrypoint.sh && chmod +x /usr/local/bin/gunicorn-entrypoint.sh
 
 # Télécharger modèles Piper TTS
 RUN /usr/local/bin/init-piper.sh
@@ -113,6 +106,6 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Command production avec gunicorn
-# 4 workers = CPU cores, timeout 120s pour génération RAG
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "--access-logfile", "-", "rag.main_postgres:app"]
+# Command production avec gunicorn OPTIMISÉ
+# Script auto-détecte CPU et calcule workers = (2*CPU+1)
+CMD ["/usr/local/bin/gunicorn-entrypoint.sh"]

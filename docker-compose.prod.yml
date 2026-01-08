@@ -1,8 +1,8 @@
 # ============================================
-# DOCKER COMPOSE - MODE PRODUCTION
+# DOCKER COMPOSE - MODE PRODUCTION OPTIMISÉ
 # ============================================
-# Usage: pnpm docker:prod
-# Optimisé pour production avec builds optimisés
+# Usage: pnpm docker:prod:build
+# Optimisé pour production: sécurité, performance, cache
 # ============================================
 
 services:
@@ -17,7 +17,7 @@ services:
       POSTGRES_DB: museumvoice
       POSTGRES_USER: museum_admin
       POSTGRES_PASSWORD: ${DB_PASSWORD:-Museum@2026!Secure}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=fr_FR.UTF-8"
     ports:
       - "5432:5432"
     volumes:
@@ -28,33 +28,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     networks:
       - museum-network
     deploy:
       resources:
-        limits:
-          memory: 2G
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ==========================================
-  # SERVICE 2 : ADMINER (DATABASE UI)
-  # ==========================================
-  adminer:
-    image: adminer:latest
-    container_name: museum-adminer-prod
-    restart: always
-    ports:
-      - "8090:8080"
-    environment:
-      ADMINER_DEFAULT_SERVER: database
-      ADMINER_DESIGN: pepa-linha-dark
-    depends_on:
-      database:
-        condition: service_healthy
-    networks:
-      - museum-network
-
-  # ==========================================
-  # SERVICE 3 : OLLAMA LLM LOCAL
+  # SERVICE 2 : OLLAMA LLM LOCAL
   # ==========================================
   ollama:
     image: ollama/ollama:latest
@@ -69,24 +57,34 @@ services:
       - museum-network
     entrypoint: ["/bin/bash", "/usr/local/bin/ollama-entrypoint.sh"]
     healthcheck:
-      test: ["CMD-SHELL", "ollama list | grep -q mistral || exit 1"]
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 300s
     deploy:
       resources:
-        limits:
-          memory: 16G
+        reservations:
+          memory: 8G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ==========================================
-  # SERVICE 4 : BACKEND PYTHON FLASK + RAG
+  # SERVICE 3 : BACKEND PYTHON FLASK + RAG
   # ==========================================
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
       target: production
+      cache_from:
+        - museum-backend-prod:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: museum-backend-prod:latest
     container_name: museum-backend-prod
     restart: always
     depends_on:
@@ -105,12 +103,19 @@ services:
       # Flask PRODUCTION
       FLASK_ENV: production
       FLASK_APP: rag.main_postgres
+      PYTHONUNBUFFERED: 1
       
       # Ollama LOCAL
       OLLAMA_API_URL: http://ollama:11434
-      OLLAMA_MODEL: mistral
+      OLLAMA_MODEL: ministral-3:3b
       
-      # LLM API Keys (fallback si Ollama indisponible)
+      # Gunicorn Performance (auto-detect CPU)
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-auto}
+      GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-180}
+      GUNICORN_WORKER_CONNECTIONS: ${GUNICORN_WORKER_CONNECTIONS:-1000}
+      
+      # LLM API Keys (fallback)
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
@@ -125,20 +130,31 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
     deploy:
       resources:
-        limits:
-          memory: 4G
+        reservations:
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ==========================================
-  # SERVICE 5 : NEXT.JS EDITOR/DASHBOARD
+  # SERVICE 4 : NEXT.JS EDITOR/DASHBOARD
   # ==========================================
   app:
     build:
       context: .
       dockerfile: Dockerfile
       target: production
+      cache_from:
+        - museum-app-prod:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+        NEXT_TELEMETRY_DISABLED: 1
+    image: museum-app-prod:latest
     container_name: museum-app-prod
     restart: always
     depends_on:
@@ -157,14 +173,16 @@ services:
       
       # Backend API
       BACKEND_API_URL: http://backend:5000
-      NEXT_PUBLIC_BACKEND_URL: http://localhost:5000
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:5000}
       
       # Next.js PRODUCTION
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: 1
+      PORT: 3000
+      HOSTNAME: "0.0.0.0"
       
       # App
-      NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
     ports:
       - "3000:3000"
     volumes:
@@ -173,28 +191,40 @@ services:
     networks:
       - museum-network
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', (res) => process.exit(res.statusCode === 200 ? 0 : 1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
     deploy:
       resources:
-        limits:
-          memory: 2G
+        reservations:
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ==========================================
-  # SERVICE 6 : REACT FRONTEND CLIENT
+  # SERVICE 5 : REACT FRONTEND CLIENT (NGINX)
   # ==========================================
   client:
     build:
       context: ./museum-voice
       dockerfile: Dockerfile
+      cache_from:
+        - museum-client-prod:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: museum-client-prod:latest
     container_name: museum-client-prod
     restart: always
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      REACT_APP_BACKEND_URL: http://localhost:5000
     ports:
       - "8080:80"
     volumes:
@@ -202,27 +232,37 @@ services:
     networks:
       - museum-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      test: ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
     deploy:
       resources:
-        limits:
-          memory: 512M
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 # ==========================================
-# VOLUMES PERSISTANTS PROD
+# VOLUMES PERSISTANTS PROD (Named volumes)
 # ==========================================
 volumes:
   postgres_data_prod:
     name: museum-postgres-data-prod
+    driver: local
   uploads_data_prod:
     name: museum-uploads-data-prod
+    driver: local
   audio_data_prod:
     name: museum-audio-data-prod
+    driver: local
   ollama_data_prod:
     name: museum-ollama-models-prod
+    driver: local
 
 # ==========================================
 # RÉSEAU INTERNE

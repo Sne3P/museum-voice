@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 interface Segment {
@@ -26,7 +26,7 @@ interface Parcours {
   };
 }
 
-export default function ParcourePage() {
+function ParcoursContent() {
   const searchParams = useSearchParams();
   const groupId = searchParams.get('id');
   
@@ -206,5 +206,13 @@ export default function ParcourePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ParcourePage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="text-lg">Chargement du parcours...</div></div>}>
+      <ParcoursContent />
+    </Suspense>
   );
 }
