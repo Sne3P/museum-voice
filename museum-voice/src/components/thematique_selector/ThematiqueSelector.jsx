@@ -19,7 +19,7 @@ const ThematiqueSelector = ({ onThematiqueChange }) => {
           const options = data.criterias.map(c => ({
             id: c.name,
             title: c.label,
-            imageUrl: c.image_link || '/assets/images/testmuseum.png'
+            imageUrl: c.image_link || '/placeholder.svg'
           }));
           setThematiqueOptions(options);
           // Sélectionner par défaut le premier ou 'technique_picturale' si disponible

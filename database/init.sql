@@ -148,36 +148,8 @@ CREATE TABLE IF NOT EXISTS relations (
 );
 
 -- ===============================
--- TABLE : Chunk
--- ===============================
--- TABLE : Chunk
--- ===============================
-CREATE TABLE IF NOT EXISTS chunk (
-    chunk_id SERIAL PRIMARY KEY,
-    chunk_text TEXT,
-    chunk_index INTEGER DEFAULT 0,
-    oeuvre_id INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_chunk_oeuvre
-        FOREIGN KEY (oeuvre_id)
-        REFERENCES oeuvres(oeuvre_id)
-        ON UPDATE CASCADE ON DELETE CASCADE
-);
-
--- ===============================
--- TABLE : Embeddings (Pour RAG)
--- ===============================
-CREATE TABLE IF NOT EXISTS embeddings (
-    embedding_id SERIAL PRIMARY KEY,
-    chunk_id INTEGER NOT NULL REFERENCES chunk(chunk_id) ON DELETE CASCADE,
-    embedding_vector BYTEA NOT NULL,
-    model_name TEXT NOT NULL,
-    vector_dimension INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(chunk_id, model_name)
-);
-
+-- TABLES LEGACY RAG SUPPRIMÉES
+-- (chunk, embeddings - système RAG non utilisé)
 -- ===============================
 -- TABLE : Sections Documentaires
 -- ===============================
@@ -267,23 +239,9 @@ CREATE TABLE IF NOT EXISTS criterias (
 );
 
 -- ===============================
--- TABLE : Oeuvre_Criterias (Jointure)
+-- TABLE LEGACY SUPPRIMÉE : oeuvre_criterias
+-- (Remplacée par pregenerations.criteria_combination JSONB)
 -- ===============================
-CREATE TABLE IF NOT EXISTS oeuvre_criterias (
-    oeuvre_id INTEGER NOT NULL,
-    criteria_id INTEGER NOT NULL,
-    PRIMARY KEY (oeuvre_id, criteria_id),
-
-    CONSTRAINT fk_oeuvre_criterias_oeuvre
-        FOREIGN KEY (oeuvre_id)
-        REFERENCES oeuvres(oeuvre_id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
-
-    CONSTRAINT fk_oeuvre_criterias_criteria
-        FOREIGN KEY (criteria_id)
-        REFERENCES criterias(criteria_id)
-        ON UPDATE CASCADE ON DELETE CASCADE
-);
 
 -- ===============================
 -- TABLE : Pregeneration_Criterias (Table de liaison pour requêtes)
@@ -299,30 +257,9 @@ CREATE INDEX IF NOT EXISTS idx_pregeneration_criterias_criteria
     ON pregeneration_criterias(criteria_id);
 
 -- ===============================
--- TABLE : Generated_Guide
+-- TABLES LEGACY SUPPRIMÉES
+-- (generated_guide, criterias_guide - jamais utilisées)
 -- ===============================
-CREATE TABLE IF NOT EXISTS generated_guide (
-    generated_guide_id SERIAL PRIMARY KEY
-);
-
--- ===============================
--- TABLE : Criterias_Guide (Jointure)
--- ===============================
-CREATE TABLE IF NOT EXISTS criterias_guide (
-    generated_guide_id INTEGER NOT NULL,
-    criteria_id INTEGER NOT NULL,
-    PRIMARY KEY (generated_guide_id, criteria_id),
-
-    CONSTRAINT fk_criterias_guide_guide
-        FOREIGN KEY (generated_guide_id)
-        REFERENCES generated_guide(generated_guide_id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
-
-    CONSTRAINT fk_criterias_guide_criteria
-        FOREIGN KEY (criteria_id)
-        REFERENCES criterias(criteria_id)
-        ON UPDATE CASCADE ON DELETE CASCADE
-);
 
 -- ===============================
 CREATE INDEX IF NOT EXISTS idx_oeuvres_artiste ON oeuvres(artiste_id);
@@ -331,26 +268,11 @@ CREATE INDEX IF NOT EXISTS idx_pregenerations_oeuvre ON pregenerations(oeuvre_id
 CREATE INDEX IF NOT EXISTS idx_sections_oeuvre ON sections(oeuvre_id);
 CREATE INDEX IF NOT EXISTS idx_anecdotes_oeuvre ON anecdotes(oeuvre_id);
 
--- Indexes pour RAG (chunks et embeddings)
-CREATE INDEX IF NOT EXISTS idx_chunk_oeuvre ON chunk(oeuvre_id);
-CREATE INDEX IF NOT EXISTS idx_embeddings_chunk ON embeddings(chunk_id);
--- TABLE : Criterias_Pregeneration (Jointure)
 -- ===============================
-CREATE TABLE IF NOT EXISTS criterias_pregeneration (
-    pregeneration_id INTEGER NOT NULL,
-    criteria_id INTEGER NOT NULL,
-    PRIMARY KEY (pregeneration_id, criteria_id),
-
-    CONSTRAINT fk_criterias_pregeneration_pregen
-        FOREIGN KEY (pregeneration_id)
-        REFERENCES pregenerations(pregeneration_id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
-
-    CONSTRAINT fk_criterias_pregeneration_criteria
-        FOREIGN KEY (criteria_id)
-        REFERENCES criterias(criteria_id)
-        ON UPDATE CASCADE ON DELETE CASCADE
-);
+-- INDEX ET TABLE LEGACY SUPPRIMÉS
+-- (idx_chunk_oeuvre, idx_embeddings_chunk - tables chunk/embeddings supprimées)
+-- (criterias_pregeneration - doublon de pregeneration_criterias)
+-- ===============================
 
 -- ===============================
 -- INDEX POUR PERFORMANCES
@@ -358,14 +280,22 @@ CREATE TABLE IF NOT EXISTS criterias_pregeneration (
 CREATE INDEX IF NOT EXISTS idx_entities_plan_id ON entities(plan_id);
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
 CREATE INDEX IF NOT EXISTS idx_points_entity_id ON points(entity_id);
-CREATE INDEX IF NOT EXISTS idx_chunk_oeuvre_id ON chunk(oeuvre_id);
 CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source_id);
 CREATE INDEX IF NOT EXISTS idx_relations_cible ON relations(cible_id);
+-- INDEX LEGACY SUPPRIMÉ : idx_chunk_oeuvre_id (table chunk supprimée)
 
 -- ===============================
 -- DONNÉES PAR DÉFAUT
 -- ===============================
 INSERT INTO stats (stats_id) VALUES (1) ON CONFLICT DO NOTHING;
+
+-- Paramètres du musée par défaut
+INSERT INTO museum_settings (setting_key, setting_value, description, category) VALUES
+('museum_name', '"Louvre-Lens"', 'Nom du musée', 'general'),
+('museum_title', '"Bienvenue au Louvre-Lens !\nVotre expérience commence ici !\nLaissez-vous guider !"', 'Titre d''accueil affiché aux visiteurs', 'general'),
+('museum_image_url', '"/placeholder.svg"', 'URL de l''image d''accueil du musée', 'general'),
+('opening_hours', '{"lundi": {"open": "09:00", "close": "18:00", "closed": false}, "mardi": {"open": "09:00", "close": "18:00", "closed": false}, "mercredi": {"open": "09:00", "close": "18:00", "closed": false}, "jeudi": {"open": "09:00", "close": "18:00", "closed": false}, "vendredi": {"open": "09:00", "close": "18:00", "closed": false}, "samedi": {"open": "10:00", "close": "19:00", "closed": false}, "dimanche": {"open": "10:00", "close": "18:00", "closed": false}}'::jsonb, 'Horaires d''ouverture du musée', 'general')
+ON CONFLICT (setting_key) DO NOTHING;
 
 -- Insertion des types de critères par défaut
 INSERT INTO criteria_types (type, label, description, ordre, is_required) VALUES

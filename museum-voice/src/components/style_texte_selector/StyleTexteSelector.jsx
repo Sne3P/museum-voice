@@ -19,7 +19,7 @@ const StyleTexteSelector = ({ onStyleChange }) => {
           const options = data.criterias.map(c => ({
             id: c.name,
             title: c.label,
-            imageUrl: c.image_link || '/assets/images/testmuseum.png'
+            imageUrl: c.image_link || '/placeholder.svg'
           }));
           setStyleTexteOptions(options);
           // Sélectionner par défaut le premier ou 'analyse' si disponible

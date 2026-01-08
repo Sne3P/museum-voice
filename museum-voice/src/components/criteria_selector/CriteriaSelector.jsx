@@ -35,7 +35,7 @@ const CriteriaSelector = ({
             criteriaId: c.criteria_id,
             title: c.label,
             description: c.description,
-            imageUrl: c.image_link || '/assets/images/testmuseum.png',
+            imageUrl: c.image_link || '/placeholder.svg',
             ordre: c.ordre
           }));
           

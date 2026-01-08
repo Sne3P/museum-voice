@@ -4,19 +4,19 @@ import './ArtMovementSelector.css';
 import SelectorGridItem from '../common/SelectorGridItem';
 
 const initialArtMovements = [
-  { id: 'roman1', title: 'roman', style: 'roman', imageUrl: 'assets/images/testmuseum.png' }, 
-  { id: 'gothique', title: 'gothique', style: 'gothique', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'renaissance', title: 'renaissance', style: 'renaissance', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'roman2', title: 'roman', style: 'roman', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'classicisme_1', title: 'classicisme', style: 'classicisme', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'classicisme_2', title: 'classicisme', style: 'classicisme', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'classicisme_3', title: 'classicisme', style: 'classicisme', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'classicisme_4', title: 'classicisme', style: 'classicisme', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'classicisme_5', title: 'classicisme', style: 'classicisme', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'classicisme_6', title: 'classicisme', style: 'classicisme', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'classicisme_7', title: 'classicisme', style: 'classicisme', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'classicisme_8', title: 'classicisme', style: 'classicisme', imageUrl: '/assets/images/testmuseum.png' },
-  { id: 'classicisme_9', title: 'classicisme', style: 'classicisme', imageUrl: '/assets/images/testmuseum.png' },
+  { id: 'roman1', title: 'roman', style: 'roman', imageUrl: '/placeholder.svg' }, 
+  { id: 'gothique', title: 'gothique', style: 'gothique', imageUrl: '/placeholder.svg' },
+  { id: 'renaissance', title: 'renaissance', style: 'renaissance', imageUrl: '/placeholder.svg' },
+  { id: 'roman2', title: 'roman', style: 'roman', imageUrl: '/placeholder.svg' },
+  { id: 'classicisme_1', title: 'classicisme', style: 'classicisme', imageUrl: '/placeholder.svg' },
+  { id: 'classicisme_2', title: 'classicisme', style: 'classicisme', imageUrl: '/placeholder.svg' },
+  { id: 'classicisme_3', title: 'classicisme', style: 'classicisme', imageUrl: '/placeholder.svg' },
+  { id: 'classicisme_4', title: 'classicisme', style: 'classicisme', imageUrl: '/placeholder.svg' },
+  { id: 'classicisme_5', title: 'classicisme', style: 'classicisme', imageUrl: '/placeholder.svg' },
+  { id: 'classicisme_6', title: 'classicisme', style: 'classicisme', imageUrl: '/placeholder.svg' },
+  { id: 'classicisme_7', title: 'classicisme', style: 'classicisme', imageUrl: '/placeholder.svg' },
+  { id: 'classicisme_8', title: 'classicisme', style: 'classicisme', imageUrl: '/placeholder.svg' },
+  { id: 'classicisme_9', title: 'classicisme', style: 'classicisme', imageUrl: '/placeholder.svg' },
 ];
 
 const ArtMovementSelector = ({ onSelectionChange }) => {

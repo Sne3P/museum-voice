@@ -11,6 +11,26 @@ import { useNavigate } from 'react-router-dom';
 const Accueil = () => {
   // 1. Initialiser l'état de la langue. Par défaut à 'FR' par exemple.
   const [selectedLanguage, setSelectedLanguage] = useState('FR');
+  const [museumImageUrl, setMuseumImageUrl] = useState('/placeholder.svg');
+
+  // Charger l'image du musée depuis l'API
+  useEffect(() => {
+    const fetchMuseumImage = async () => {
+      try {
+        const response = await fetch('/api/museum-settings?setting_key=museum_image_url');
+        const data = await response.json();
+        
+        if (data && data.setting_value) {
+          setMuseumImageUrl(data.setting_value);
+        }
+      } catch (error) {
+        console.error('Erreur chargement image musée:', error);
+        // Garder le placeholder par défaut en cas d'erreur
+      }
+    };
+
+    fetchMuseumImage();
+  }, []);
 
   // [Inference] Optionnel : Utiliser useEffect pour sauvegarder ou charger la langue
   useEffect(() => {
@@ -44,7 +64,7 @@ const Accueil = () => {
 
       <div style={{ flex: 1 }}>
         <WelcomeBgImg
-          imageUrl="/assets/images/testmuseum.png"
+          imageUrl={museumImageUrl}
           altText="Museum Welcome Background"
         />
       </div>

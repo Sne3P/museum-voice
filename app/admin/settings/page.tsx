@@ -17,6 +17,8 @@ export default function SystemSettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [museumName, setMuseumName] = useState('')
+  const [museumTitle, setMuseumTitle] = useState('')
+  const [museumImageUrl, setMuseumImageUrl] = useState('')
   const [openingHours, setOpeningHours] = useState<OpeningHours>({})
   const [centresInterets, setCentresInterets] = useState<string[]>([])
   const [mouvementsPreferes, setMouvementsPreferes] = useState<string[]>([])
@@ -71,6 +73,12 @@ export default function SystemSettingsPage() {
             case 'museum_name':
               setMuseumName(setting.setting_value)
               break
+            case 'museum_title':
+              setMuseumTitle(setting.setting_value)
+              break
+            case 'museum_image_url':
+              setMuseumImageUrl(setting.setting_value)
+              break
             case 'opening_hours':
               setOpeningHours(setting.setting_value)
               break
@@ -113,9 +121,79 @@ export default function SystemSettingsPage() {
 
       if (response.ok) {
         console.log('Nom du musée sauvegardé')
+        alert('Nom du musée sauvegardé avec succès!')
       }
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error)
+      alert('Erreur lors de la sauvegarde')
+    }
+    setIsSaving(false)
+  }
+
+  const handleSaveMuseumTitle = async () => {
+    setIsSaving(true)
+    try {
+      const response = await fetch('/api/museum-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          setting_key: 'museum_title',
+          setting_value: museumTitle,
+        }),
+      })
+
+      if (response.ok) {
+        console.log('Titre du musée sauvegardé')
+        alert('Titre d\'accueil sauvegardé avec succès!')
+      }
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error)
+      alert('Erreur lors de la sauvegarde')
+    }
+    setIsSaving(false)
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsSaving(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+
+      const uploadResponse = await fetch('/api/museum-image', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Erreur lors de l\'upload')
+      }
+
+      const { imageUrl } = await uploadResponse.json()
+      
+      // Mettre à jour la DB avec l'URL
+      const saveResponse = await fetch('/api/museum-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          setting_key: 'museum_image_url',
+          setting_value: imageUrl,
+        }),
+      })
+
+      if (saveResponse.ok) {
+        setMuseumImageUrl(imageUrl)
+        alert('Image d\'accueil mise à jour avec succès!')
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'upload:', error)
+      alert('Erreur lors de l\'upload de l\'image')
     }
     setIsSaving(false)
   }
@@ -225,6 +303,50 @@ export default function SystemSettingsPage() {
                   </Button>
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="museum_title">Titre d'accueil</Label>
+                <div className="flex gap-2">
+                  <textarea
+                    id="museum_title"
+                    value={museumTitle}
+                    onChange={(e) => setMuseumTitle(e.target.value)}
+                    placeholder="Bienvenue au musée..."
+                    className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    rows={3}
+                  />
+                  <Button 
+                    onClick={handleSaveMuseumTitle} 
+                    disabled={isSaving}
+                    className="flex items-center gap-2 h-fit"
+                  >
+                    <Save className="h-4 w-4" />
+                    Sauvegarder
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-500">Ce texte sera affiché sur la page d'accueil des visiteurs</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="museum_image">Image d'accueil</Label>
+                {museumImageUrl && museumImageUrl !== '/placeholder.svg' && (
+                  <div className="mb-2">
+                    <img 
+                      src={museumImageUrl} 
+                      alt="Aperçu" 
+                      className="max-w-xs rounded-lg border border-gray-300"
+                    />
+                  </div>
+                )}
+                <Input
+                  id="museum_image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  disabled={isSaving}
+                />
+                <p className="text-sm text-gray-500">Image affichée sur la page d'accueil des visiteurs</p>
+              </div>
             </CardContent>
           </Card>
 
@@ -299,7 +421,13 @@ export default function SystemSettingsPage() {
             <CardContent>
               <div className="grid grid-cols-1 gap-4 text-sm">
                 <div>
-                  <span className="font-medium">Nom du musée:</span> {museumName}
+                  <span className="font-medium">Nom du musée:</span> {museumName || 'Non défini'}
+                </div>
+                <div>
+                  <span className="font-medium">Titre d'accueil:</span> {museumTitle || 'Non défini'}
+                </div>
+                <div>
+                  <span className="font-medium">Image d'accueil:</span> {museumImageUrl ? 'Configurée' : 'Non définie'}
                 </div>
               </div>
               <div className="mt-4">

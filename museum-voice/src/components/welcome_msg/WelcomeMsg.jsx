@@ -1,16 +1,39 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import './WelcomeMsg.css';
 
 const WelcomeMsg = () => {
+  const [museumTitle, setMuseumTitle] = useState('Bienvenue au Louvre-Lens !\nVotre expérience commence ici !\nLaissez-vous guider !');
+
+  useEffect(() => {
+    const fetchMuseumTitle = async () => {
+      try {
+        const response = await fetch('/api/museum-settings?setting_key=museum_title');
+        const data = await response.json();
+        
+        if (data && data.setting_value) {
+          setMuseumTitle(data.setting_value);
+        }
+      } catch (error) {
+        console.error('Erreur chargement titre musée:', error);
+      }
+    };
+
+    fetchMuseumTitle();
+  }, []);
+
+  // Convertir les \n en <br />
+  const titleLines = museumTitle.split('\n').map((line, index) => (
+    <React.Fragment key={index}>
+      {line}
+      {index < museumTitle.split('\n').length - 1 && <br />}
+    </React.Fragment>
+  ));
+
   return (
     <div className="welcome-container">
       <div className="welcome-section">
         <h1>
-          Bienvenue au Louvre-Lens !
-          <br />
-          Votre expérience commence ici !
-          <br />
-          Laissez-vous guider !
+          {titleLines}
         </h1>
       </div>
     </div>

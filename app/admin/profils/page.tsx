@@ -547,8 +547,8 @@ function CriteriaGroupCard({
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -873,10 +873,6 @@ function EditCriteriaModal({ criteria, onClose, onSave }: {
           </CardContent>
         </form>
       </Card>
-    </div>
-  )
-}
-      </div>
     </div>
   )
 }
