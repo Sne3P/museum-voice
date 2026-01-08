@@ -82,33 +82,57 @@ class OllamaMediationSystem:
 
         return "\n".join(instructions)
     
-    def _check_existing(self, oeuvre_id: int, contexte: Dict[str, Any]) -> bool:
-    
+    @staticmethod
+    def _criteria_ids_from_combinaison(combinaison: Dict[str, Any]) -> Dict[str, int]:
+        """
+        Convertit une combinaison riche (avec name/description/dates) en dict minimal:
+        {type_name: criteria_id}
+        """
+        out: Dict[str, int] = {}
+        for type_name, value in (combinaison or {}).items():
+            if isinstance(value, int) and not isinstance(value, bool):
+                out[type_name] = value
+            elif isinstance(value, dict) and "criteria_id" in value:
+                out[type_name] = int(value["criteria_id"])
+            else:
+                raise ValueError(f"Combinaison invalide pour '{type_name}': {value!r}")
+        return out
+
+    def _check_existing(self, oeuvre_id: int, combinaison: Dict[str, Any]) -> bool:
+        """
+        Vérifie si une pregeneration existe déjà pour (oeuvre_id, criteria_combination).
+        """
         try:
+            import json
             from rag.core.pregeneration_db import _connect_postgres
+
+            criteria_ids = self._criteria_ids_from_combinaison(combinaison)
+            criteria_json = json.dumps(criteria_ids, sort_keys=True)
 
             conn = _connect_postgres()
             cur = conn.cursor()
 
-            # ✅ jsonb : on compare l'égalité stricte
             cur.execute(
                 """
                 SELECT 1
                 FROM pregenerations
                 WHERE oeuvre_id = %s
-                AND contexte = %s::jsonb
+                  AND criteria_combination = %s::jsonb
                 LIMIT 1
                 """,
-                (oeuvre_id, contexte),
+                (oeuvre_id, criteria_json),
             )
 
-            exists = cur.fetchone() is not None
-            cur.close()
-            conn.close()
-            return exists
+            return cur.fetchone() is not None
 
         except Exception:
             return False
+        finally:
+            try:
+                cur.close()
+                conn.close()
+            except Exception:
+                pass
 
 
     # ---------------------------------------------------------------------
@@ -317,7 +341,7 @@ class OllamaMediationSystem:
     ) -> Dict[str, Any]:
         """
         "Prégénère" une liste de narrations (une par combinaison).
-        Ici, pas de BDD: on retourne un dict résultats + stats, mais structure très proche de ton script.
+        Ici, pas de BDD: on retourne un dict résultats + stats, mais structure très proche du script.
         """
 
         start_time = time.time()
@@ -355,12 +379,13 @@ class OllamaMediationSystem:
             #     print("⏭️  Skip (force_regenerate=False)")
             #     continue
             
-            if not force_regenerate:
+            # if not force_regenerate:
                 # existing = self._check_existing(oeuvre_id, age, theme, style)
-                existing = self._check_existing(oeuvre_id, combinaison)
-                if existing:
-                    stats['skipped'] += 1
-                    continue
+            existing = self._check_existing(oeuvre_id, combinaison)
+            if existing:
+                stats['skipped'] += 1
+                print("⏭️  Skip la génération car elle existe déjà.")
+                continue
 
             res = self.generate_mediation_for_one_work(
                 artwork=artwork,
