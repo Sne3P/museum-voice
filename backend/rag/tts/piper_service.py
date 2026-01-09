@@ -99,6 +99,9 @@ class PiperTTSService:
         Returns:
             Chemin relatif du fichier audio généré ou None si erreur
         """
+        logger.info(f"🔵 [PIPER DEBUG] generate_audio() appelé: parcours_id={parcours_id}, filename={output_filename}")
+        print(f"🔵 [PIPER DEBUG] generate_audio() appelé: parcours_id={parcours_id}, filename={output_filename}")
+        
         if not text or not text.strip():
             logger.warning("⚠️ Texte vide, génération audio ignorée")
             return None
@@ -108,7 +111,11 @@ class PiperTTSService:
         
         # Créer le dossier du parcours
         parcours_dir = os.path.join(self.audio_output_dir, f"parcours_{parcours_id}")
+        logger.info(f"📁 [PIPER DEBUG] Création dossier: {parcours_dir}")
+        print(f"📁 [PIPER DEBUG] Création dossier: {parcours_dir}")
         os.makedirs(parcours_dir, exist_ok=True)
+        logger.info(f"✅ [PIPER DEBUG] Dossier créé/existant: {parcours_dir}")
+        print(f"✅ [PIPER DEBUG] Dossier créé/existant: {parcours_dir}")
         
         # Chemin complet du fichier
         output_file = os.path.join(parcours_dir, f"{output_filename}.wav")
@@ -134,11 +141,24 @@ class PiperTTSService:
             audio = audio.astype(np.float32) / 32768.0
             
             # Sauvegarder le fichier WAV
+            logger.info(f"💾 [PIPER DEBUG] Sauvegarde fichier: {output_file}")
+            print(f"💾 [PIPER DEBUG] Sauvegarde fichier: {output_file}")
             sf.write(
                 output_file,
                 audio,
                 self.voice.config.sample_rate
             )
+            logger.info(f"✅ [PIPER DEBUG] Fichier WAV sauvegardé: {output_file}")
+            print(f"✅ [PIPER DEBUG] Fichier WAV sauvegardé: {output_file}")
+            
+            # Vérifier que le fichier existe
+            if os.path.exists(output_file):
+                file_size = os.path.getsize(output_file)
+                logger.info(f"✅ [PIPER DEBUG] Fichier vérifié: {output_file} ({file_size} bytes)")
+                print(f"✅ [PIPER DEBUG] Fichier vérifié: {output_file} ({file_size} bytes)")
+            else:
+                logger.error(f"❌ [PIPER DEBUG] FICHIER N'EXISTE PAS: {output_file}")
+                print(f"❌ [PIPER DEBUG] FICHIER N'EXISTE PAS: {output_file}")
             
             # Calculer la durée réelle du fichier audio (en secondes)
             audio_duration_seconds = len(audio) / self.voice.config.sample_rate
@@ -146,6 +166,7 @@ class PiperTTSService:
             # Retourner le chemin relatif ET la durée réelle
             relative_path = f"/uploads/audio/parcours_{parcours_id}/{output_filename}.wav"
             logger.info(f"✅ Audio généré: {relative_path} (durée: {audio_duration_seconds:.2f}s)")
+            print(f"🎵 [PIPER DEBUG] Chemin relatif retourné: {relative_path}")
             
             return {
                 'path': relative_path,
@@ -178,6 +199,8 @@ class PiperTTSService:
         
         audio_paths = {}
         
+        logger.info(f"🎵 [PIPER DEBUG] generate_parcours_audio() appelé: parcours_id={parcours_id}, {len(narrations)} narrations")
+        print(f"🎵 [PIPER DEBUG] generate_parcours_audio() appelé: parcours_id={parcours_id}, {len(narrations)} narrations")
         logger.info(f"🎵 Génération de {len(narrations)} narrations audio pour parcours {parcours_id}")
         
         for narration in narrations:
