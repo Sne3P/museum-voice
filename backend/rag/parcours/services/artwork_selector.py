@@ -10,6 +10,7 @@ Responsabilités:
 
 import random
 import psycopg2.extras
+import math
 from typing import List, Dict
 import sys
 import os
@@ -26,9 +27,10 @@ except ImportError:
 class ArtworkSelector:
     """Sélectionne les œuvres pour un parcours selon profil et durée"""
     
-    def __init__(self, conn, graph: MuseumGraphV2):
+    def __init__(self, conn, graph: MuseumGraphV2, connectivity_checker=None):
         self.conn = conn
         self.graph = graph
+        self.connectivity_checker = connectivity_checker  # Pour calculs de distances réelles
     
     def select_artworks(self, profile: Dict, target_duration_min: int, seed: int) -> List[Artwork]:
         """
@@ -290,8 +292,20 @@ class ArtworkSelector:
                     type_count = type_counts.get(candidate.artwork_type, 0)
                     type_bonus = 1.5 if type_count == 0 else (1.0 / (type_count + 1))
                     
-                    # Distance moyenne aux déjà sélectionnés
-                    avg_dist = sum(candidate.position.distance_to(s.position) for s in selected) / len(selected)
+                    # Distance moyenne aux déjà sélectionnés (utiliser BFS si disponible)
+                    if self.connectivity_checker:
+                        # Vraie distance via BFS (inclut coûts escaliers)
+                        total_dist = 0
+                        for s in selected:
+                            dist, _ = self.connectivity_checker.calculate_path_between_points(
+                                candidate.position, s.position
+                            )
+                            total_dist += dist if not math.isinf(dist) else 50  # Pénalité si inaccessible
+                        avg_dist = total_dist / len(selected)
+                    else:
+                        # Fallback: distance euclidienne
+                        avg_dist = sum(candidate.position.distance_to(s.position) for s in selected) / len(selected)
+                    
                     distance_weight = min(2.0, avg_dist / 15.0)
                     
                     weights.append(room_bonus * floor_bonus * type_bonus * distance_weight)

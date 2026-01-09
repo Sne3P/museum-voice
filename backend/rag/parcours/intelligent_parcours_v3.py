@@ -74,8 +74,8 @@ def generate_parcours_v3(
         print(f"   ✓ {escaliers_count} escaliers, {ascenseurs_count} ascenseurs")
         
         # 2. Initialiser services
-        artwork_selector = ArtworkSelector(conn, graph)
         connectivity_checker = ConnectivityChecker(graph, accessible_only=accessible_only)
+        artwork_selector = ArtworkSelector(conn, graph, connectivity_checker)
         path_optimizer = PathOptimizer(connectivity_checker)
         waypoint_calculator = WaypointCalculator(connectivity_checker)
         segment_builder = SegmentBuilder(connectivity_checker)
@@ -163,7 +163,10 @@ def generate_parcours_v3(
             distance_to_next = 0
             if idx < len(optimized_artworks) - 1:
                 next_artwork = optimized_artworks[idx + 1]
-                distance_to_next = a.position.distance_to(next_artwork.position, penalize_floor_change=False)
+                # Utiliser le chemin réel via BFS (inclut les coûts des escaliers/ascenseurs)
+                distance_to_next, _ = connectivity_checker.calculate_path_between_points(
+                    a.position, next_artwork.position
+                )
             
             artworks_with_distances.append({
                 'order': idx + 1,

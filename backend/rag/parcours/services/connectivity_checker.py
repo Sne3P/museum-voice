@@ -240,15 +240,15 @@ class ConnectivityChecker:
                         )
                         
                         new_waypoints = path_waypoints + [stair_start, stair_exit]
-                        # Distance symbolique pour changement d'étage (20m par étage)
+                        # Distance symbolique pour changement d'étage (10m par étage)
                         # NE PAS calculer distance géométrique car plans différents!
                         floor_diff = abs(stair.floor_to - stair.floor_from)
-                        escalier_dist = floor_diff * 20
+                        escalier_dist = floor_diff * 10  # 10m par étage
                         
                         queue.append((
                             stair.room_id_to, stair.floor_to,
                             new_waypoints,
-                            dist + escalier_dist + 10
+                            dist + escalier_dist  # Pas de +10 supplémentaire
                         ))
                 
                 # Direction descendante
@@ -275,15 +275,15 @@ class ConnectivityChecker:
                         )
                         
                         new_waypoints = path_waypoints + [stair_start, stair_exit]
-                        # Distance symbolique pour changement d'étage (20m par étage)
+                        # Distance symbolique pour changement d'étage (10m par étage)
                         # NE PAS calculer distance géométrique car plans différents!
                         floor_diff = abs(stair.floor_from - stair.floor_to)
-                        escalier_dist = floor_diff * 20
+                        escalier_dist = floor_diff * 10  # 10m par étage
                         
                         queue.append((
                             stair.room_id_from, stair.floor_from,
                             new_waypoints,
-                            dist + escalier_dist + 10
+                            dist + escalier_dist  # Pas de +10 supplémentaire
                         ))
         
         return False, float('inf'), []
