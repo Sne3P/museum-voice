@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Artwork } from '@/core/entities'
+import { getUploadUrl } from '@/lib/uploads'
 
 interface ArtworkData {
   name: string
@@ -387,7 +388,7 @@ export function ArtworkPropertiesModal({
                 {artwork.imagePath && (
                   <div className="mt-2 mb-3">
                     <img 
-                      src={artwork.imagePath} 
+                      src={getUploadUrl(artwork.imagePath)} 
                       alt={artwork.name || 'Aperçu'}
                       className="w-full h-48 object-cover rounded-lg border border-gray-200"
                     />

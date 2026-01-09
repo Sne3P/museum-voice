@@ -9,6 +9,7 @@ import {
   ArrowLeft, Plus, Pencil, Trash2, X, Save, 
   FolderPlus, ListTree, Hash, ImageIcon, AlertCircle, CheckCircle
 } from 'lucide-react'
+import { getUploadUrl } from '@/lib/uploads'
 
 // ===== TYPES =====
 interface CriteriaType {
@@ -494,7 +495,7 @@ function CriteriaGroupCard({
                     <div className="flex-shrink-0">
                       <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
                         <img
-                          src={criteria.image_link || '/placeholder.svg'}
+                          src={getUploadUrl(criteria.image_link || '/placeholder.svg')}
                           alt={criteria.label}
                           className="w-full h-full object-cover"
                           onError={(e: any) => {
@@ -755,7 +756,7 @@ function CreateCriteriaModal({ type, onClose, onCreate }: {
               {formData.image_link && (
                 <div className="mt-2 mb-3">
                   <img 
-                    src={formData.image_link} 
+                    src={getUploadUrl(formData.image_link)} 
                     alt={formData.label || 'Aperçu'}
                     className="w-full h-48 object-cover rounded-lg border border-gray-200"
                   />
@@ -965,7 +966,7 @@ function EditCriteriaModal({ criteria, onClose, onSave }: {
               {formData.image_link && (
                 <div className="mt-2 mb-3">
                   <img 
-                    src={formData.image_link} 
+                    src={getUploadUrl(formData.image_link)} 
                     alt={formData.label || 'Aperçu'}
                     className="w-full h-48 object-cover rounded-lg border border-gray-200"
                   />

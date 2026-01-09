@@ -38,12 +38,13 @@ const Accueil = () => {
   useEffect(() => {
     const fetchMuseumImage = async () => {
       try {
-        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
-        const response = await fetch(`${backendUrl}/api/museum-settings?setting_key=museum_image_url`);
+        const adminUrl = process.env.REACT_APP_ADMIN_URL || 'http://localhost:3000';
+        const response = await fetch(`${adminUrl}/api/museum-settings?setting_key=museum_image_url`);
         const data = await response.json();
         
         if (data && data.setting_value) {
-          // Si l'URL est relative, ajouter le backendUrl
+          // Si l'URL est relative, ajouter le backendUrl pour les uploads
+          const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
           const imageUrl = data.setting_value.startsWith('http') 
             ? data.setting_value 
             : `${backendUrl}${data.setting_value}`;

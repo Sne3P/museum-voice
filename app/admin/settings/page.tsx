@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ArrowLeft, Save, Clock, Building2 } from 'lucide-react'
 import type { OpeningHours, MuseumSetting } from '@/core/entities/museum-settings.types'
+import { getUploadUrl } from '@/lib/uploads'
 
 export default function SystemSettingsPage() {
   const { isAuthenticated, hasPermission, isLoading: authLoading } = useAuth()
@@ -332,7 +333,7 @@ export default function SystemSettingsPage() {
                 {museumImageUrl && museumImageUrl !== '/placeholder.svg' && (
                   <div className="mb-2">
                     <img 
-                      src={museumImageUrl} 
+                      src={getUploadUrl(museumImageUrl)} 
                       alt="Aperçu" 
                       className="max-w-xs rounded-lg border border-gray-300"
                     />
