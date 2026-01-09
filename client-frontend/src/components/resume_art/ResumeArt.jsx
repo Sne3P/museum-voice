@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./ResumeArt.css";
-import ResumeArtImage from "./ResumeArtImage";
+import ResumeArtImage, { ImageZoomModal } from "./ResumeArtImage";
 import ResumeArtTopIcons from "./ResumeArtTopIcons";
 import ResumeArtControls from "./ResumeArtControls";
 
@@ -9,6 +9,7 @@ const ResumeArt = ({ artwork }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [showZoomModal, setShowZoomModal] = useState(false);
 
   // Backend URL pour préfixer les chemins relatifs
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
@@ -100,7 +101,7 @@ const ResumeArt = ({ artwork }) => {
     <div className="resume-art">
       <div className="resume-art-image-wrapper">
         <ResumeArtImage imageUrl={imageUrl} title={artwork?.title} />
-        <ResumeArtTopIcons />
+        <ResumeArtTopIcons onZoomClick={() => setShowZoomModal(true)} />
 
         {/* Audio element (hidden) */}
         {audioUrl && (
@@ -129,6 +130,14 @@ const ResumeArt = ({ artwork }) => {
           </div>
         </div>
       </div>
+
+      {showZoomModal && (
+        <ImageZoomModal
+          imageUrl={imageUrl || "/placeholder.svg"}
+          title={artwork?.title || "Museum Artwork"}
+          onClose={() => setShowZoomModal(false)}
+        />
+      )}
     </div>
   );
 };

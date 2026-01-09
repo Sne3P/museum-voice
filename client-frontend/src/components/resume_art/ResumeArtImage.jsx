@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import "./ResumeArt.css";
 
-const ImageZoomModal = ({ imageUrl, title, onClose }) => {
+export const ImageZoomModal = ({ imageUrl, title, onClose }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -117,37 +117,18 @@ const ImageZoomModal = ({ imageUrl, title, onClose }) => {
 };
 
 const ResumeArtImage = ({ imageUrl, title }) => {
-  const [showZoomModal, setShowZoomModal] = useState(false);
-  
   // Utiliser l'image de l'œuvre si disponible, sinon image par défaut
   const imageSrc = imageUrl || "/placeholder.svg";
   const imageAlt = title || "Museum Artwork";
 
   return (
-    <>
-      <div className="resume-art-image-container">
-        <img
-          src={imageSrc}
-          alt={imageAlt}
-          className="resume-art-image"
-        />
-        <button 
-          className="image-zoom-btn" 
-          onClick={() => setShowZoomModal(true)}
-          title="Agrandir l'image"
-        >
-          🔍
-        </button>
-      </div>
-      
-      {showZoomModal && (
-        <ImageZoomModal 
-          imageUrl={imageSrc} 
-          title={imageAlt} 
-          onClose={() => setShowZoomModal(false)} 
-        />
-      )}
-    </>
+    <div className="resume-art-image-container">
+      <img
+        src={imageSrc}
+        alt={imageAlt}
+        className="resume-art-image"
+      />
+    </div>
   );
 };
 
