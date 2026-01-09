@@ -20,6 +20,21 @@ const ResumeArt = ({ artwork }) => {
   }
   audioUrl = audioUrl || null;
 
+  // Recharger l'audio quand la source change
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    // Stop current playback and reset
+    audio.pause();
+    audio.currentTime = 0;
+    setIsPlaying(false);
+    setCurrentTime(0);
+
+    // Force reload of the new source
+    audio.load();
+  }, [audioUrl]);
+
   // Mettre à jour le temps en cours
   useEffect(() => {
     const audio = audioRef.current;
@@ -89,7 +104,7 @@ const ResumeArt = ({ artwork }) => {
 
         {/* Audio element (hidden) */}
         {audioUrl && (
-          <audio ref={audioRef} preload="metadata">
+          <audio ref={audioRef} preload="metadata" key={audioUrl}>
             <source src={audioUrl} type="audio/wav" />
           </audio>
         )}
