@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS oeuvres (
     contexte_commande TEXT,
     analyse_materielle_technique TEXT,
     iconographie_symbolique TEXT,
+    anecdotes TEXT,
     reception_circulation_posterite TEXT,
     parcours_conservation_doc TEXT,
     localisation_salle TEXT,
