@@ -63,6 +63,10 @@ function AudioguideContent() {
       if (response.ok) {
         setStatus('activated')
         setTokenData(data.data)
+        // Stocker le token dans localStorage pour lier le parcours à la session
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('museum-session-token', token)
+        }
       } else {
         setError(data.error)
         setStatus('invalid')

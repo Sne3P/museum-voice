@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, QrCode, Maximize2, X } from 'lucide-react'
+import { ArrowLeft, QrCode, Maximize2, X, Copy, ExternalLink, Check } from 'lucide-react'
 import QRCodeLib from 'qrcode'
 
 export default function QRCodePage() {
@@ -20,6 +20,8 @@ export default function QRCodePage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [isCleaningAll, setIsCleaningAll] = useState(false)
 
   useEffect(() => {
     if (isLoading) return
@@ -97,6 +99,56 @@ export default function QRCodePage() {
     setShowModal(false)
   }
 
+  const copyToClipboard = async () => {
+    if (qrCodeData) {
+      try {
+        await navigator.clipboard.writeText(qrCodeData)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } catch (err) {
+        console.error('Erreur copie:', err)
+      }
+    }
+  }
+
+  const openInNewTab = () => {
+    if (qrCodeData) {
+      window.open(qrCodeData, '_blank')
+    }
+  }
+
+  const cleanupAllSessions = async () => {
+    if (!confirm('⚠️ ATTENTION : Cette action va supprimer TOUTES les sessions actives et leurs fichiers audio associés.\n\nCette action est irréversible.\n\nVoulez-vous continuer ?')) {
+      return
+    }
+
+    setIsCleaningAll(true)
+    setError('')
+
+    try {
+      const response = await fetch('/api/admin/cleanup-all-sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erreur lors du nettoyage')
+      }
+
+      alert(`✅ Nettoyage terminé avec succès!\n\n${data.deleted_sessions} sessions supprimées\n${data.deleted_audio_folders} dossiers audio supprimés`)
+      
+    } catch (error) {
+      console.error('Erreur nettoyage:', error)
+      setError(error instanceof Error ? error.message : 'Erreur lors du nettoyage')
+    } finally {
+      setIsCleaningAll(false)
+    }
+  }
+
   if (!isAuthenticated) {
     return null
   }
@@ -159,6 +211,26 @@ export default function QRCodePage() {
               >
                 {isGenerating ? 'Génération du token...' : 'Générer un Nouveau QR Code'}
               </Button>
+
+              {hasPermission('manage_admin_musee') && (
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="p-4 bg-red-50 rounded-lg mb-3">
+                    <h4 className="font-medium text-red-900 mb-2">⚠️ Zone Administration</h4>
+                    <p className="text-sm text-red-800">
+                      Cette action supprime toutes les sessions actives et leurs fichiers audio. 
+                      À utiliser uniquement en cas de besoin (maintenance, tests, etc.)
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={cleanupAllSessions} 
+                    disabled={isCleaningAll}
+                    variant="destructive"
+                    className="w-full"
+                  >
+                    {isCleaningAll ? 'Nettoyage en cours...' : '🗑️ Supprimer Toutes les Sessions'}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -194,6 +266,49 @@ export default function QRCodePage() {
                     <span className="hidden sm:inline">Afficher en Plus Grand</span>
                     <span className="sm:hidden">Agrandir</span>
                   </Button>
+                </div>
+              )}
+
+              {qrCodeData && (
+                <div className="space-y-3 p-4 bg-blue-50 rounded-lg">
+                  <Label className="text-sm font-medium text-blue-900">Lien d'accès</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      value={qrCodeData} 
+                      readOnly 
+                      className="font-mono text-xs bg-white"
+                    />
+                    <Button 
+                      onClick={copyToClipboard} 
+                      variant="outline" 
+                      size="sm"
+                      className="shrink-0"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="h-4 w-4 mr-1" />
+                          Copié
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4 mr-1" />
+                          Copier
+                        </>
+                      )}
+                    </Button>
+                    <Button 
+                      onClick={openInNewTab} 
+                      variant="outline" 
+                      size="sm"
+                      className="shrink-0"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-1" />
+                      Ouvrir
+                    </Button>
+                  </div>
+                  <p className="text-xs text-blue-700">
+                    💡 Copiez ce lien ou ouvrez-le dans un nouvel onglet pour tester sans scanner le QR code
+                  </p>
                 </div>
               )}
 

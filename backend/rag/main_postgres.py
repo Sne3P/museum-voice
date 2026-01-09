@@ -2251,6 +2251,126 @@ def admin_generate_narrations_by_profile():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ===== API NETTOYAGE AUDIO =====
+
+@app.route('/api/cleanup/audio', methods=['POST'])
+def cleanup_audio_files():
+    """
+    Nettoie les fichiers audio des sessions expirées
+    Appelé manuellement ou périodiquement par un cron job
+    """
+    try:
+        from .core.cleanup_service import get_cleanup_service
+        
+        cleanup_service = get_cleanup_service()
+        cleaned_count = cleanup_service.cleanup_all()
+        
+        return jsonify({
+            'success': True,
+            'cleaned': cleaned_count,
+            'message': f'{cleaned_count} dossiers audio nettoyés'
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Erreur nettoyage audio: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/cleanup/status', methods=['GET'])
+def cleanup_status():
+    """Retourne les statistiques de nettoyage"""
+    try:
+        from .core.cleanup_service import get_cleanup_service
+        import os
+        from pathlib import Path
+        
+        audio_dir = Path("/app/uploads/audio")
+        
+        # Compter les dossiers audio existants
+        parcours_count = 0
+        if audio_dir.exists():
+            parcours_count = len([d for d in audio_dir.iterdir() if d.is_dir() and d.name.startswith('parcours_')])
+        
+        return jsonify({
+            'success': True,
+            'active_parcours': parcours_count,
+            'audio_directory': str(audio_dir)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/admin/cleanup-all-sessions', methods=['POST'])
+def cleanup_all_sessions():
+    """
+    Force le nettoyage de TOUTES les sessions actives et leurs données
+    Supprime tous les tokens et tous les dossiers audio
+    ATTENTION: Action irréversible réservée aux admins
+    """
+    try:
+        import os
+        import shutil
+        from pathlib import Path
+        
+        conn = _connect_postgres()
+        cur = conn.cursor()
+        
+        # Compter les sessions à supprimer
+        cur.execute("SELECT COUNT(*) as count FROM qr_code WHERE parcours_id IS NOT NULL")
+        result = cur.fetchone()
+        session_count = result['count'] if result else 0
+        
+        # Récupérer tous les parcours_id avant suppression
+        cur.execute("SELECT DISTINCT parcours_id FROM qr_code WHERE parcours_id IS NOT NULL")
+        parcours_ids = [row['parcours_id'] for row in cur.fetchall()]
+        
+        # Supprimer toutes les sessions de la BDD
+        cur.execute("DELETE FROM qr_code")
+        conn.commit()
+        
+        # Supprimer tous les dossiers audio
+        audio_dir = Path("/app/uploads/audio")
+        deleted_folders = 0
+        
+        if audio_dir.exists():
+            for audio_folder in audio_dir.iterdir():
+                if audio_folder.is_dir() and audio_folder.name.startswith('parcours_'):
+                    try:
+                        shutil.rmtree(audio_folder)
+                        deleted_folders += 1
+                        print(f"🗑️ Supprimé: {audio_folder.name}")
+                    except Exception as e:
+                        print(f"❌ Erreur suppression {audio_folder.name}: {e}")
+        
+        cur.close()
+        conn.close()
+        
+        print(f"✅ Nettoyage complet: {session_count} sessions et {deleted_folders} dossiers audio supprimés")
+        
+        return jsonify({
+            'success': True,
+            'deleted_sessions': session_count,
+            'deleted_audio_folders': deleted_folders,
+            'message': f'{session_count} sessions et {deleted_folders} dossiers audio supprimés'
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Erreur nettoyage complet: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 # ===== DÉMARRAGE =====
 
 if __name__ == '__main__':

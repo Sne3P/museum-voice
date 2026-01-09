@@ -21,8 +21,14 @@ CREATE TABLE IF NOT EXISTS qr_code (
     created_by TEXT,
     is_used INTEGER DEFAULT 0,
     link TEXT,
+    parcours_id BIGINT,
+    expires_at TIMESTAMP,
+    used_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Index pour nettoyage rapide des sessions expirées
+CREATE INDEX IF NOT EXISTS idx_qr_code_expires_at ON qr_code(expires_at);
 
 -- ===============================
 -- TABLE : Plans

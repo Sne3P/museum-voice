@@ -8,34 +8,71 @@ export async function POST(request: NextRequest) {
     if (!token) {
       return NextResponse.json(
         { error: 'Token manquant' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       )
     }
 
     // Vérifier que le token existe et n'est pas déjà utilisé
     const existingTokens = await queryPostgres<any>(
-      'SELECT token, created_by, created_at, is_used FROM qr_code WHERE token = $1',
+      'SELECT token, created_by, created_at, is_used, expires_at FROM qr_code WHERE token = $1',
       [token]
     )
 
     if (existingTokens.length === 0) {
       return NextResponse.json(
         { error: 'Token invalide' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       )
     }
 
     const existingToken = existingTokens[0]
+    
+    // Vérifier expiration
+    if (existingToken.expires_at && new Date(existingToken.expires_at) < new Date()) {
+      return NextResponse.json(
+        { error: 'Token expiré' },
+        { 
+          status: 410,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
+      )
+    }
+    
     if (existingToken.is_used) {
       return NextResponse.json(
         { error: 'Token déjà utilisé' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       )
     }
 
     // Marquer le token comme utilisé
     await queryPostgres(
-      'UPDATE qr_code SET is_used = true, used_at = CURRENT_TIMESTAMP WHERE token = $1',
+      'UPDATE qr_code SET is_used = 1, used_at = CURRENT_TIMESTAMP WHERE token = $1',
       [token]
     )
 
@@ -49,10 +86,16 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Token utilisé avec succès',
       data: {
-        token: updatedToken.token,
-        createdBy: updatedToken.created_by,
-        createdAt: updatedToken.created_at,
-        usedAt: updatedToken.used_at
+        token: updatedTokens[0].token,
+        createdBy: updatedTokens[0].created_by,
+        createdAt: updatedTokens[0].created_at,
+        usedAt: updatedTokens[0].used_at
+      }
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
       }
     })
 
@@ -60,7 +103,25 @@ export async function POST(request: NextRequest) {
     console.error('Erreur utilisation token:', error)
     return NextResponse.json(
       { error: 'Erreur serveur lors de l\'utilisation du token' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        }
+      }
     )
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    }
+  })
 }

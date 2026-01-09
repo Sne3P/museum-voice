@@ -5,13 +5,34 @@ import LangSelector from '../../components/lang-selector/LangSelector';
 import WelcomeBgImg from '../../components/welcome_bg_img/WelcomeBgImg';
 import StartMsg from '../../components/start_msg/StartMsg';
 import GenParcours from '../../components/gen_parcours/GenParcours';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { activateSession } from '../../utils/session';
 
 
 const Accueil = () => {
   // 1. Initialiser l'état de la langue. Par défaut à 'FR' par exemple.
   const [selectedLanguage, setSelectedLanguage] = useState('FR');
   const [museumImageUrl, setMuseumImageUrl] = useState('/placeholder.svg');
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Gérer le token QR code depuis l'URL
+  useEffect(() => {
+    const token = searchParams.get('token');
+    if (token) {
+      // Activer la session avec le token
+      activateSession(token).then(success => {
+        if (success) {
+          console.log('✅ Session activée avec succès');
+          // Nettoyer l'URL
+          window.history.replaceState({}, '', window.location.pathname);
+        } else {
+          console.error('❌ Échec activation session');
+          alert('❌ Token invalide ou expiré');
+        }
+      });
+    }
+  }, [searchParams]);
 
   // Charger l'image du musée depuis l'API
   useEffect(() => {
@@ -49,7 +70,6 @@ const Accueil = () => {
     setSelectedLanguage(newLang);
   };
   
-  const navigate = useNavigate();
   const goToMesChoix = () => {
     // [Inference] Vous pourriez passer la langue sélectionnée au composant suivant si nécessaire
     // navigate('/mes-choix', { state: { lang: selectedLanguage } });

@@ -3,7 +3,8 @@ import { queryPostgres } from '@/lib/database-postgres'
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, userName } = await request.json()
+    const body = await request.json().catch(() => ({}))
+    const { userId, userName = 'system' } = body
 
     const generateToken = () => {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -34,28 +35,42 @@ export async function POST(request: NextRequest) {
     }
 
     await queryPostgres(
-      'INSERT INTO qr_code (token, created_by, is_used) VALUES ($1, $2, false)',
+      "INSERT INTO qr_code (token, created_by, is_used, expires_at) VALUES ($1, $2, 0, NOW() + INTERVAL '8 hours')",
       [token, userName]
     )
 
     const createdTokens = await queryPostgres<any>(
-      'SELECT token, created_at FROM qr_code WHERE token = $1',
+      'SELECT token, created_at, expires_at FROM qr_code WHERE token = $1',
       [token]
     )
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-    const qrUrl = `${baseUrl}/audioguide?token=${token}`
+    // Rediriger vers le frontend client React (port 8080)
+    const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || 'http://localhost:8080'
+    const qrUrl = `${baseUrl}/?token=${token}`
 
     return NextResponse.json({
       success: true,
       token: token,
       url: qrUrl,
       createdAt: createdTokens[0].created_at
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      }
     })
 
   } catch (error) {
     console.error('Erreur génération QR code:', error)
-    return NextResponse.json({ error: 'Erreur serveur lors de la génération du QR code' }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur serveur lors de la génération du QR code' }, { 
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      }
+    })
   }
 }
 
@@ -69,7 +84,7 @@ export async function GET(request: NextRequest) {
     }
 
     const tokens = await queryPostgres<any>(
-      'SELECT token, created_by, created_at, is_used, used_at FROM qr_code WHERE token = $1',
+      'SELECT token, created_by, created_at, is_used, used_at, expires_at FROM qr_code WHERE token = $1',
       [token]
     )
 
@@ -77,10 +92,41 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Token invalide' }, { status: 404 })
     }
 
-    return NextResponse.json({ token: tokens[0] })
+    const tokenData = tokens[0]
+    
+    // Vérifier si le token a expiré
+    if (tokenData.expires_at && new Date(tokenData.expires_at) < new Date()) {
+      return NextResponse.json({ error: 'Token expiré' }, { status: 410 })
+    }
+
+    return NextResponse.json({ token: tokenData }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      }
+    })
 
   } catch (error) {
     console.error('Erreur récupération token:', error)
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur serveur' }, { 
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      }
+    })
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    }
+  })
 }

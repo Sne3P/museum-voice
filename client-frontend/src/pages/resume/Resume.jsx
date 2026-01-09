@@ -4,6 +4,7 @@ import ResumeProgressBar from "../../components/resume_progress_bar/ResumeProgre
 import ResumeArtWorkCard from "../../components/resume_art_work_card/ResumeArtWorkCard";
 import ResumeArt from "../../components/resume_art/ResumeArt";
 import MapModal from "../../components/map_modal/MapModal";
+import { checkSession } from "../../utils/session";
 import "./Resume.css";
 
 const Resume = () => {
@@ -12,6 +13,17 @@ const Resume = () => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [loading, setLoading] = useState(true);
     const [isMapOpen, setIsMapOpen] = useState(false);
+
+    // Vérifier la session au chargement
+    useEffect(() => {
+        checkSession().then(({ valid }) => {
+            if (!valid) {
+                console.warn('⚠️ Session invalide ou expirée');
+                alert('⚠️ Votre session a expiré. Veuillez scanner un nouveau QR code.');
+                navigate('/');
+            }
+        });
+    }, [navigate]);
 
     useEffect(() => {
         // Charger le parcours depuis localStorage

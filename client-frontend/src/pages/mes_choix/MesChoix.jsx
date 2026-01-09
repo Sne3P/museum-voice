@@ -5,9 +5,24 @@ import CriteriaSelector from '../../components/criteria_selector/CriteriaSelecto
 import Header from '../../components/header/Header';
 import InterestNotice from '../../components/interest_notice/InterestNotice';
 import GenParcours from '../../components/gen_parcours/GenParcours';
+import { useNavigate } from 'react-router-dom';
+import { checkSession } from '../../utils/session';
 import './MesChoix.css';
 
 const MesChoix = () => {
+  const navigate = useNavigate();
+  
+  // Vérifier la session au chargement
+  useEffect(() => {
+    checkSession().then(({ valid }) => {
+      if (!valid) {
+        console.warn('⚠️ Session invalide ou expirée');
+        alert('⚠️ Votre session a expiré. Veuillez scanner un nouveau QR code.');
+        navigate('/');
+      }
+    });
+  }, [navigate]);
+  
   // Charger la valeur initiale depuis localStorage ou utiliser 1h par défaut
   const getInitialTimeValue = () => {
     const savedValue = localStorage.getItem("timeSliderValue");
@@ -104,6 +119,29 @@ const MesChoix = () => {
       
       if (data.success && data.parcours) {
         localStorage.setItem('generatedParcours', JSON.stringify(data.parcours));
+        
+        // Lier le parcours à la session active (si QR code)
+        const sessionToken = localStorage.getItem('museum-session-token');
+        if (sessionToken && data.parcours.metadata?.unique_parcours_id) {
+          try {
+            await fetch('/api/parcours/link-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                token: sessionToken,
+                parcours_id: data.parcours.metadata.unique_parcours_id
+              })
+            });
+            console.log('🔗 Parcours lié à la session');
+          } catch (linkError) {
+            console.warn('⚠️ Erreur liaison session:', linkError);
+          }
+        }
+        
+        // Déclencher un nettoyage des anciens fichiers (async, non-bloquant)
+        fetch('/api/cleanup/audio', { method: 'POST' })
+          .catch(err => console.warn('⚠️ Cleanup error:', err));
+        
         window.location.href = '/resume';
       } else {
         throw new Error("Invalid response format");
