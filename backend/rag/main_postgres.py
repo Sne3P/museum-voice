@@ -1316,12 +1316,10 @@ def generate_intelligent_parcours():
         # Générer les audios si demandé
         if generate_audio:
             print(f"\n🔵 [AUDIO DEBUG] generate_audio=True, début génération audio")
-            logger.info(f"🔵 [AUDIO DEBUG] generate_audio=True, début génération audio")
             try:
                 # Utiliser l'ID unique depuis les metadata (basé sur seed ou timestamp)
                 parcours_id = parcours_json.get('metadata', {}).get('unique_parcours_id', variation_seed or int(time.time() * 1000))
                 print(f"🔵 [AUDIO DEBUG] Parcours ID: {parcours_id}")
-                logger.info(f"🔵 [AUDIO DEBUG] Parcours ID: {parcours_id}")
                 
                 # Préparer les narrations pour TTS
                 narrations = []
@@ -1333,21 +1331,18 @@ def generate_intelligent_parcours():
                 
                 # Générer les audios
                 print(f"🔵 [AUDIO DEBUG] Préparation de {len(narrations)} narrations pour TTS")
-                logger.info(f"🔵 [AUDIO DEBUG] Préparation de {len(narrations)} narrations pour TTS")
                 for n in narrations:
                     print(f"   - Oeuvre {n['oeuvre_id']}: {len(n['narration_text'])} caractères")
                 
                 print(f"🔵 [AUDIO DEBUG] Appel get_piper_service()")
                 piper = get_piper_service('fr_FR')
                 print(f"🔵 [AUDIO DEBUG] Appel piper.generate_parcours_audio()")
-                logger.info(f"🔵 [AUDIO DEBUG] Appel piper.generate_parcours_audio()")
                 audio_results = piper.generate_parcours_audio(
                     parcours_id=parcours_id,
                     narrations=narrations,
                     language='fr_FR'
                 )
                 print(f"✅ [AUDIO DEBUG] generate_parcours_audio() retourné: {len(audio_results)} résultats")
-                logger.info(f"✅ [AUDIO DEBUG] generate_parcours_audio() retourné: {len(audio_results)} résultats")
                 
                 # Intégrer les chemins audio ET durées réelles dans les artworks
                 for artwork in parcours_json.get('artworks', []):
