@@ -16,6 +16,8 @@ class Position:
     y: float
     room: int
     floor: int
+    floor_name: str = ""  # Nom de l'étage (Sous-sol, RDC, Étage 1, etc.)
+    floor_name: str = ""  # Nom de l'étage (Sous-sol, RDC, Étage 1, etc.)
     
     def distance_to(self, other: 'Position', penalize_floor_change: bool = True) -> float:
         """Calcule distance euclidienne EN MÈTRES avec pénalité optionnelle pour changement d'étage"""

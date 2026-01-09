@@ -169,7 +169,7 @@ class ArtworkSelector:
         for row in cur.fetchall():
             # Déterminer étage depuis plan_id
             plan_id = row['plan_id']
-            floor = self._get_floor_from_plan(plan_id)
+            floor, floor_name = self._get_floor_from_plan(plan_id)
             
             # Trouver salle contenant l'œuvre
             room_id = self.graph._find_room_containing_point(
@@ -182,7 +182,8 @@ class ArtworkSelector:
                 x=row['artwork_x'],
                 y=row['artwork_y'],
                 room=room_id,
-                floor=floor
+                floor=floor,
+                floor_name=floor_name
             )
             
             artwork_type = self._classify_artwork_type(row['materiaux_technique'])
@@ -208,16 +209,16 @@ class ArtworkSelector:
         cur.close()
         return artworks
     
-    def _get_floor_from_plan(self, plan_id: int) -> int:
-        """Récupère le floor_number depuis la table plans"""
+    def _get_floor_from_plan(self, plan_id: int) -> tuple:
+        """Récupère le floor_number et floor_name depuis la table plans"""
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT floor_number FROM plans WHERE plan_id = %s", (plan_id,))
+        cur.execute("SELECT floor_number, nom FROM plans WHERE plan_id = %s", (plan_id,))
         result = cur.fetchone()
         cur.close()
         
         if result:
-            return result['floor_number']
-        return 0  # Fallback
+            return (result['floor_number'], result['nom'])
+        return (0, "Étage 0")  # Fallback
     
     def _calculate_target_count(self, candidates: List[Artwork], target_duration_min: int) -> int:
         """Calcule nombre optimal d'œuvres selon durée cible"""

@@ -170,7 +170,8 @@ def generate_parcours_v3(
                     'x': a.position.x,
                     'y': a.position.y,
                     'room': a.position.room,
-                    'floor': a.position.floor
+                    'floor': a.position.floor,
+                    'floor_name': a.position.floor_name
                 }
             })
         
