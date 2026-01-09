@@ -107,9 +107,9 @@ export async function POST(request: NextRequest) {
             `INSERT INTO oeuvres (
               oeuvre_id, title, artist, description, image_link, pdf_link, file_name, file_path, room,
               date_oeuvre, materiaux_technique, provenance, contexte_commande,
-              analyse_materielle_technique, iconographie_symbolique, 
+              analyse_materielle_technique, iconographie_symbolique,  anecdotes,
               reception_circulation_posterite, parcours_conservation_doc
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
             ON CONFLICT (oeuvre_id) DO UPDATE SET
               title = EXCLUDED.title,
               artist = EXCLUDED.artist,
@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
               contexte_commande = EXCLUDED.contexte_commande,
               analyse_materielle_technique = EXCLUDED.analyse_materielle_technique,
               iconographie_symbolique = EXCLUDED.iconographie_symbolique,
+              anecdotes = EXCLUDED.anecdotes,
               reception_circulation_posterite = EXCLUDED.reception_circulation_posterite,
               parcours_conservation_doc = EXCLUDED.parcours_conservation_doc,
               updated_at = CURRENT_TIMESTAMP`,
@@ -144,6 +145,9 @@ export async function POST(request: NextRequest) {
               meta.contexte || meta.contexte_commande || null,
               meta.analyse || meta.analyse_materielle_technique || null,
               meta.iconographie || meta.iconographie_symbolique || null,
+              Array.isArray(oeuvre.anecdotes || meta.anecdotes) 
+                ? (oeuvre.anecdotes || meta.anecdotes).join('\n') 
+                : (oeuvre.anecdotes || meta.anecdotes || null),
               meta.reception || meta.reception_circulation_posterite || null,
               meta.parcours || meta.parcours_conservation_doc || null
             ]

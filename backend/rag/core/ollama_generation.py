@@ -193,6 +193,7 @@ class OllamaMediationSystem:
         analyse = self.truncate(payload.get("analyse_materielle_technique") or "", max_chars)
         iconographie = self.truncate(payload.get("iconographie_symbolique") or "", max_chars)
         contexte = self.truncate(payload.get("contexte_commande") or "", max_chars)
+        anecdotes = self.truncate(payload.get("anecdotes") or "", max_chars)
 
         lines: List[str] = []
         lines.append("ENTRÉE")
@@ -220,6 +221,10 @@ class OllamaMediationSystem:
         if contexte:
             lines.append("\nContexte de création (à reformuler) :")
             lines.append(contexte)
+        
+        if anecdotes:
+            lines.append("\nAnecdotes intéressantes (à reformuler) :")
+            lines.append(anecdotes)
 
         return "\n".join(lines)
 
