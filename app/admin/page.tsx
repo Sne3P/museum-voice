@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth-context'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Settings, Edit, Users, FileText, LogOut, QrCode, Database } from 'lucide-react'
+import { Settings, Edit, Users, LogOut, QrCode, Database } from 'lucide-react'
 
 export default function AdminPage() {
   const { isAuthenticated, logout, currentUser, hasPermission, isLoading } = useAuth()
@@ -164,28 +164,6 @@ export default function AdminPage() {
                   className="w-full"
                 >
                   Accéder au dashboard
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Test Générateur Parcours - Visible pour super_admin et admin_musee */}
-          {hasPermission('edit_maps') && (
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">🗺️ Test Générateur Parcours</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="mb-4">
-                  Tester le générateur de parcours personnalisés intelligent
-                </CardDescription>
-                <Button 
-                  onClick={() => router.push('/admin/test-parcours')} 
-                  className="w-full"
-                  variant="outline"
-                >
-                  Tester le générateur
                 </Button>
               </CardContent>
             </Card>
