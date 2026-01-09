@@ -122,7 +122,6 @@ services:
       - "5000:5000"
     volumes:
       - uploads_data_prod:/app/uploads
-      - audio_data_prod:/app/uploads/audio
     networks:
       - museum-network
     healthcheck:
@@ -181,15 +180,14 @@ services:
       # Client Frontend (internal Docker network)
       NEXT_PUBLIC_CLIENT_URL: http://client:80
       
-      # Public URLs (for frontend and redirects - will be overridden in production)
-      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://backend:5000}
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://app:3000}
+      # Public URLs (for browser-side requests - accessible from outside)
+      # ⚠️ Override in .env.prod with your domain or keep VPS IP
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://51.38.188.211:5000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://51.38.188.211:3000}
       
       # Next.js PRODUCTION
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: 1
-      PORT: 3000
-      HOSTNAME: "0.0.0.0"
       
       # App
       APP_ENV: production
@@ -197,7 +195,6 @@ services:
       - "3000:3000"
     volumes:
       - uploads_data_prod:/app/public/uploads
-      - audio_data_prod:/app/public/uploads/audio
     networks:
       - museum-network
     healthcheck:
@@ -227,6 +224,9 @@ services:
         - museum-client-prod:latest
       args:
         BUILDKIT_INLINE_CACHE: 1
+        # ⚠️ Build args - URLs publiques accessibles depuis le navigateur
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://51.38.188.211:5000}
+        REACT_APP_ADMIN_URL: ${REACT_APP_ADMIN_URL:-http://51.38.188.211:3000}
     image: museum-client-prod:latest
     container_name: museum-client-prod
     restart: always
@@ -234,15 +234,13 @@ services:
       backend:
         condition: service_healthy
     environment:
-      # Backend Flask API (internal Docker network)
-      REACT_APP_BACKEND_URL: http://backend:5000
-      # Admin Next.js (internal Docker network)
-      REACT_APP_ADMIN_URL: http://app:3000
+      # Ces variables sont aussi passées au runtime (mais le build est prioritaire)
+      REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://51.38.188.211:5000}
+      REACT_APP_ADMIN_URL: ${REACT_APP_ADMIN_URL:-http://51.38.188.211:3000}
     ports:
       - "8080:80"
     volumes:
       - uploads_data_prod:/usr/share/nginx/html/uploads:ro
-      - audio_data_prod:/usr/share/nginx/html/uploads/audio:ro
     networks:
       - museum-network
     healthcheck:
@@ -270,9 +268,6 @@ volumes:
     driver: local
   uploads_data_prod:
     name: museum-uploads-data-prod
-    driver: local
-  audio_data_prod:
-    name: museum-audio-data-prod
     driver: local
   ollama_data_prod:
     name: museum-ollama-models-prod
