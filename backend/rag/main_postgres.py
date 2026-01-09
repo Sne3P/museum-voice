@@ -1853,15 +1853,15 @@ def get_floor_plan():
         # Filtrer par étage si spécifié
         floor_filter = request.args.get('floor')
         
-        # D'abord, créer un mapping plan_id → floor_num
+        # D'abord, créer un mapping plan_id → floor_num en utilisant floor_number
         cur.execute("""
-            SELECT plan_id, nom 
+            SELECT plan_id, floor_number 
             FROM plans 
-            ORDER BY plan_id
+            ORDER BY floor_number
         """)
         plan_to_floor = {}
-        for idx, row in enumerate(cur.fetchall()):
-            plan_to_floor[row['plan_id']] = idx
+        for row in cur.fetchall():
+            plan_to_floor[row['plan_id']] = row['floor_number']
         
         # Récupérer les salles avec leurs polygones et plan_id
         query = """

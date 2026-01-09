@@ -63,6 +63,7 @@ interface Stats {
   total_oeuvres: number
   total_pregenerations: number
   expected_pregenerations: number
+ expected_per_oeuvre: number
   completion_rate: number
 }
 
@@ -85,10 +86,8 @@ export default function NarrationsDashboard() {
   const [activeTab, setActiveTab] = useState<'oeuvres' | 'narrations' | 'actions'>('oeuvres')
 
   // Calcul du nombre attendu de narrations par œuvre (produit cartésien des critères)
-  // Pour 3 ages × 4 thématiques × 3 styles = 36 narrations par œuvre
-  const expectedNarrationsPerOeuvre = stats?.expected_pregenerations && stats?.total_oeuvres > 0
-    ? Math.ceil(stats.expected_pregenerations / stats.total_oeuvres)
-    : 36 // Fallback
+   // Utiliser la valeur calculée par le backend
+   const expectedNarrationsPerOeuvre = stats?.expected_per_oeuvre || 36
 
   // =========================================
   // CHARGEMENT DONNÉES

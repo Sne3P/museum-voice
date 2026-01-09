@@ -147,8 +147,8 @@ const Resume = () => {
                 title={currentArtwork.title || "Titre inconnu"}
                 artist={currentArtwork.artist || "Artiste inconnu"}
                 date={currentArtwork.date || ""}
-                movement={currentArtwork.materiaux_technique || ""}
-                location={`Salle ${currentArtwork.position?.room || '?'}, Étage ${currentArtwork.position?.floor || '?'}`}
+                technique={currentArtwork.materiaux_technique || ""}
+                location={`Salle ${currentArtwork.position?.room || '?'}, Étage ${currentArtwork.position?.floor ?? '?'}`}
                 description={currentArtwork.narration || "Description non disponible"}
             />
             

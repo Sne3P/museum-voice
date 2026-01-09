@@ -95,6 +95,19 @@ export async function POST(request: NextRequest) {
           [plan.plan_id, plan.nom, plan.description || '', plan.date_creation]
         )
       }
+      
+      // Update floor_number based on editor order (important for correct floor numbering)
+      // Plans are already in the correct order in exportData.plan_editor.plans
+      // Assign floor_number sequentially: 0 for first floor, 1 for second, etc.
+      // To support basements, you can manually set floor_number to -1 in museum-settings
+      for (let i = 0; i < exportData.plan_editor.plans.length; i++) {
+        const plan = exportData.plan_editor.plans[i]
+        await client.query(
+          'UPDATE plans SET floor_number = $1 WHERE plan_id = $2',
+          [i, plan.plan_id]
+        )
+      }
+      console.log(`✅ Assigned floor_number to ${exportData.plan_editor.plans.length} plans`)
 
       // UPSERT oeuvres (update if exists, insert if new) - PRESERVE pregenerations
       if (exportData.oeuvres_contenus?.oeuvres) {

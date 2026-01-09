@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPostgresPool } from '@/lib/database-postgres'
 
+// Helper pour ajouter les headers CORS
+function addCORSHeaders(response: NextResponse) {
+  response.headers.set('Access-Control-Allow-Origin', '*')
+  response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS')
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  return response
+}
+
+/**
+ * OPTIONS /api/criterias
+ * Gérer les preflight requests CORS
+ */
+export async function OPTIONS() {
+  const response = new NextResponse(null, { status: 204 })
+  return addCORSHeaders(response)
+}
+
 /**
  * GET /api/criterias
  * Récupère tous les paramètres de critères ou filtre par type
@@ -39,16 +56,16 @@ export async function GET(request: NextRequest) {
 
     const result = await pool.query(query, params)
 
-    return NextResponse.json({
+    return addCORSHeaders(NextResponse.json({
       success: true,
       criterias: result.rows
-    })
+    }))
   } catch (error) {
     console.error('Erreur lors de la récupération des critères:', error)
-    return NextResponse.json(
+    return addCORSHeaders(NextResponse.json(
       { success: false, error: 'Erreur serveur' },
       { status: 500 }
-    )
+    ))
   }
 }
 
@@ -88,24 +105,24 @@ export async function POST(request: NextRequest) {
       [type, name, label, description, image_link, ai_indication, ordre || 0]
     )
 
-    return NextResponse.json({
+    return addCORSHeaders(NextResponse.json({
       success: true,
       criteria: result.rows[0]
-    }, { status: 201 })
+    }, { status: 201 }))
   } catch (error: any) {
     console.error('Erreur lors de la création du critère:', error)
     
     if (error.code === '23505') {
-      return NextResponse.json(
+      return addCORSHeaders(NextResponse.json(
         { success: false, error: 'Ce paramètre existe déjà pour ce type' },
         { status: 409 }
-      )
+      ))
     }
 
-    return NextResponse.json(
+    return addCORSHeaders(NextResponse.json(
       { success: false, error: 'Erreur serveur' },
       { status: 500 }
-    )
+    ))
   }
 }
 
@@ -119,10 +136,10 @@ export async function PUT(request: NextRequest) {
     const { criteria_id, label, description, image_link, ai_indication, ordre, is_active } = body
 
     if (!criteria_id) {
-      return NextResponse.json(
+      return addCORSHeaders(NextResponse.json(
         { success: false, error: 'criteria_id est requis' },
         { status: 400 }
-      )
+      ))
     }
 
     const pool = await getPostgresPool()
@@ -153,10 +170,10 @@ export async function PUT(request: NextRequest) {
     }
 
     if (updates.length === 0) {
-      return NextResponse.json(
+      return addCORSHeaders(NextResponse.json(
         { success: false, error: 'Aucune modification fournie' },
         { status: 400 }
-      )
+      ))
     }
 
     updates.push(`updated_at = CURRENT_TIMESTAMP`)
@@ -172,22 +189,22 @@ export async function PUT(request: NextRequest) {
     const result = await pool.query(query, values)
 
     if (result.rows.length === 0) {
-      return NextResponse.json(
+      return addCORSHeaders(NextResponse.json(
         { success: false, error: 'Critère non trouvé' },
         { status: 404 }
-      )
+      ))
     }
 
-    return NextResponse.json({
+    return addCORSHeaders(NextResponse.json({
       success: true,
       criteria: result.rows[0]
-    })
+    }))
   } catch (error) {
     console.error('Erreur lors de la mise à jour du critère:', error)
-    return NextResponse.json(
+    return addCORSHeaders(NextResponse.json(
       { success: false, error: 'Erreur serveur' },
       { status: 500 }
-    )
+    ))
   }
 }
 
@@ -201,10 +218,10 @@ export async function DELETE(request: NextRequest) {
     const criteriaId = searchParams.get('criteria_id')
 
     if (!criteriaId) {
-      return NextResponse.json(
+      return addCORSHeaders(NextResponse.json(
         { success: false, error: 'criteria_id est requis' },
         { status: 400 }
-      )
+      ))
     }
 
     const pool = await getPostgresPool()
@@ -216,21 +233,21 @@ export async function DELETE(request: NextRequest) {
     )
 
     if (result.rows.length === 0) {
-      return NextResponse.json(
+      return addCORSHeaders(NextResponse.json(
         { success: false, error: 'Critère non trouvé' },
         { status: 404 }
-      )
+      ))
     }
 
-    return NextResponse.json({
+    return addCORSHeaders(NextResponse.json({
       success: true,
       message: 'Critère supprimé définitivement'
-    })
+    }))
   } catch (error) {
     console.error('Erreur lors de la suppression du critère:', error)
-    return NextResponse.json(
+    return addCORSHeaders(NextResponse.json(
       { success: false, error: 'Erreur serveur' },
       { status: 500 }
-      )
+      ))
   }
 }

@@ -42,3 +42,7 @@ class Artwork:
     position: Position
     narration: str
     narration_duration: float  # secondes
+    date_oeuvre: str = ""  # Date de création
+    materiaux_technique: str = ""  # Technique et matériaux
+    image_link: str = ""  # Chemin de l'image
+    pdf_path: str = ""  # Chemin du PDF

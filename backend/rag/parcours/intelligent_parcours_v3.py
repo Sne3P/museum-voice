@@ -158,6 +158,9 @@ def generate_parcours_v3(
                 'artist': a.artist,
                 'date': getattr(a, 'date_oeuvre', ''),
                 'materiaux_technique': getattr(a, 'materiaux_technique', ''),
+                'image_url': getattr(a, 'image_link', ''),
+                'pdf_path': getattr(a, 'pdf_path', ''),
+                'audio_path': f'/audio/{a.oeuvre_id}.mp3',  # Generated audio path
                 'artwork_type': a.artwork_type,
                 'narration': a.narration,
                 'narration_word_count': int(a.narration_duration / 0.5),

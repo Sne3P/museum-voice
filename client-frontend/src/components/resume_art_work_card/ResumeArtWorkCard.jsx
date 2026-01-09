@@ -7,7 +7,7 @@ export default function ResumeArtWorkCard({
   title,
   artist,
   date,
-  movement,
+  technique,
   location,
   description
 }) {
@@ -17,7 +17,7 @@ export default function ResumeArtWorkCard({
         title={title}
         artist={artist}
         date={date}
-        movement={movement}
+        technique={technique}
         location={location}
       />
 

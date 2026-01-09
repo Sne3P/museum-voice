@@ -26,18 +26,27 @@ const CriteriaSelector = ({
   useEffect(() => {
     const fetchParameters = async () => {
       try {
-        const response = await fetch(`/api/criterias?type=${criteriaType}`);
+        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
+        const response = await fetch(`${backendUrl}/api/criterias?type=${criteriaType}`);
         const data = await response.json();
         
         if (data.success && data.criterias) {
-          const params = data.criterias.map(c => ({
-            id: c.name,
-            criteriaId: c.criteria_id,
-            title: c.label,
-            description: c.description,
-            imageUrl: c.image_link || '/placeholder.svg',
-            ordre: c.ordre
-          }));
+          const params = data.criterias.map(c => {
+            // Préfixer l'URL de l'image si elle est relative
+            let imageUrl = c.image_link || '/placeholder.svg';
+            if (imageUrl !== '/placeholder.svg' && !imageUrl.startsWith('http')) {
+              imageUrl = `${backendUrl}${imageUrl}`;
+            }
+            
+            return {
+              id: c.name,
+              criteriaId: c.criteria_id,
+              title: c.label,
+              description: c.description,
+              imageUrl: imageUrl,
+              ordre: c.ordre
+            };
+          });
           
           // Trier par ordre
           params.sort((a, b) => a.ordre - b.ordre);
