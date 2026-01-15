@@ -18,6 +18,7 @@ export type Tool =
   | "wall"
   | "stairs"
   | "elevator"
+  | "entrance"
 
 export type ElementType = "room" | "artwork" | "door" | "wall" | "verticalLink"
 export type DragElementType = ElementType | "vertex"

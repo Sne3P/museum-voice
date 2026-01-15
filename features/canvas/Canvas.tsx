@@ -27,6 +27,7 @@ import {
   useDoorCreation,
   useVerticalLinkCreation,
   useArtworkCreation,
+  useEntranceCreation,
   useArtworkResize,
   useElementDrag,
   useVertexEdit,
@@ -187,6 +188,55 @@ export function Canvas({
     onComplete: (xy, size) => {
       // Ouvrir le modal de propriétés artwork
       setArtworkModal({ position: xy, size })
+    }
+  })
+
+  // Hook de création de point d'entrée (click simple)
+  const entranceCreation = useEntranceCreation({
+    currentFloor,
+    onComplete: async (position) => {
+      // Sauvegarder directement dans la base de données
+      try {
+        const response = await fetch('/api/museum/entrances', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: currentFloor.plan_id || null,
+            name: 'Entrée principale',
+            x: position.x,
+            y: position.y,
+            icon: 'door-open'
+          })
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          console.log('✅ Point d\'entrée créé:', data)
+          
+          // Ajouter l'entrée au state local pour affichage immédiat
+          const newEntrance = {
+            id: data.entrance?.entrance_id ? `entrance-${data.entrance.entrance_id}` : `entrance-${Date.now()}`,
+            name: 'Entrée principale',
+            x: position.x,
+            y: position.y,
+            icon: 'door-open',
+            isActive: true
+          }
+          
+          const updatedFloors = state.floors.map(floor => 
+            floor.id === currentFloor.id 
+              ? { ...floor, entrances: [...(floor.entrances || []), newEntrance] }
+              : floor
+          )
+          
+          updateState({ 
+            floors: updatedFloors,
+            selectedTool: 'select' 
+          }, true, 'Création point d\'entrée')
+        }
+      } catch (error) {
+        console.error('❌ Erreur création entrée:', error)
+      }
     }
   })
 
@@ -484,6 +534,7 @@ export function Canvas({
     doorCreation,
     verticalLinkCreation,
     artworkCreation,
+    entranceCreation,
     artworkResize,
     elementDrag,
     vertexEdit,

@@ -282,6 +282,23 @@ CREATE INDEX IF NOT EXISTS idx_anecdotes_oeuvre ON anecdotes(oeuvre_id);
 -- ===============================
 
 -- ===============================
+-- TABLE : Points d'entrée du musée
+-- ===============================
+CREATE TABLE IF NOT EXISTS museum_entrances (
+    entrance_id SERIAL PRIMARY KEY,
+    plan_id INTEGER REFERENCES plans(plan_id) ON DELETE CASCADE,
+    name TEXT NOT NULL DEFAULT 'Entrée principale',
+    x NUMERIC(10, 2) NOT NULL,
+    y NUMERIC(10, 2) NOT NULL,
+    icon TEXT DEFAULT 'door-open',
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index pour recherche rapide par plan
+CREATE INDEX IF NOT EXISTS idx_entrances_plan_id ON museum_entrances(plan_id);
+
+-- ===============================
 -- INDEX POUR PERFORMANCES
 -- ===============================
 CREATE INDEX IF NOT EXISTS idx_entities_plan_id ON entities(plan_id);

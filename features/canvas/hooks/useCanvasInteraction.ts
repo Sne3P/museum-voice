@@ -21,6 +21,7 @@ interface CanvasInteractionOptions {
   doorCreation: any
   verticalLinkCreation: any
   artworkCreation: any
+  entranceCreation: any
   artworkResize: any
   elementDrag: any
   vertexEdit: any
@@ -42,6 +43,7 @@ export function useCanvasInteraction({
   doorCreation,
   verticalLinkCreation,
   artworkCreation,
+  entranceCreation,
   artworkResize,
   elementDrag,
   vertexEdit,
@@ -198,6 +200,13 @@ export function useCanvasInteraction({
       return
     }
 
+    // Création d'entrée (click simple)
+    if (state.selectedTool === 'entrance' && e.button === 0) {
+      entranceCreation.handleCanvasClick(snapResult.point)
+      setCursorType('default')
+      return
+    }
+
     // Création forme libre (point par point)
     if (state.selectedTool === 'room' && e.button === 0) {
       freeFormCreation.addPoint(snapResult.point)
@@ -217,6 +226,7 @@ export function useCanvasInteraction({
     doorCreation,
     verticalLinkCreation,
     artworkCreation,
+    entranceCreation,
     artworkResize,
     elementDrag,
     vertexEdit,

@@ -29,7 +29,8 @@ export function MuseumEditor() {
         artworks: [],
         verticalLinks: [],
         escalators: [],
-        elevators: []
+        elevators: [],
+        entrances: []
       }
     ],
     currentFloorId: "F1",

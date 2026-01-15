@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { FaDoorOpen } from 'react-icons/fa';
 import './MapViewer.css';
 
 const MapViewer = ({ parcours, currentIndex }) => {
@@ -401,6 +402,56 @@ const MapViewer = ({ parcours, currentIndex }) => {
                         </g>
                     ));
                 })()}
+
+                {/* Dessiner les points d'entrée du musée (icône porte) */}
+                {floorPlanData?.entrances?.filter(entrance => entrance.floor === currentFloor).map((entrance) => (
+                    <g key={`entrance-${entrance.entrance_id}`}>
+                        {/* Point d'entrée - GRAND cercle vert avec bordure */}
+                        <circle
+                            cx={entrance.x}
+                            cy={entrance.y}
+                            r="20"
+                            fill="#2e7d32"
+                            stroke="#fff"
+                            strokeWidth="4"
+                            opacity="0.9"
+                        />
+                        
+                        {/* Icône entrée (porte SVG) */}
+                        <foreignObject
+                            x={entrance.x - 12}
+                            y={entrance.y - 12}
+                            width="24"
+                            height="24"
+                        >
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                width: '100%',
+                                height: '100%',
+                                color: '#fff'
+                            }}>
+                                <FaDoorOpen size={20} />
+                            </div>
+                        </foreignObject>
+                        
+                        {/* Label "Entrée" */}
+                        <text
+                            x={entrance.x}
+                            y={entrance.y + 35}
+                            textAnchor="middle"
+                            fontSize="16"
+                            fontWeight="bold"
+                            fill="#2e7d32"
+                            stroke="#fff"
+                            strokeWidth="3"
+                            paintOrder="stroke"
+                        >
+                            {entrance.name}
+                        </text>
+                    </g>
+                ))}
 
                 {/* Dessiner les œuvres (cercles AGRANDIS) */}
                 {artworksOnFloor.map((artwork, idx) => {

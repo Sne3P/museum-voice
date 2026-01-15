@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { getUploadUrl } from '@/lib/uploads'
 import { 
   ArrowLeft, 
   RefreshCw, 
@@ -648,7 +649,7 @@ export default function NarrationsDashboard() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => window.open(oeuvre.pdf_link!, '_blank')}
+                                  onClick={() => window.open(getUploadUrl(oeuvre.pdf_link!), '_blank')}
                                 >
                                   <FileText className="h-3 w-3 mr-1" />
                                   PDF

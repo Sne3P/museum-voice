@@ -4,6 +4,18 @@
 # Usage: pnpm docker:prod:build
 # Optimisé pour production: sécurité, performance, cache
 # ============================================
+#
+# ⚡ CONFIGURATION RAPIDE VPS ⚡
+# ============================================
+# Pour déployer sur un autre VPS:
+# 1. Créer/modifier le fichier .env.prod à la racine du projet
+# 2. Définir: VPS_PUBLIC_IP=<votre_ip_vps>
+# 3. Lancer: docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Variables disponibles (avec valeurs par défaut):
+#   VPS_PUBLIC_IP=51.38.188.211
+#   DB_PASSWORD=Museum@2026!Secure
+# ============================================
 
 services:
   # ==========================================
@@ -154,8 +166,8 @@ services:
         BUILDKIT_INLINE_CACHE: 1
         NEXT_TELEMETRY_DISABLED: 1
         # ⚠️ Variables NEXT_PUBLIC_* doivent être passées au build
-        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://51.38.188.211:5000}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://51.38.188.211:3000}
+        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://${VPS_PUBLIC_IP:-51.38.188.211}:5000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://${VPS_PUBLIC_IP:-51.38.188.211}:3000}
     image: museum-app-prod:latest
     container_name: museum-app-prod
     restart: always
@@ -182,9 +194,9 @@ services:
       
       # Public URLs (for browser-side requests - accessible from outside)
       # ⚠️ Override in .env.prod with your domain or keep VPS IP
-      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://51.38.188.211:5000}
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://51.38.188.211:3000}
-      NEXT_PUBLIC_CLIENT_URL: ${NEXT_PUBLIC_CLIENT_URL:-http://51.38.188.211:8080}
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://${VPS_PUBLIC_IP:-51.38.188.211}:5000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://${VPS_PUBLIC_IP:-51.38.188.211}:3000}
+      NEXT_PUBLIC_CLIENT_URL: ${NEXT_PUBLIC_CLIENT_URL:-http://${VPS_PUBLIC_IP:-51.38.188.211}:8080}
       
       # Next.js PRODUCTION
       NODE_ENV: production
@@ -226,8 +238,8 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
         # ⚠️ Build args - URLs publiques accessibles depuis le navigateur
-        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://51.38.188.211:5000}
-        REACT_APP_ADMIN_URL: ${REACT_APP_ADMIN_URL:-http://51.38.188.211:3000}
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://${VPS_PUBLIC_IP:-51.38.188.211}:5000}
+        REACT_APP_ADMIN_URL: ${REACT_APP_ADMIN_URL:-http://${VPS_PUBLIC_IP:-51.38.188.211}:3000}
     image: museum-client-prod:latest
     container_name: museum-client-prod
     restart: always
@@ -236,8 +248,8 @@ services:
         condition: service_healthy
     environment:
       # Ces variables sont aussi passées au runtime (mais le build est prioritaire)
-      REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://51.38.188.211:5000}
-      REACT_APP_ADMIN_URL: ${REACT_APP_ADMIN_URL:-http://51.38.188.211:3000}
+      REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://${VPS_PUBLIC_IP:-51.38.188.211}:5000}
+      REACT_APP_ADMIN_URL: ${REACT_APP_ADMIN_URL:-http://${VPS_PUBLIC_IP:-51.38.188.211}:3000}
     ports:
       - "8080:80"
     volumes:

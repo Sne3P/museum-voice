@@ -26,7 +26,9 @@ import {
   drawRoomSegments,
   drawWallVertices,
   drawMeasurement,
-  drawAreaMeasurement
+  drawAreaMeasurement,
+  drawEntrance,
+  drawEntrancePreview
 } from "@/features/canvas/utils"
 import { drawVerticalLinkVertices } from "@/features/canvas/utils/vertical-link-vertex.renderer"
 import { validateWallPlacement } from "@/core/services"
@@ -259,6 +261,13 @@ function renderFloorElements(
                       (isResizing && !verticalLinkEdit.editState.isValid)
     
     drawVerticalLink(ctx, link, state.zoom, state.pan, GRID_SIZE, isSelected, isHovered, isInvalid, currentFloor.id)
+  })
+
+  // Rendu des points d'entrée
+  currentFloor.entrances?.forEach(entrance => {
+    const isSelected = selection.isSelected('entrance', entrance.id)
+    const isHovered = hoverInfo?.type === 'entrance' && hoverInfo?.id === entrance.id
+    drawEntrance(ctx, entrance, state.zoom, state.pan, isSelected, isHovered)
   })
 }
 

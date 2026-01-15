@@ -13,7 +13,8 @@ import {
   Minus,
   TrendingUp, 
   ArrowUpDown,
-  Ruler
+  Ruler,
+  MapPin
 } from "lucide-react"
 
 interface ToolbarProps {
@@ -89,6 +90,12 @@ const tools: { id: Tool; icon: React.ComponentType<{ className?: string }>; labe
     icon: ArrowUpDown, 
     label: "Ascenseur", 
     description: "Transport vertical multi-étages"
+  },
+  {
+    id: "entrance",
+    icon: MapPin,
+    label: "Entrée",
+    description: "Point d'entrée du musée"
   },
 ]
 

@@ -8,6 +8,14 @@ export async function GET() {
     const points = await queryPostgres<any>('SELECT * FROM points ORDER BY entity_id, ordre')
     const oeuvres = await queryPostgres<any>('SELECT * FROM oeuvres')
     const relations = await queryPostgres<any>('SELECT * FROM relations')
+    
+    // Charger les entrées du musée
+    let entrances: any[] = []
+    try {
+      entrances = await queryPostgres<any>('SELECT * FROM museum_entrances ORDER BY plan_id, entrance_id')
+    } catch (e) {
+      console.log('Table museum_entrances not found, skipping entrances')
+    }
 
     if (plans.length === 0) {
       // Default floor structure
@@ -22,7 +30,10 @@ export async function GET() {
             walls: [],
             artworks: [],
             doors: [],
-            verticalLinks: []
+            verticalLinks: [],
+            escalators: [],
+            elevators: [],
+            entrances: []
           }],
           currentFloorId: 'floor-1',
           selectedTool: 'select',
@@ -234,9 +245,22 @@ export async function GET() {
           }
         })
 
+      // ENTRANCES - Chargées depuis museum_entrances
+      const floorEntrances = entrances
+        .filter((e: any) => e.plan_id === plan.plan_id)
+        .map((e: any) => ({
+          id: `entrance-${e.entrance_id}`,
+          name: e.name || 'Entrée',
+          x: parseFloat(e.x),
+          y: parseFloat(e.y),
+          icon: e.icon || 'door-open',
+          isActive: e.is_active !== false
+        }))
+
       return {
         id: currentFloorId,
         name: plan.nom,
+        plan_id: plan.plan_id,
         description: plan.description || '',
         rooms,
         walls,
@@ -244,7 +268,8 @@ export async function GET() {
         doors,
         verticalLinks,
         escalators: escalators || [],
-        elevators: elevators || []
+        elevators: elevators || [],
+        entrances: floorEntrances || []
       }
     })
 

@@ -1958,7 +1958,7 @@ def admin_delete_all_narrations():
 @app.route('/api/museum/floor-plan', methods=['GET'])
 def get_floor_plan():
     """
-    Récupère le plan du musée (salles avec polygones) pour affichage
+    Récupère le plan du musée (salles avec polygones + entrées) pour affichage
     
     Query params optionnels:
         - floor: int (filtrer par étage)
@@ -1966,15 +1966,8 @@ def get_floor_plan():
     Returns:
         {
             "success": true,
-            "rooms": [
-                {
-                    "entity_id": 1,
-                    "name": "Salle 1",
-                    "floor": 0,
-                    "polygon_points": [{x, y}, ...]
-                },
-                ...
-            ]
+            "rooms": [...],
+            "entrances": [{"x": 100, "y": 200, "name": "Entrée principale", "icon": "🚪", "floor": 0}]
         }
     """
     try:
@@ -2033,12 +2026,39 @@ def get_floor_plan():
                 'polygon_points': polygon_points
             })
         
+        # Récupérer les points d'entrée
+        cur.execute("""
+            SELECT entrance_id, plan_id, name, x, y, icon
+            FROM museum_entrances
+            WHERE is_active = true
+            ORDER BY entrance_id
+        """)
+        entrance_rows = cur.fetchall()
+        
+        entrances = []
+        for row in entrance_rows:
+            floor_num = plan_to_floor.get(row['plan_id'], 0)
+            
+            # Filtrer par étage si demandé
+            if floor_filter is not None and floor_num != int(floor_filter):
+                continue
+            
+            entrances.append({
+                'entrance_id': row['entrance_id'],
+                'name': row['name'],
+                'x': float(row['x']),
+                'y': float(row['y']),
+                'icon': row['icon'],
+                'floor': floor_num
+            })
+        
         cur.close()
         conn.close()
         
         return jsonify({
             'success': True,
-            'rooms': rooms
+            'rooms': rooms,
+            'entrances': entrances
         }), 200
         
     except Exception as e:

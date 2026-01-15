@@ -15,7 +15,8 @@ export type {
   Escalator,
   Elevator,
   Wall,
-  Floor
+  Floor,
+  Entrance
 } from './museum.types'
 
 // Éditeur

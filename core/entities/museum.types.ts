@@ -108,11 +108,24 @@ export interface Wall {
   readonly isLoadBearing?: boolean
 }
 
+// ==================== ENTRANCE ====================
+// Point d'entrée du musée (affiché sur le plan client)
+
+export interface Entrance {
+  readonly id: string
+  readonly name: string
+  readonly x: number
+  readonly y: number
+  readonly icon: string  // 'door-open' par défaut
+  readonly isActive: boolean
+}
+
 // ==================== FLOOR ====================
 
 export interface Floor {
   readonly id: string
   readonly name: string
+  readonly plan_id?: number  // ID du plan en base de données
   readonly rooms: ReadonlyArray<Room>
   readonly doors: ReadonlyArray<Door>
   readonly walls: ReadonlyArray<Wall>
@@ -120,4 +133,5 @@ export interface Floor {
   readonly verticalLinks: ReadonlyArray<VerticalLink>
   readonly escalators: ReadonlyArray<Escalator>
   readonly elevators: ReadonlyArray<Elevator>
+  readonly entrances: ReadonlyArray<Entrance>
 }
