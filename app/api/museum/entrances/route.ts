@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         SQRT(POWER(x - $1, 2) + POWER(y - $2, 2)) as distance
       FROM museum_entrances
       WHERE plan_id = $3
-      HAVING SQRT(POWER(x - $1, 2) + POWER(y - $2, 2)) < $4
+        AND SQRT(POWER(x - $1, 2) + POWER(y - $2, 2)) < $4
     `, [x, y, plan_id, MIN_DISTANCE])
 
     if (nearbyEntrances.length > 0) {
