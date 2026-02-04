@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Save, Clock, Building2 } from 'lucide-react'
+import { ArrowLeft, Save, Clock, Building2, Timer } from 'lucide-react'
 import type { OpeningHours, MuseumSetting } from '@/core/entities/museum-settings.types'
 import { getUploadUrl } from '@/lib/uploads'
 
@@ -23,6 +23,11 @@ export default function SystemSettingsPage() {
   const [openingHours, setOpeningHours] = useState<OpeningHours>({})
   const [centresInterets, setCentresInterets] = useState<string[]>([])
   const [mouvementsPreferes, setMouvementsPreferes] = useState<string[]>([])
+  
+  // Paramètres de temps de parcours
+  const [parcoursMaxDuration, setParcoursMaxDuration] = useState(5) // en heures
+  const [parcoursTimeStep, setParcoursTimeStep] = useState(0.5) // intervalle en heures
+  const [parcoursDefaultDuration, setParcoursDefaultDuration] = useState(1) // valeur par défaut
 
 
   const daysOfWeek = [
@@ -72,29 +77,66 @@ export default function SystemSettingsPage() {
         data.forEach((setting: MuseumSetting) => {
           switch (setting.setting_key) {
             case 'museum_name':
-              setMuseumName(setting.setting_value)
+              if (typeof setting.setting_value === 'string') {
+                setMuseumName(setting.setting_value)
+              }
               break
             case 'museum_title':
-              setMuseumTitle(setting.setting_value)
+              if (typeof setting.setting_value === 'string') {
+                setMuseumTitle(setting.setting_value)
+              }
               break
             case 'museum_image_url':
-              setMuseumImageUrl(setting.setting_value)
+              if (typeof setting.setting_value === 'string') {
+                setMuseumImageUrl(setting.setting_value)
+              }
               break
             case 'opening_hours':
-              setOpeningHours(setting.setting_value)
+              if (typeof setting.setting_value === 'object' && !Array.isArray(setting.setting_value)) {
+                setOpeningHours(setting.setting_value as OpeningHours)
+              }
               break
             case 'centres_interets':
               try {
-                setCentresInterets(Array.isArray(setting.setting_value) ? setting.setting_value : JSON.parse(setting.setting_value))
+                if (Array.isArray(setting.setting_value)) {
+                  setCentresInterets(setting.setting_value)
+                } else if (typeof setting.setting_value === 'string') {
+                  setCentresInterets(JSON.parse(setting.setting_value))
+                }
               } catch {
                 setCentresInterets([])
               }
               break
             case 'mouvements_preferes':
               try {
-                setMouvementsPreferes(Array.isArray(setting.setting_value) ? setting.setting_value : JSON.parse(setting.setting_value))
+                if (Array.isArray(setting.setting_value)) {
+                  setMouvementsPreferes(setting.setting_value)
+                } else if (typeof setting.setting_value === 'string') {
+                  setMouvementsPreferes(JSON.parse(setting.setting_value))
+                }
               } catch {
                 setMouvementsPreferes([])
+              }
+              break
+            case 'parcours_max_duration':
+              if (typeof setting.setting_value === 'number') {
+                setParcoursMaxDuration(setting.setting_value)
+              } else if (typeof setting.setting_value === 'string') {
+                setParcoursMaxDuration(parseFloat(setting.setting_value) || 5)
+              }
+              break
+            case 'parcours_time_step':
+              if (typeof setting.setting_value === 'number') {
+                setParcoursTimeStep(setting.setting_value)
+              } else if (typeof setting.setting_value === 'string') {
+                setParcoursTimeStep(parseFloat(setting.setting_value) || 0.5)
+              }
+              break
+            case 'parcours_default_duration':
+              if (typeof setting.setting_value === 'number') {
+                setParcoursDefaultDuration(setting.setting_value)
+              } else if (typeof setting.setting_value === 'string') {
+                setParcoursDefaultDuration(parseFloat(setting.setting_value) || 1)
               }
               break
           }
@@ -227,6 +269,53 @@ export default function SystemSettingsPage() {
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error)
       alert('Erreur de connexion lors de la sauvegarde')
+    }
+    setIsSaving(false)
+  }
+
+  const handleSaveParcoursSettings = async () => {
+    setIsSaving(true)
+    try {
+      // Sauvegarder les 3 paramètres
+      const savePromises = [
+        fetch('/api/museum-settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setting_key: 'parcours_max_duration',
+            setting_value: parcoursMaxDuration,
+          }),
+        }),
+        fetch('/api/museum-settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setting_key: 'parcours_time_step',
+            setting_value: parcoursTimeStep,
+          }),
+        }),
+        fetch('/api/museum-settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setting_key: 'parcours_default_duration',
+            setting_value: parcoursDefaultDuration,
+          }),
+        }),
+      ]
+
+      const results = await Promise.all(savePromises)
+      const allOk = results.every(r => r.ok)
+
+      if (allOk) {
+        console.log('Paramètres de parcours sauvegardés')
+        alert('Paramètres de temps de parcours sauvegardés avec succès!')
+      } else {
+        throw new Error('Une ou plusieurs sauvegardes ont échoué')
+      }
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error)
+      alert('Erreur lors de la sauvegarde des paramètres')
     }
     setIsSaving(false)
   }
@@ -408,6 +497,111 @@ export default function SystemSettingsPage() {
                 >
                   <Save className="h-4 w-4" />
                   Sauvegarder les horaires
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Paramètres de temps de parcours */}
+          <Card>
+            <CardHeader className="flex flex-row items-center gap-2">
+              <Timer className="h-5 w-5 text-purple-600" />
+              <div>
+                <CardTitle>Temps de parcours</CardTitle>
+                <CardDescription>Configurer les options de durée des visites guidées</CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Durée maximum */}
+                <div className="space-y-2">
+                  <Label htmlFor="max-duration" className="text-sm font-medium">
+                    Durée maximum (heures)
+                  </Label>
+                  <Input
+                    id="max-duration"
+                    type="number"
+                    min="1"
+                    max="24"
+                    step="0.5"
+                    value={parcoursMaxDuration}
+                    onChange={(e) => setParcoursMaxDuration(parseFloat(e.target.value) || 5)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Limite maximale que les visiteurs peuvent sélectionner
+                  </p>
+                </div>
+
+                {/* Intervalle */}
+                <div className="space-y-2">
+                  <Label htmlFor="time-step" className="text-sm font-medium">
+                    Intervalle (heures)
+                  </Label>
+                  <select
+                    id="time-step"
+                    value={parcoursTimeStep}
+                    onChange={(e) => setParcoursTimeStep(parseFloat(e.target.value))}
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                  >
+                    <option value={0.25}>15 minutes (0.25h)</option>
+                    <option value={0.5}>30 minutes (0.5h)</option>
+                    <option value={1}>1 heure</option>
+                  </select>
+                  <p className="text-xs text-gray-500">
+                    Pas entre chaque option du curseur
+                  </p>
+                </div>
+
+                {/* Valeur par défaut */}
+                <div className="space-y-2">
+                  <Label htmlFor="default-duration" className="text-sm font-medium">
+                    Durée par défaut (heures)
+                  </Label>
+                  <Input
+                    id="default-duration"
+                    type="number"
+                    min="0.5"
+                    max={parcoursMaxDuration}
+                    step={parcoursTimeStep}
+                    value={parcoursDefaultDuration}
+                    onChange={(e) => setParcoursDefaultDuration(parseFloat(e.target.value) || 1)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Valeur initiale du curseur pour les visiteurs
+                  </p>
+                </div>
+              </div>
+
+              {/* Prévisualisation */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-medium text-sm mb-2">Prévisualisation du curseur</h4>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <span>0h</span>
+                  <div className="flex-1 h-2 bg-gray-200 rounded-full relative">
+                    <div 
+                      className="absolute h-2 bg-purple-500 rounded-full"
+                      style={{ width: `${(parcoursDefaultDuration / parcoursMaxDuration) * 100}%` }}
+                    />
+                  </div>
+                  <span>{parcoursMaxDuration}h</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Options disponibles: {Array.from({ length: Math.floor(parcoursMaxDuration / parcoursTimeStep) + 1 }, (_, i) => 
+                    `${(i * parcoursTimeStep).toFixed(1)}h`
+                  ).join(', ')}
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button 
+                  onClick={handleSaveParcoursSettings} 
+                  disabled={isSaving}
+                  className="flex items-center gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  Sauvegarder les paramètres de temps
                 </Button>
               </div>
             </CardContent>

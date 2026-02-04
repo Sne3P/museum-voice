@@ -5,7 +5,7 @@
 
 import { useMemo } from 'react'
 import type { EditorState, Floor } from '@/core/entities'
-import { validateRoomGeometry } from '@/core/services'
+import { validateRoomGeometry, validateWallPlacement, validateArtworkPlacement } from '@/core/services'
 import { CheckCircle2, AlertCircle, AlertTriangle } from 'lucide-react'
 
 interface ValidationBadgeProps {
@@ -45,11 +45,29 @@ export function ValidationBadge({ state, currentFloor, className = '' }: Validat
       }
     }
 
-    // 2. Valider les murs (TODO : si implémenté)
-    // for (const wall of currentFloor.walls) { ... }
+    // 2. Valider les murs
+    for (const wall of currentFloor.walls || []) {
+      const wallValidation = validateWallPlacement(wall, { floor: currentFloor })
+      if (!wallValidation.valid) {
+        if (wallValidation.severity === 'error') {
+          errors.push(`Mur ${wall.id.slice(0, 8)} : ${wallValidation.message}`)
+        } else if (wallValidation.severity === 'warning') {
+          warnings.push(`Mur ${wall.id.slice(0, 8)} : ${wallValidation.message}`)
+        }
+      }
+    }
 
-    // 3. Valider les artworks (TODO : si implémenté)
-    // for (const artwork of currentFloor.artworks) { ... }
+    // 3. Valider les artworks
+    for (const artwork of currentFloor.artworks || []) {
+      const artworkValidation = validateArtworkPlacement(artwork, { floor: currentFloor })
+      if (!artworkValidation.valid) {
+        if (artworkValidation.severity === 'error') {
+          errors.push(`Œuvre ${artwork.name || artwork.id.slice(0, 8)} : ${artworkValidation.message}`)
+        } else if (artworkValidation.severity === 'warning') {
+          warnings.push(`Œuvre ${artwork.name || artwork.id.slice(0, 8)} : ${artworkValidation.message}`)
+        }
+      }
+    }
 
     // 4. Déterminer le statut global
     let status: 'valid' | 'warning' | 'error' = 'valid'

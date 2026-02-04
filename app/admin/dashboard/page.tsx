@@ -37,7 +37,7 @@ interface CriteriaType {
   type: string
   label: string
   ordre: number
-  is_required: boolean
+  // Note: is_required a été supprimé - tous les critères sont obligatoires
 }
 
 interface Criteria {
@@ -917,9 +917,6 @@ export default function NarrationsDashboard() {
                               <span className="text-gray-600">
                                 {count} options
                               </span>
-                              {type.is_required && (
-                                <span className="text-xs text-red-600">(requis)</span>
-                              )}
                             </li>
                           )
                         })}
@@ -1067,7 +1064,6 @@ function ProfileSelectorModal({
   }, {} as Record<string, Criteria[]>)
 
   const isComplete = criteriaTypes
-    .filter(t => t.is_required)
     .every(t => selectedCombination[t.type])
 
   const handleConfirm = () => {
@@ -1107,7 +1103,7 @@ function ProfileSelectorModal({
                 <div key={type.type}>
                   <label className="block text-sm font-medium mb-2">
                     {type.label}
-                    {type.is_required && <span className="text-red-500 ml-1">*</span>}
+                    <span className="text-red-500 ml-1">*</span>
                   </label>
                   <div className="grid grid-cols-1 gap-2">
                     {options.map(criteria => (

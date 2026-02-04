@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     const { oeuvre_id } = body
 
     // Appeler le backend Flask qui va exécuter le script Python
-    const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:5000'
+    const backendUrl = process.env.BACKEND_API_URL || 'http://backend:5000'
     const endpoint = oeuvre_id 
       ? `${backendUrl}/api/admin/seed-narrations/${oeuvre_id}`
       : `${backendUrl}/api/admin/seed-narrations`

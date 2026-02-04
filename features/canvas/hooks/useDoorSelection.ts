@@ -6,7 +6,7 @@
 import { useState, useCallback, type MouseEvent } from 'react'
 import type { Point, Floor, Door } from '@/core/entities'
 import { distance, snapToGrid } from '@/core/services'
-import { validateDoorPlacement, type SharedWallSegment } from '@/core/services'
+import { validateDoorPlacement, findSharedWallSegments, type SharedWallSegment } from '@/core/services'
 import { GRID_SIZE, CONSTRAINTS } from '@/core/constants'
 
 export interface DoorSelectionState {
@@ -115,7 +115,6 @@ export function useDoorSelection({
     const door = state.selectedDoor
 
     // Trouver le mur partagé pour cette porte
-    const { findSharedWallSegments } = require('@/core/services/door.service')
     const sharedWalls: SharedWallSegment[] = findSharedWallSegments(currentFloor)
     const sharedWall = sharedWalls.find(w => 
       (w.room_a === door.room_a && w.room_b === door.room_b) ||

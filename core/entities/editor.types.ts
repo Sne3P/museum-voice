@@ -20,30 +20,32 @@ export type Tool =
   | "elevator"
   | "entrance"
 
-export type ElementType = "room" | "artwork" | "door" | "wall" | "verticalLink"
+export type ElementType = "room" | "artwork" | "door" | "wall" | "verticalLink" | "entrance"
 export type DragElementType = ElementType | "vertex"
-export type HoverElementType = ElementType | "vertex" | "segment" | "doorEndpoint" | "linkEndpoint" | "wallEndpoint" | "wallVertex" | "wallSegment" | "verticalLinkVertex"
+export type HoverElementType = ElementType | "vertex" | "segment" | "doorEndpoint" | "linkEndpoint" | "wallEndpoint" | "wallVertex" | "wallSegment" | "verticalLinkVertex" | "artworkVertex"
 
 export interface SelectionInfo {
   readonly id: string
-  readonly type: ElementType | "vertex" | "segment" | "wallVertex" | "wallSegment" | "wallEndpoint" | "verticalLinkVertex"
+  readonly type: ElementType | "vertex" | "segment" | "wallVertex" | "wallSegment" | "wallEndpoint" | "verticalLinkVertex" | "artworkVertex"
   readonly vertexIndex?: number
   readonly segmentIndex?: number
   readonly roomId?: string
   readonly wallId?: string
   readonly verticalLinkId?: string
+  readonly artworkId?: string
   readonly endpointIndex?: number
 }
 
 // Alias simplifié pour la sélection
 export interface SelectedElement {
-  readonly type: ElementType | "vertex" | "segment" | "wallVertex" | "wallSegment" | "wallEndpoint" | "verticalLinkVertex"
+  readonly type: ElementType | "vertex" | "segment" | "wallVertex" | "wallSegment" | "wallEndpoint" | "verticalLinkVertex" | "artworkVertex"
   readonly id: string
   readonly vertexIndex?: number
   readonly segmentIndex?: number
   readonly roomId?: string
   readonly wallId?: string
   readonly verticalLinkId?: string
+  readonly artworkId?: string
   readonly endpointIndex?: number
 }
 
@@ -63,6 +65,7 @@ export interface HoverInfo {
   readonly roomId?: string
   readonly wallId?: string
   readonly verticalLinkId?: string
+  readonly artworkId?: string
   readonly segmentIndex?: number
 }
 
@@ -73,7 +76,7 @@ export type ContextMenuAction =
   | 'diviser' | 'fusionner' | 'creer_porte'
   | 'retourner' | 'changer_type'
   | 'pivoter' | 'redimensionner'
-  | 'aller_haut' | 'aller_bas' | 'changer_type_lien'
+  | 'aller_haut' | 'aller_bas' | 'changer_type_lien' | 'modifier_etages'
   | 'editer_segment' | 'ajouter_vertex'
   | 'diviser_mur' | 'ajouter_point_mur'
   | 'zoom_avant' | 'zoom_arriere' | 'reinitialiser_zoom' | 'ajuster_vue' | 'recentrer' | 'actualiser' | 'coller'

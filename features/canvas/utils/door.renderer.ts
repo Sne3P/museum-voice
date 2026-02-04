@@ -1,9 +1,10 @@
 /**
  * RENDU DES PORTES
+ * Utilise les constantes de couleur centralisées pour cohérence
  */
 
 import type { Door, Point } from '@/core/entities'
-import { COLORS, STROKE_WIDTHS } from '@/core/constants'
+import { COLORS, STROKE_WIDTHS, ENDPOINT_RADIUS } from '@/core/constants'
 import { worldToCanvas } from '@/core/utils'
 
 export function drawDoor(
@@ -19,6 +20,7 @@ export function drawDoor(
   const start = worldToCanvas({ x: door.segment[0].x, y: door.segment[0].y }, zoom, pan)
   const end = worldToCanvas({ x: door.segment[1].x, y: door.segment[1].y }, zoom, pan)
 
+  // Couleurs selon état (constantes centralisées)
   const strokeColor = isInvalid
     ? COLORS.doorInvalid
     : isSelected
@@ -27,12 +29,19 @@ export function drawDoor(
     ? COLORS.doorHovered
     : COLORS.doorDefault
 
+  // Épaisseurs selon état (constantes centralisées)
+  const lineWidth = isSelected 
+    ? STROKE_WIDTHS.doorSelected 
+    : isHovered 
+    ? STROKE_WIDTHS.doorHovered 
+    : STROKE_WIDTHS.doorDefault
+
   // Ligne de base
   ctx.beginPath()
   ctx.moveTo(start.x, start.y)
   ctx.lineTo(end.x, end.y)
   ctx.strokeStyle = strokeColor
-  ctx.lineWidth = (isSelected ? 8 : isHovered ? 6 : 4) * zoom
+  ctx.lineWidth = lineWidth * zoom
   ctx.lineCap = "round"
   ctx.stroke()
 
@@ -40,20 +49,20 @@ export function drawDoor(
   ctx.beginPath()
   ctx.moveTo(start.x, start.y)
   ctx.lineTo(end.x, end.y)
-  ctx.strokeStyle = "white"
-  ctx.lineWidth = (isSelected ? 4 : isHovered ? 3 : 2) * zoom
+  ctx.strokeStyle = COLORS.doorLine
+  ctx.lineWidth = (lineWidth * 0.5) * zoom
   ctx.lineCap = "round"
   ctx.stroke()
 
   // Endpoints
-  const endpointRadius = 10 * zoom
+  const endpointRadius = ENDPOINT_RADIUS.default * zoom
 
   // Point de début
   ctx.beginPath()
   ctx.arc(start.x, start.y, endpointRadius, 0, Math.PI * 2)
   ctx.fillStyle = strokeColor
   ctx.fill()
-  ctx.strokeStyle = "white"
+  ctx.strokeStyle = COLORS.doorLine
   ctx.lineWidth = 3
   ctx.stroke()
 
@@ -62,7 +71,7 @@ export function drawDoor(
   ctx.arc(end.x, end.y, endpointRadius, 0, Math.PI * 2)
   ctx.fillStyle = strokeColor
   ctx.fill()
-  ctx.strokeStyle = "white"
+  ctx.strokeStyle = COLORS.doorLine
   ctx.lineWidth = 3
   ctx.stroke()
 
@@ -80,7 +89,7 @@ export function drawDoor(
   const padding = 4 * zoom
   
   // Rectangle de fond
-  ctx.fillStyle = "rgba(255, 255, 255, 0.9)"
+  ctx.fillStyle = COLORS.measurementBackground
   ctx.beginPath()
   ctx.roundRect(
     midX - textWidth/2 - padding,
@@ -112,12 +121,12 @@ export function drawDoorEndpoints(
   const start = worldToCanvas({ x: door.segment[0].x, y: door.segment[0].y }, zoom, pan)
   const end = worldToCanvas({ x: door.segment[1].x, y: door.segment[1].y }, zoom, pan)
 
-  const endpointRadius = 10 * zoom
+  const endpointRadius = ENDPOINT_RADIUS.default * zoom
   const strokeColor = COLORS.doorDefault
 
   if (hoveredEndpoint === "start") {
     ctx.beginPath()
-    ctx.arc(start.x, start.y, endpointRadius * 1.3, 0, Math.PI * 2)
+    ctx.arc(start.x, start.y, endpointRadius * ENDPOINT_RADIUS.hovered, 0, Math.PI * 2)
     ctx.shadowColor = strokeColor
     ctx.shadowBlur = 20
     ctx.fillStyle = strokeColor
@@ -127,7 +136,7 @@ export function drawDoorEndpoints(
 
   if (hoveredEndpoint === "end") {
     ctx.beginPath()
-    ctx.arc(end.x, end.y, endpointRadius * 1.3, 0, Math.PI * 2)
+    ctx.arc(end.x, end.y, endpointRadius * ENDPOINT_RADIUS.hovered, 0, Math.PI * 2)
     ctx.shadowColor = strokeColor
     ctx.shadowBlur = 20
     ctx.fillStyle = strokeColor

@@ -6,6 +6,7 @@
 import { useState, useCallback } from 'react'
 import type { Point, Wall, Floor } from '@/core/entities'
 import { snapToGrid, validateWallPlacement, findRoomContainingWall } from '@/core/services'
+import { attachWallToRoom } from '@/core/services/cascade.service'
 import { GRID_SIZE } from '@/core/constants'
 
 interface WallCreationState {
@@ -103,9 +104,6 @@ export function useWallCreation({ currentFloor, onComplete }: UseWallCreationOpt
       cancelCreation()
       return
     }
-
-    // Import du service cascade
-    const { attachWallToRoom } = require('@/core/services/cascade.service')
     
     // Créer le mur final avec nouvel ID
     const tempWall: Wall = {

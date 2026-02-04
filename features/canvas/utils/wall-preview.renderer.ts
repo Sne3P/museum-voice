@@ -5,7 +5,7 @@
 
 import type { Wall, Point, ValidationResult } from '@/core/entities'
 import { worldToCanvas } from '@/core/utils'
-import { VISUAL_FEEDBACK } from '@/core/constants'
+import { VISUAL_FEEDBACK, COLORS, VERTEX_RADIUS, STROKE_WIDTHS } from '@/core/constants'
 
 /**
  * Dessine le preview d'un mur en cours de création
@@ -37,15 +37,15 @@ export function drawWallPreview(
   ctx.stroke()
 
   // Points de départ et fin
-  const dotRadius = 6
+  const dotRadius = VERTEX_RADIUS.default
   
   // Point de départ (cercle plein)
   ctx.beginPath()
   ctx.arc(start.x, start.y, dotRadius, 0, Math.PI * 2)
   ctx.fillStyle = validation.valid ? VISUAL_FEEDBACK.colors.valid : VISUAL_FEEDBACK.colors.invalid
   ctx.fill()
-  ctx.strokeStyle = '#fff'
-  ctx.lineWidth = 2
+  ctx.strokeStyle = COLORS.vertexStroke
+  ctx.lineWidth = STROKE_WIDTHS.vertex
   ctx.stroke()
 
   // Point de fin (cercle plein)
@@ -53,8 +53,8 @@ export function drawWallPreview(
   ctx.arc(end.x, end.y, dotRadius, 0, Math.PI * 2)
   ctx.fillStyle = validation.valid ? VISUAL_FEEDBACK.colors.valid : VISUAL_FEEDBACK.colors.invalid
   ctx.fill()
-  ctx.strokeStyle = '#fff'
-  ctx.lineWidth = 2
+  ctx.strokeStyle = COLORS.vertexStroke
+  ctx.lineWidth = STROKE_WIDTHS.vertex
   ctx.stroke()
 
   // Afficher le message de validation si erreur

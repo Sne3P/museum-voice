@@ -1,5 +1,6 @@
 /**
  * PALETTE DE COULEURS MODERNE ET COHÉRENTE
+ * Toutes les couleurs utilisées dans les renderers sont centralisées ici
  */
 
 export const COLORS = {
@@ -47,60 +48,119 @@ export const COLORS = {
     dark: "#b91c1c"
   },
   
+  // Grille
   grid: "rgba(148, 163, 184, 0.2)",
   gridMajor: "rgba(100, 116, 139, 0.3)",
+  gridMinor: "rgba(200, 200, 200, 0.4)",
+  gridMajorLine: "rgba(150, 150, 150, 0.6)",
+  gridAxis: "rgba(255, 0, 0, 0.3)",
+  gridLabel: "rgba(100, 100, 100, 0.8)",
   
-  roomDefault: "rgba(248, 250, 252, 0.95)",
-  roomSelected: "rgba(14, 165, 233, 0.12)",
-  roomHovered: "rgba(14, 165, 233, 0.06)",
-  roomInvalid: "rgba(220, 38, 38, 0.12)",
+  // Pièces (Rooms)
+  roomDefault: "rgba(229, 231, 235, 0.5)",
+  roomSelected: "rgba(59, 130, 246, 0.2)",
+  roomHovered: "rgba(59, 130, 246, 0.15)",
+  roomInvalid: "rgba(239, 68, 68, 0.2)",
   
-  roomStrokeDefault: "#64748b",
-  roomStrokeSelected: "#0ea5e9",
-  roomStrokeHovered: "#38bdf8",
-  roomStrokeInvalid: "#dc2626",
+  roomStrokeDefault: "#9CA3AF",
+  roomStrokeSelected: "#3B82F6",
+  roomStrokeHovered: "#60A5FA",
+  roomStrokeInvalid: "#EF4444",
   
-  vertexDefault: "#64748b",
-  vertexSelected: "#0ea5e9",
-  vertexHovered: "#16a34a",
+  // Vertices et segments
+  vertexDefault: "rgba(59, 130, 246, 0.6)",
+  vertexSelected: "#22c55e",
+  vertexHovered: "#f59e0b",
+  vertexStroke: "#ffffff",
   
+  segmentDefault: "rgba(59, 130, 246, 0.4)",
+  segmentSelected: "#22c55e",
+  segmentHovered: "#f59e0b",
+  
+  // Œuvres (Artworks)
   artworkDefault: "rgba(219, 234, 254, 0.85)",
   artworkSelected: "rgba(14, 165, 233, 0.25)",
   artworkHovered: "rgba(59, 130, 246, 0.2)",
-  artworkInvalid: "rgba(239, 68, 68, 0.3)",
+  artworkInvalid: "rgba(254, 202, 202, 0.5)",
   artworkStroke: "#0ea5e9",
+  artworkStrokeInvalid: "#ef4444",
+  artworkText: "#1e293b",
+  artworkPdfIndicator: "#10b981",
   
+  // Portes (Doors)
   doorDefault: "#8b5cf6",
   doorSelected: "#7c3aed",
   doorHovered: "#a78bfa",
   doorInvalid: "#dc2626",
+  doorLine: "white",
   
+  // Liens verticaux (Escaliers/Ascenseurs)
   stairsDefault: "#16a34a",
   stairsSelected: "#15803d",  
   stairsHovered: "#f59e0b",
+  stairsInvalid: "#dc2626",
   elevatorDefault: "#dc2626",
   elevatorSelected: "#b91c1c",
   elevatorHovered: "#f59e0b",
   elevatorInvalid: "#dc2626",
+  linkInvalidFill: "#fecaca",
+  linkInvalidStroke: "#ef4444",
 
+  // Murs (Walls)
   wallDefault: "#374151",
-  wallSelected: "#1f2937",
-  wallHovered: "#4b5563",
+  wallSelected: "#22c55e",
+  wallHovered: "#f59e0b",
   wallInvalid: "#dc2626",
   
+  // États de validation
   valid: "rgba(34, 197, 94, 0.6)",
   invalid: "rgba(239, 68, 68, 0.6)",
   validStroke: "rgb(34, 197, 94)",
   invalidStroke: "rgb(239, 68, 68)",
   
+  // Mesures
   measurementText: "#1f2937",
   measurementBackground: "rgba(255, 255, 255, 0.9)",
   measurementBorder: "#9ca3af",
+  measurementBlue: "rgba(59, 130, 246, 0.9)",
+  measurementTextWhite: "#ffffff",
   areaText: "#065f46",
   areaBackground: "rgba(16, 185, 129, 0.1)",
   
+  // Sélection
   selectionBox: "rgba(59, 130, 246, 0.1)",
   selectionStroke: "rgb(59, 130, 246)",
+  
+  // Points d'entrée
+  entranceDefault: "#16a34a",
+  entranceSelected: "#22c55e",
+  entranceHovered: "#4ade80",
+  entranceBorder: "#166534",
+  entranceBorderSelected: "#ffffff",
+  entranceFill: "#ffffff",
+  entranceTextBg: "rgba(0, 0, 0, 0.7)",
+  entrancePreviewValid: "rgba(34, 197, 94, 0.5)",
+  entrancePreviewInvalid: "rgba(239, 68, 68, 0.5)",
+  entrancePreviewStrokeValid: "#16a34a",
+  entrancePreviewStrokeInvalid: "#dc2626",
+  
+  // Feedback visuel
+  dragInvalidFill: "rgba(220, 38, 38, 0.15)",
+  dragInvalidStroke: "rgba(220, 38, 38, 0.8)",
+  
+  // Création forme libre
+  freeFormFirstPoint: "#3b82f6",
+  freeFormPoint: "#22c55e",
+  freeFormPointStroke: "#ffffff",
+  
+  // Duplication
+  duplicationValid: "#22c55e",
+  duplicationInvalid: "#ef4444",
+  
+  // Artwork vertices
+  artworkVertexDefault: "#ffffff",
+  artworkVertexHovered: "#3b82f6",
+  artworkVertexStroke: "#0ea5e9",
 } as const
 
 export const STROKE_WIDTHS = {

@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server'
 export async function DELETE() {
   try {
     // Appeler le backend Flask
-    const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:5000'
+    const backendUrl = process.env.BACKEND_API_URL || 'http://backend:5000'
     const endpoint = `${backendUrl}/api/admin/delete-all-narrations`
 
     const res = await fetch(endpoint, {

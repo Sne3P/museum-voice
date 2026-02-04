@@ -1,5 +1,6 @@
 /**
  * RENDU DES MURS
+ * Utilise les constantes de couleur centralisées pour cohérence
  */
 
 import type { Wall, Point } from '@/core/entities'
@@ -27,12 +28,12 @@ export function drawWall(
     ctx.lineTo(canvasPoints[i].x, canvasPoints[i].y)
   }
 
-  // Couleurs selon état: VERT si sélectionné (comme vertices)
+  // Couleurs selon état (constantes centralisées)
   if (isSelected) {
-    ctx.strokeStyle = '#22c55e'  // Vert = sélectionné
+    ctx.strokeStyle = COLORS.wallSelected
     ctx.lineWidth = STROKE_WIDTHS.wallSelected
   } else if (isHovered) {
-    ctx.strokeStyle = '#f59e0b'  // Orange = hover
+    ctx.strokeStyle = COLORS.wallHovered
     ctx.lineWidth = STROKE_WIDTHS.wallHovered
   } else {
     ctx.strokeStyle = COLORS.wallDefault
@@ -62,7 +63,7 @@ export function drawWall(
     const padding = 6
     
     // Fond
-    ctx.fillStyle = 'rgba(59, 130, 246, 0.9)'
+    ctx.fillStyle = COLORS.measurementBlue
     ctx.fillRect(
       midX - metrics.width / 2 - padding,
       midY - 10,
@@ -71,7 +72,7 @@ export function drawWall(
     )
     
     // Texte
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = COLORS.measurementTextWhite
     ctx.fillText(text, midX, midY)
   }
 }

@@ -21,8 +21,7 @@ export async function POST(request: NextRequest) {
 
     // Appel au backend Flask (depuis le serveur Next.js, pas depuis le navigateur)
     // Dans Docker: utilise le nom du service 'backend'
-    // En développement local: utilise localhost:5000
-    const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:5000'
+    const backendUrl = process.env.BACKEND_API_URL || 'http://backend:5000'
     console.log('🔗 URL backend:', `${backendUrl}/api/pdf/extract-metadata`)
     
     const backendFormData = new FormData()

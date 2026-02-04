@@ -45,3 +45,10 @@ export type {
   ValidationContext,
   GeometryOperation
 } from './validation.types'
+
+// Paramètres Musée
+export type {
+  DayHours,
+  OpeningHours,
+  MuseumSetting
+} from './museum-settings.types'

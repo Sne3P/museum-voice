@@ -23,7 +23,7 @@ export function drawVerticalLinkPreview(
 
   const color = isValid ? 
     (type === 'stairs' ? COLORS.stairsDefault : COLORS.elevatorDefault) :
-    '#ef4444'  // Rouge pour invalide
+    COLORS.stairsInvalid
 
   // Convertir en coordonnées canvas
   const start = worldToCanvas(startPoint, zoom, pan)

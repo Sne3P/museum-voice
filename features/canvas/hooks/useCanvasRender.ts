@@ -33,7 +33,7 @@ import {
 import { drawVerticalLinkVertices } from "@/features/canvas/utils/vertical-link-vertex.renderer"
 import { validateWallPlacement } from "@/core/services"
 import { worldToCanvas } from "@/core/utils"
-import { GRID_SIZE } from "@/core/constants"
+import { GRID_SIZE, COLORS, STROKE_WIDTHS, VERTEX_RADIUS } from "@/core/constants"
 
 interface CanvasRenderOptions {
   canvasRef: React.RefObject<HTMLCanvasElement>
@@ -194,7 +194,7 @@ function renderFloorElements(
       // Ajouter un overlay de couleur
       ctx.save()
       ctx.globalAlpha = 0.3
-      ctx.strokeStyle = isValidDuplication ? '#22c55e' : '#ef4444'
+      ctx.strokeStyle = isValidDuplication ? COLORS.duplicationValid : COLORS.duplicationInvalid
       ctx.lineWidth = 8
       const start = worldToCanvas(wall.segment[0], state.zoom, state.pan)
       const end = worldToCanvas(wall.segment[1], state.zoom, state.pan)
@@ -219,7 +219,8 @@ function renderFloorElements(
     const isHovered = hoverInfo?.type === 'artwork' && hoverInfo?.id === artwork.id
     const isDuplicating = state.duplicatingElement?.elementId === artwork.id && state.duplicatingElement?.elementType === 'artwork'
     const isValidDuplication = state.duplicatingElement?.isValid ?? true
-    drawArtwork(ctx, artwork, state.zoom, state.pan, isSelected, isHovered, isDuplicating, isValidDuplication)
+    const isInvalidDuplication = isDuplicating && !isValidDuplication
+    drawArtwork(ctx, artwork, state.zoom, state.pan, isSelected, isHovered, isInvalidDuplication)
     
     // Dessiner vertices avec hover si sélectionné
     if (isSelected && artwork.size) {
@@ -236,14 +237,14 @@ function renderFloorElements(
         const isVertexHovered = hoverInfo?.type === 'artworkVertex' && 
                                 hoverInfo?.id === artwork.id && 
                                 hoverInfo?.vertexIndex === idx
-        const handleSize = isVertexHovered ? 8 * state.zoom : 6 * state.zoom
+        const handleSize = isVertexHovered ? VERTEX_RADIUS.hovered * state.zoom : VERTEX_RADIUS.default * state.zoom
         
         ctx.beginPath()
         ctx.arc(corner.x, corner.y, handleSize, 0, Math.PI * 2)
-        ctx.fillStyle = isVertexHovered ? '#3b82f6' : '#fff'
+        ctx.fillStyle = isVertexHovered ? COLORS.artworkVertexHovered : COLORS.artworkVertexDefault
         ctx.fill()
-        ctx.strokeStyle = '#0ea5e9'
-        ctx.lineWidth = 2 * state.zoom
+        ctx.strokeStyle = COLORS.artworkVertexStroke
+        ctx.lineWidth = STROKE_WIDTHS.vertex * state.zoom
         ctx.stroke()
       })
     }
@@ -255,7 +256,7 @@ function renderFloorElements(
     
     // Vérifier si c'est en cours de drag invalide ou édition invalide
     const isDragging = elementDrag.dragState.isDragging && 
-                       elementDrag.dragState.draggedElements.some(el => el.type === 'verticalLink' && el.id === link.id)
+                       elementDrag.dragState.draggedElements.some((el: { type: string; id: string }) => el.type === 'verticalLink' && el.id === link.id)
     const isResizing = verticalLinkEdit.editState.isResizing && verticalLinkEdit.editState.linkId === link.id
     const isInvalid = (isDragging && !elementDrag.dragState.isValid) || 
                       (isResizing && !verticalLinkEdit.editState.isValid)
@@ -333,10 +334,10 @@ function renderCreationPreviews(
       ctx.translate(point.x * state.zoom + state.pan.x, point.y * state.zoom + state.pan.y)
       
       ctx.beginPath()
-      ctx.arc(0, 0, 6, 0, Math.PI * 2)
-      ctx.fillStyle = index === 0 ? '#3b82f6' : '#22c55e'
+      ctx.arc(0, 0, VERTEX_RADIUS.default, 0, Math.PI * 2)
+      ctx.fillStyle = index === 0 ? COLORS.freeFormFirstPoint : COLORS.freeFormPoint
       ctx.fill()
-      ctx.strokeStyle = '#ffffff'
+      ctx.strokeStyle = COLORS.freeFormPointStroke
       ctx.lineWidth = 2
       ctx.stroke()
       
@@ -573,8 +574,8 @@ function renderDragFeedback(
   if (elementDrag.dragState.isDragging && !elementDrag.dragState.isValid) {
     // Overlay rouge semi-transparent sur éléments invalides
     ctx.save()
-    ctx.fillStyle = 'rgba(220, 38, 38, 0.15)'
-    ctx.strokeStyle = 'rgba(220, 38, 38, 0.8)'
+    ctx.fillStyle = COLORS.dragInvalidFill
+    ctx.strokeStyle = COLORS.dragInvalidStroke
     ctx.lineWidth = 2  // Épaisseur constante (en pixels écran)
     
     // Dessiner contour rouge autour des éléments en drag
@@ -616,8 +617,8 @@ function renderDragFeedback(
     // Overlay rouge si invalide
     if (!vertexEdit.editState.isValid && vertexEdit.editState.newPolygon) {
       ctx.save()
-      ctx.fillStyle = 'rgba(220, 38, 38, 0.15)'
-      ctx.strokeStyle = 'rgba(220, 38, 38, 0.8)'
+      ctx.fillStyle = COLORS.dragInvalidFill
+      ctx.strokeStyle = COLORS.dragInvalidStroke
       ctx.lineWidth = 2  // Épaisseur constante (en pixels écran)
       
       ctx.beginPath()
@@ -654,7 +655,7 @@ function renderDragFeedback(
       ctx.save()
       
       // Dessiner le path en ROUGE
-      ctx.strokeStyle = 'rgba(220, 38, 38, 0.8)'
+      ctx.strokeStyle = COLORS.dragInvalidStroke
       ctx.lineWidth = 6
       
       ctx.beginPath()

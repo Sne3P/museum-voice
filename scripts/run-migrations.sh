@@ -4,9 +4,10 @@
 set -e
 
 MIGRATIONS_DIR="database/migrations"
-DB_CONTAINER="museum-database"
-DB_NAME="museum_db"
-DB_USER="postgres"
+# Configuration: adapter selon l'environnement
+DB_CONTAINER="${DB_CONTAINER:-museum-db-prod}"
+DB_NAME="${DB_NAME:-museumvoice}"
+DB_USER="${DB_USER:-museum_admin}"
 
 echo "🔄 Exécution des migrations..."
 

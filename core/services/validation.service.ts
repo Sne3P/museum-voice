@@ -364,9 +364,15 @@ export function validateArtworkPlacement(artwork: Artwork, context: ValidationCo
     }
 
     // 3. Vérifier le chevauchement avec d'autres œuvres
+    // EXCEPTION: Autoriser les œuvres avec le MÊME zoneId (zones multi-œuvres)
     const overlappingArtworks = context.floor.artworks.filter(otherArtwork => {
       if (otherArtwork.id === artwork.id) return false
       if (context.excludeIds?.includes(otherArtwork.id)) return false
+
+      // ZONE MULTI-ŒUVRES: Si même zoneId, c'est autorisé (œuvres de la même zone)
+      if (artwork.zoneId && otherArtwork.zoneId && artwork.zoneId === otherArtwork.zoneId) {
+        return false  // Pas un chevauchement interdit
+      }
 
       const otherSize = otherArtwork.size || [1, 1]
       const [ax, ay] = artwork.xy
@@ -430,10 +436,24 @@ export function validateDoor(door: Door, context: ValidationContext): Validation
  * Valide un lien vertical
  */
 export function validateVerticalLink(link: VerticalLink, context: ValidationContext): ValidationResult {
-  if (link.width < CONSTRAINTS.verticalLink.minWidth || link.width > CONSTRAINTS.verticalLink.maxWidth) {
+  const width = link.size[0]
+  const height = link.size[1]
+  const minWidth = CONSTRAINTS.verticalLink.minSize[0]
+  const maxWidth = CONSTRAINTS.verticalLink.maxSize[0]
+  const minHeight = CONSTRAINTS.verticalLink.minSize[1]
+  const maxHeight = CONSTRAINTS.verticalLink.maxSize[1]
+  
+  if (width < minWidth || width > maxWidth) {
     return {
       valid: false,
-      message: `Le lien doit avoir une largeur entre ${CONSTRAINTS.verticalLink.minWidth} et ${CONSTRAINTS.verticalLink.maxWidth} unités`
+      message: `Le lien doit avoir une largeur entre ${minWidth} et ${maxWidth} unités`
+    }
+  }
+  
+  if (height < minHeight || height > maxHeight) {
+    return {
+      valid: false,
+      message: `Le lien doit avoir une hauteur entre ${minHeight} et ${maxHeight} unités`
     }
   }
 

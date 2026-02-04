@@ -297,7 +297,8 @@ CREATE TABLE IF NOT EXISTS museum_entrances (
     y NUMERIC(10, 2) NOT NULL,
     icon TEXT DEFAULT 'door-open',
     is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Index pour recherche rapide par plan
@@ -348,7 +349,11 @@ INSERT INTO museum_settings (setting_key, setting_value, description, category) 
 ('museum_name', '"Louvre-Lens"', 'Nom du musée', 'general'),
 ('museum_title', '"Bienvenue au Louvre-Lens !\nVotre expérience commence ici !\nLaissez-vous guider !"', 'Titre d''accueil affiché aux visiteurs', 'general'),
 ('museum_image_url', '"/placeholder.svg"', 'URL de l''image d''accueil du musée', 'general'),
-('opening_hours', '{"lundi": {"open": "09:00", "close": "18:00", "closed": false}, "mardi": {"open": "09:00", "close": "18:00", "closed": false}, "mercredi": {"open": "09:00", "close": "18:00", "closed": false}, "jeudi": {"open": "09:00", "close": "18:00", "closed": false}, "vendredi": {"open": "09:00", "close": "18:00", "closed": false}, "samedi": {"open": "10:00", "close": "19:00", "closed": false}, "dimanche": {"open": "10:00", "close": "18:00", "closed": false}}'::jsonb, 'Horaires d''ouverture du musée', 'general')
+('opening_hours', '{"lundi": {"open": "09:00", "close": "18:00", "closed": false}, "mardi": {"open": "09:00", "close": "18:00", "closed": false}, "mercredi": {"open": "09:00", "close": "18:00", "closed": false}, "jeudi": {"open": "09:00", "close": "18:00", "closed": false}, "vendredi": {"open": "09:00", "close": "18:00", "closed": false}, "samedi": {"open": "10:00", "close": "19:00", "closed": false}, "dimanche": {"open": "10:00", "close": "18:00", "closed": false}}'::jsonb, 'Horaires d''ouverture du musée', 'general'),
+-- Paramètres de temps de parcours
+('parcours_max_duration', '5', 'Durée maximale de parcours (en heures)', 'parcours'),
+('parcours_time_step', '0.5', 'Intervalle de temps pour la sélection (en heures)', 'parcours'),
+('parcours_default_duration', '1', 'Durée par défaut du parcours (en heures)', 'parcours')
 ON CONFLICT (setting_key) DO NOTHING;
 
 -- Insertion des types de critères par défaut (is_required=false : l'admin décide)

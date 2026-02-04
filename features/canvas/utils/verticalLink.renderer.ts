@@ -4,7 +4,7 @@
  */
 
 import type { VerticalLink, Point } from '@/core/entities'
-import { COLORS } from '@/core/constants'
+import { COLORS, STROKE_WIDTHS, VERTEX_RADIUS } from '@/core/constants'
 import { worldToCanvas } from '@/core/utils'
 
 export function drawVerticalLink(
@@ -91,10 +91,10 @@ function drawLinkRectangle(
   if (isInvalid) {
     ctx.beginPath()
     ctx.rect(corners[0].x, corners[0].y, corners[1].x - corners[0].x, corners[2].y - corners[0].y)
-    ctx.fillStyle = '#fecaca'
+    ctx.fillStyle = COLORS.linkInvalidFill
     ctx.fill()
-    ctx.strokeStyle = '#ef4444'
-    ctx.lineWidth = 3 * zoom
+    ctx.strokeStyle = COLORS.linkInvalidStroke
+    ctx.lineWidth = STROKE_WIDTHS.linkDefault * zoom * 0.375  // 3 * zoom equivalent
     ctx.stroke()
   }
 
@@ -110,7 +110,7 @@ function drawLinkRectangle(
   ctx.beginPath()
   ctx.rect(corners[0].x, corners[0].y, corners[1].x - corners[0].x, corners[2].y - corners[0].y)
   ctx.strokeStyle = strokeColor
-  ctx.lineWidth = (isSelected ? 3 : 2) * zoom
+  ctx.lineWidth = (isSelected ? STROKE_WIDTHS.linkSelected : STROKE_WIDTHS.linkDefault) * zoom / 4
   ctx.stroke()
 
   // Icône au centre
@@ -136,14 +136,14 @@ function drawLinkRectangle(
 
   // Points de contrôle aux coins (seulement si sélectionné)
   if (isSelected) {
-    const pointRadius = 6 * zoom
+    const pointRadius = VERTEX_RADIUS.default * zoom
     corners.forEach(corner => {
       ctx.beginPath()
       ctx.arc(corner.x, corner.y, pointRadius, 0, Math.PI * 2)
       ctx.fillStyle = strokeColor
       ctx.fill()
-      ctx.strokeStyle = '#ffffff'
-      ctx.lineWidth = 2 * zoom
+      ctx.strokeStyle = COLORS.vertexStroke
+      ctx.lineWidth = STROKE_WIDTHS.vertex * zoom
       ctx.stroke()
     })
   }

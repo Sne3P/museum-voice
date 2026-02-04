@@ -5,6 +5,7 @@
 
 import type { Entrance } from "@/core/entities"
 import { worldToCanvas } from "@/core/utils"
+import { COLORS, STROKE_WIDTHS } from "@/core/constants"
 
 /**
  * Dessine un point d'entrée du musée
@@ -31,16 +32,16 @@ export function drawEntrance(
   
   // Couleur selon l'état
   if (isSelected) {
-    ctx.fillStyle = '#22c55e' // Vert vif sélectionné
+    ctx.fillStyle = COLORS.entranceSelected
   } else if (isHovered) {
-    ctx.fillStyle = '#4ade80' // Vert hover
+    ctx.fillStyle = COLORS.entranceHovered
   } else {
-    ctx.fillStyle = '#16a34a' // Vert normal
+    ctx.fillStyle = COLORS.entranceDefault
   }
   ctx.fill()
 
   // Bordure
-  ctx.strokeStyle = isSelected ? '#ffffff' : '#166534'
+  ctx.strokeStyle = isSelected ? COLORS.entranceBorderSelected : COLORS.entranceBorder
   ctx.lineWidth = isSelected ? 3 * zoom : 2 * zoom
   ctx.stroke()
 
@@ -50,14 +51,14 @@ export function drawEntrance(
   // Nom de l'entrée (si sélectionnée ou en hover)
   if (isSelected || isHovered) {
     ctx.font = `bold ${12 * zoom}px sans-serif`
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = COLORS.entranceFill
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     
     // Fond pour le texte
     const text = entrance.name || 'Entrée'
     const textWidth = ctx.measureText(text).width
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+    ctx.fillStyle = COLORS.entranceTextBg
     ctx.fillRect(
       canvasPos.x - textWidth / 2 - 4 * zoom,
       canvasPos.y + radius + 4 * zoom,
@@ -65,7 +66,7 @@ export function drawEntrance(
       16 * zoom
     )
     
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = COLORS.entranceFill
     ctx.fillText(text, canvasPos.x, canvasPos.y + radius + 6 * zoom)
   }
 
@@ -83,8 +84,8 @@ function drawDoorIcon(
 ): void {
   ctx.save()
   ctx.translate(x, y)
-  ctx.fillStyle = '#ffffff'
-  ctx.strokeStyle = '#ffffff'
+  ctx.fillStyle = COLORS.entranceFill
+  ctx.strokeStyle = COLORS.entranceFill
   ctx.lineWidth = 2
 
   // Rectangle de la porte
@@ -119,9 +120,9 @@ export function drawEntrancePreview(
   // Cercle de prévisualisation (semi-transparent)
   ctx.beginPath()
   ctx.arc(canvasPos.x, canvasPos.y, radius, 0, Math.PI * 2)
-  ctx.fillStyle = isValid ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'
+  ctx.fillStyle = isValid ? COLORS.entrancePreviewValid : COLORS.entrancePreviewInvalid
   ctx.fill()
-  ctx.strokeStyle = isValid ? '#16a34a' : '#dc2626'
+  ctx.strokeStyle = isValid ? COLORS.entrancePreviewStrokeValid : COLORS.entrancePreviewStrokeInvalid
   ctx.lineWidth = 2 * zoom
   ctx.setLineDash([5, 5])
   ctx.stroke()

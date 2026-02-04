@@ -4,8 +4,20 @@
 
 import type { Point, Door } from '@/core/entities'
 import type { SharedWallSegment, DoorPosition } from '@/core/services'
-import { COLORS, GRID_SIZE } from '@/core/constants'
+import { COLORS, GRID_SIZE, VERTEX_RADIUS } from '@/core/constants'
 import { worldToCanvas } from '@/core/utils'
+
+// Couleurs locales pour la création de porte (variantes avec opacité)
+const DOOR_CREATION_COLORS = {
+  sharedWallDefault: 'rgba(139, 92, 246, 0.4)',
+  sharedWallPoint: 'rgba(139, 92, 246, 0.6)',
+  positionDefault: 'rgba(139, 92, 246, 0.4)',
+  positionHovered: 'rgba(139, 92, 246, 0.8)',
+  guideWall: 'rgba(139, 92, 246, 0.8)',
+  badgeValid: 'rgba(34, 197, 94, 0.9)',
+  badgeInvalid: 'rgba(239, 68, 68, 0.9)',
+  labelBg: 'rgba(0, 0, 0, 0.7)',
+} as const
 
 /**
  * Dessine les murs partagés (segments où on peut placer des portes)
@@ -29,7 +41,7 @@ export function drawSharedWalls(
     ctx.moveTo(startCanvas.x, startCanvas.y)
     ctx.lineTo(endCanvas.x, endCanvas.y)
     
-    ctx.strokeStyle = isHovered ? COLORS.doorHovered : 'rgba(139, 92, 246, 0.4)'
+    ctx.strokeStyle = isHovered ? COLORS.doorHovered : DOOR_CREATION_COLORS.sharedWallDefault
     ctx.lineWidth = (isHovered ? 6 : 4) * zoom
     ctx.setLineDash([10 * zoom, 5 * zoom])
     ctx.lineCap = "round"
@@ -37,16 +49,16 @@ export function drawSharedWalls(
     ctx.setLineDash([]) // Reset
 
     // Points aux extrémités
-    const pointRadius = 6 * zoom
+    const pointRadius = VERTEX_RADIUS.default * zoom
     
     ctx.beginPath()
     ctx.arc(startCanvas.x, startCanvas.y, pointRadius, 0, Math.PI * 2)
-    ctx.fillStyle = isHovered ? COLORS.doorHovered : 'rgba(139, 92, 246, 0.6)'
+    ctx.fillStyle = isHovered ? COLORS.doorHovered : DOOR_CREATION_COLORS.sharedWallPoint
     ctx.fill()
 
     ctx.beginPath()
     ctx.arc(endCanvas.x, endCanvas.y, pointRadius, 0, Math.PI * 2)
-    ctx.fillStyle = isHovered ? COLORS.doorHovered : 'rgba(139, 92, 246, 0.6)'
+    ctx.fillStyle = isHovered ? COLORS.doorHovered : DOOR_CREATION_COLORS.sharedWallPoint
     ctx.fill()
   }
 }
@@ -71,8 +83,8 @@ export function drawDoorPositions(
     ctx.beginPath()
     ctx.arc(centerCanvas.x, centerCanvas.y, radius, 0, Math.PI * 2)
     ctx.fillStyle = isHovered 
-      ? 'rgba(139, 92, 246, 0.8)' 
-      : 'rgba(139, 92, 246, 0.4)'
+      ? DOOR_CREATION_COLORS.positionHovered 
+      : DOOR_CREATION_COLORS.positionDefault
     ctx.fill()
     
     ctx.strokeStyle = COLORS.doorDefault
@@ -87,7 +99,7 @@ export function drawDoorPositions(
       ctx.lineTo(centerCanvas.x + iconSize, centerCanvas.y)
       ctx.moveTo(centerCanvas.x, centerCanvas.y - iconSize)
       ctx.lineTo(centerCanvas.x, centerCanvas.y + iconSize)
-      ctx.strokeStyle = 'white'
+      ctx.strokeStyle = COLORS.doorLine
       ctx.lineWidth = 2 * zoom
       ctx.stroke()
     }
@@ -133,7 +145,7 @@ export function drawDoorPreview(
   ctx.stroke()
 
   // Ligne décorative blanche
-  ctx.strokeStyle = "white"
+  ctx.strokeStyle = COLORS.doorLine
   ctx.lineWidth = 5 * zoom
   ctx.stroke()
 
@@ -141,7 +153,7 @@ export function drawDoorPreview(
   const radius = 12 * zoom
   
   ctx.fillStyle = color
-  ctx.strokeStyle = "white"
+  ctx.strokeStyle = COLORS.doorLine
   ctx.lineWidth = 3
   
   ctx.beginPath()
@@ -165,7 +177,7 @@ export function drawDoorPreview(
   const padding = 6 * zoom
   
   // Badge background
-  ctx.fillStyle = isValid ? "rgba(34, 197, 94, 0.9)" : "rgba(239, 68, 68, 0.9)"
+  ctx.fillStyle = isValid ? DOOR_CREATION_COLORS.badgeValid : DOOR_CREATION_COLORS.badgeInvalid
   ctx.beginPath()
   ctx.roundRect(
     midX - textWidth/2 - padding,
@@ -175,12 +187,12 @@ export function drawDoorPreview(
     3 * zoom
   )
   ctx.fill()
-  ctx.strokeStyle = "white"
+  ctx.strokeStyle = COLORS.doorLine
   ctx.lineWidth = 2
   ctx.stroke()
   
   // Badge text
-  ctx.fillStyle = "white"
+  ctx.fillStyle = COLORS.doorLine
   ctx.fillText(text, midX, midY)
 
   // Largeur en dessous
@@ -192,7 +204,7 @@ export function drawDoorPreview(
   const widthPadding = 4 * zoom
   const widthY = midY + fontSize + 5 * zoom
   
-  ctx.fillStyle = "rgba(0, 0, 0, 0.7)"
+  ctx.fillStyle = DOOR_CREATION_COLORS.labelBg
   ctx.fillRect(
     midX - widthTextWidth/2 - widthPadding,
     widthY,
@@ -200,7 +212,7 @@ export function drawDoorPreview(
     widthFontSize + widthPadding
   )
   
-  ctx.fillStyle = "white"
+  ctx.fillStyle = COLORS.doorLine
   ctx.fillText(widthText, midX, widthY + widthFontSize/2)
 }
 
@@ -223,7 +235,7 @@ export function drawDoorCreationGuides(
   ctx.beginPath()
   ctx.moveTo(startCanvas.x, startCanvas.y)
   ctx.lineTo(endCanvas.x, endCanvas.y)
-  ctx.strokeStyle = 'rgba(139, 92, 246, 0.8)'
+  ctx.strokeStyle = DOOR_CREATION_COLORS.guideWall
   ctx.lineWidth = 8 * zoom
   ctx.lineCap = "round"
   ctx.stroke()

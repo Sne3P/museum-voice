@@ -49,14 +49,14 @@ export function drawMeasurement(
   // Style selon highlight
   if (isHighlighted) {
     // Avec carré si sélectionné
-    ctx.fillStyle = 'rgba(59, 130, 246, 0.95)'
+    ctx.fillStyle = COLORS.measurementBlue
     ctx.fillRect(
       labelX - textMetrics.width/2 - padding,
       labelY - fontSize/2 - padding,
       textMetrics.width + padding * 2,
       fontSize + padding * 2
     )
-    ctx.strokeStyle = '#3b82f6'
+    ctx.strokeStyle = COLORS.roomStrokeSelected
     ctx.lineWidth = 2
     ctx.strokeRect(
       labelX - textMetrics.width/2 - padding,
@@ -64,7 +64,7 @@ export function drawMeasurement(
       textMetrics.width + padding * 2,
       fontSize + padding * 2
     )
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = COLORS.measurementTextWhite
   } else {
     // Sans carré, juste le texte avec ombre légère
     ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
@@ -109,14 +109,14 @@ export function drawAreaMeasurement(
   // Style selon highlight
   if (isHighlighted) {
     // Avec carré vert si sélectionné
-    ctx.fillStyle = 'rgba(34, 197, 94, 0.9)'
+    ctx.fillStyle = COLORS.valid
     ctx.fillRect(
       centerScreen.x - textMetrics.width/2 - padding,
       centerScreen.y - fontSize/2 - padding,
       textMetrics.width + padding * 2,
       fontSize + padding * 2
     )
-    ctx.strokeStyle = '#22c55e'
+    ctx.strokeStyle = COLORS.success.light
     ctx.lineWidth = 2.5
     ctx.strokeRect(
       centerScreen.x - textMetrics.width/2 - padding,
@@ -124,7 +124,7 @@ export function drawAreaMeasurement(
       textMetrics.width + padding * 2,
       fontSize + padding * 2
     )
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = COLORS.measurementTextWhite
   } else {
     // Sans carré, juste le texte avec ombre
     ctx.shadowColor = 'rgba(255, 255, 255, 0.9)'

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:5000'
+const BACKEND_URL = process.env.BACKEND_API_URL || 'http://backend:5000'
 
 /**
  * Force cleanup de toutes les sessions et leurs données associées

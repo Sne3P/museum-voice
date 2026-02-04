@@ -42,6 +42,7 @@ import { v4 as uuidv4 } from "uuid"
 import { FloorSelectionModal } from "./components/FloorSelectionModal"
 import { ArtworkPropertiesModal } from "./components/ArtworkPropertiesModal"
 import { findRoomForVerticalLink, isPointInPolygon } from "@/core/services"
+import { createNewLinkGroup } from "@/core/services/vertical-link-group.service"
 
 interface CanvasProps {
   state: EditorState
@@ -292,10 +293,15 @@ export function Canvas({
     if (type === 'artwork') {
       const artwork = currentFloor.artworks?.find(a => a.id === id)
       if (artwork) {
+        // Trouver TOUTES les œuvres de la même zone (même zoneId)
+        const zoneArtworks = artwork.zoneId 
+          ? currentFloor.artworks.filter(a => a.zoneId === artwork.zoneId)
+          : [artwork]
+        
         setArtworkModal({
           position: artwork.xy,
           size: artwork.size || [GRID_SIZE, GRID_SIZE],
-          existingArtworks: [artwork]  // Mode édition
+          existingArtworks: zoneArtworks  // Mode édition avec toutes les œuvres de la zone
         })
       }
     } else {
@@ -346,7 +352,6 @@ export function Canvas({
     const { position, size, type, mode, linkId } = verticalLinkModal
 
     // Générer groupe info si pas fourni
-    const { createNewLinkGroup } = require('@/core/services/vertical-link-group.service')
     const finalGroupInfo = groupInfo?.isNewGroup === false && groupInfo.linkGroupId
       ? groupInfo
       : createNewLinkGroup({ type } as any, state.floors)
@@ -395,7 +400,7 @@ export function Canvas({
       const newFloorId = uuidv4()
       const currentIndex = updatedFloors.findIndex(f => f.id === currentFloor.id)
       const floorsAbove = updatedFloors.length - currentIndex - 1
-      const newFloor = {
+      const newFloor: Floor = {
         id: newFloorId,
         name: floorsAbove > 0 ? `Étage ${floorsAbove + 1}` : `Étage 1`,
         rooms: [],
@@ -404,7 +409,8 @@ export function Canvas({
         artworks: [],
         verticalLinks: [],
         escalators: [],
-        elevators: []
+        elevators: [],
+        entrances: []
       }
       updatedFloors.splice(currentIndex + 1, 0, newFloor)
       finalSelectedFloorIds.push(newFloorId)
@@ -415,7 +421,7 @@ export function Canvas({
       const newFloorId = uuidv4()
       const currentIndex = updatedFloors.findIndex(f => f.id === currentFloor.id)
       const floorsBelow = currentIndex
-      const newFloor = {
+      const newFloor: Floor = {
         id: newFloorId,
         name: floorsBelow > 0 ? `Sous-sol ${floorsBelow + 1}` : `Rez-de-chaussée`,
         rooms: [],
@@ -424,7 +430,8 @@ export function Canvas({
         artworks: [],
         verticalLinks: [],
         escalators: [],
-        elevators: []
+        elevators: [],
+        entrances: []
       }
       updatedFloors.splice(currentIndex, 0, newFloor)
       finalSelectedFloorIds.push(newFloorId)
@@ -465,33 +472,64 @@ export function Canvas({
     const { position, size, existingArtworks } = artworkModal
 
     if (existingArtworks && existingArtworks.length > 0) {
-      // MODE ÉDITION : Mettre à jour l'artwork existant
-      const existingArtwork = existingArtworks[0]
-      const updatedData = artworksData[0] // Un seul artwork en mode édition
+      // MODE ÉDITION : Mettre à jour/ajouter/supprimer les œuvres de la zone
+      const existingZoneId = existingArtworks[0].zoneId || uuidv4()
+      const existingIds = existingArtworks.map(a => a.id)
+      
+      // Mapping des œuvres : existantes mises à jour + nouvelles créées
+      const updatedArtworks = artworksData.map((data, index) => {
+        if (index < existingArtworks.length) {
+          // Mise à jour d'une œuvre existante
+          const existing = existingArtworks[index]
+          return {
+            ...existing,
+            name: data.name,
+            artist: data.artist,
+            pdfPath: data.pdfPath,
+            pdf_id: data.pdfPath || '',
+            image_link: data.imagePath || '/placeholder.svg',
+            tempPdfFile: data.pdfFile || null,
+            metadata: data.metadata,
+            zoneId: existingZoneId
+          }
+        } else {
+          // Création d'une nouvelle œuvre dans la zone
+          return {
+            id: uuidv4(),
+            xy: position,
+            size,
+            name: data.name,
+            artist: data.artist,
+            pdf_id: data.pdfPath || '',
+            pdfPath: data.pdfPath,
+            image_link: data.imagePath || '/placeholder.svg',
+            tempPdfFile: data.pdfFile || null,
+            metadata: data.metadata,
+            roomId: existingArtworks[0].roomId,
+            zoneId: existingZoneId  // Même zone que les existantes
+          }
+        }
+      })
+      
+      // IDs des œuvres à supprimer (celles qui ne sont plus dans la liste)
+      const updatedIds = updatedArtworks.slice(0, existingArtworks.length).map((_, i) => existingArtworks[i].id)
+      const idsToRemove = existingIds.filter(id => !updatedIds.includes(id))
       
       const updatedFloors = state.floors.map(floor =>
         floor.id === currentFloor.id
           ? {
               ...floor,
-              artworks: floor.artworks.map(a =>
-                a.id === existingArtwork.id
-                  ? {
-                      ...a,
-                      name: updatedData.name,
-                      artist: updatedData.artist,
-                      pdfPath: updatedData.pdfPath,
-                      pdf_id: updatedData.pdfPath || '',
-                      image_link: updatedData.imagePath || '/placeholder.svg',
-                      tempPdfFile: updatedData.pdfFile || null,
-                      metadata: updatedData.metadata
-                    }
-                  : a
-              )
+              artworks: [
+                // Garder les œuvres non liées à cette zone
+                ...floor.artworks.filter(a => !existingIds.includes(a.id)),
+                // Ajouter les œuvres mises à jour/nouvelles
+                ...updatedArtworks
+              ]
             }
           : floor
       )
       
-      updateState({ floors: updatedFloors }, true, `Modifier œuvre "${updatedData.name}"`)
+      updateState({ floors: updatedFloors }, true, `Modifier zone d'œuvres (${updatedArtworks.length} œuvre${updatedArtworks.length > 1 ? 's' : ''})`)
     } else {
       // MODE CRÉATION : Créer de nouvelles œuvres
       const sizeW = size[0]
@@ -500,6 +538,9 @@ export function Canvas({
       const containingRoom = currentFloor.rooms.find(room => 
         room.polygon.length >= 3 && isPointInPolygon(centerPoint, room.polygon)
       )
+
+      // Générer un zoneId unique pour ce groupe d'œuvres
+      const zoneId = uuidv4()
 
       const newArtworks = artworksData.map(data => ({
         id: uuidv4(),
@@ -512,7 +553,8 @@ export function Canvas({
         image_link: data.imagePath || '/placeholder.svg',
         tempPdfFile: data.pdfFile || null,
         metadata: data.metadata,
-        roomId: containingRoom?.id
+        roomId: containingRoom?.id,
+        zoneId  // Même zoneId pour toutes les œuvres de cette zone
       }))
 
       const updatedFloors = state.floors.map(floor =>
@@ -525,7 +567,7 @@ export function Canvas({
     }
     
     setArtworkModal(null)
-  }, [artworkModal, state.floors, currentFloor, updateState, isPointInPolygon])
+  }, [artworkModal, state.floors, currentFloor, updateState])
 
   // Hook d'interaction utilisateur
   const interaction = useCanvasInteraction({

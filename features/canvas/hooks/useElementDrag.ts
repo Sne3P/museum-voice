@@ -22,8 +22,11 @@ import {
   isPointInPolygon,
   validateVerticalLinkMove,
   projectPointOntoSegment,
-  distance
+  distance,
+  validateArtworkPlacement,
+  validateDoorMove
 } from "@/core/services"
+import { validateRoomModificationWithWalls } from "@/core/services/cascade.service"
 
 interface ElementDragOptions {
   state: EditorState
@@ -140,14 +143,15 @@ export function useElementDrag({
     const originalElements = new Map()
     
     state.selectedElements.forEach(selected => {
-      let element = null
+      let element: unknown = null
       
       switch (selected.type) {
         case 'room':
-          element = currentFloor.rooms.find(r => r.id === selected.id)
+          const room = currentFloor.rooms.find(r => r.id === selected.id)
+          element = room
           
           // IMPORTANT: Sauvegarder aussi TOUS les enfants attachés à cette room
-          if (element) {
+          if (room) {
             const attachedWalls = currentFloor.walls?.filter(w => w.roomId === selected.id) || []
             const attachedDoors = currentFloor.doors?.filter(d => d.roomId === selected.id) || []
             
@@ -158,7 +162,7 @@ export function useElementDrag({
               const sizeW = a.size ? a.size[0] : 0
               const sizeH = a.size ? a.size[1] : 0
               const center = { x: a.xy[0] + sizeW / 2, y: a.xy[1] + sizeH / 2 }
-              return element.polygon.length >= 3 && isPointInPolygon(center, element.polygon)
+              return room.polygon && room.polygon.length >= 3 && isPointInPolygon(center, room.polygon)
             }) || []
             
             const attachedVerticalLinks = currentFloor.verticalLinks?.filter(v => 
@@ -415,7 +419,6 @@ export function useElementDrag({
           }
           
           // Validation que les murs enfants restent dans la room
-          const { validateRoomModificationWithWalls } = require('@/core/services/cascade.service')
           const wallsValidation = validateRoomModificationWithWalls(updatedRoom, updatedFloor)
           if (!wallsValidation.valid) {
             isValid = false
@@ -434,7 +437,6 @@ export function useElementDrag({
             const movedArtwork = updatedFloor.artworks?.find(a => a.id === artworkId)
             if (!movedArtwork) continue
             
-            const { validateArtworkPlacement } = require('@/core/services')
             const artworkValidation = validateArtworkPlacement(movedArtwork, { 
               floor: updatedFloor,
               excludeIds: [movedArtwork.id]
@@ -476,7 +478,6 @@ export function useElementDrag({
         const updatedArtwork = updatedFloor?.artworks?.find(a => a.id === selected.id)
         
         if (updatedArtwork && updatedFloor) {
-          const { validateArtworkPlacement } = require('@/core/services')
           const validation = validateArtworkPlacement(updatedArtwork, { 
             floor: updatedFloor,
             excludeIds: [selected.id]
@@ -492,7 +493,6 @@ export function useElementDrag({
         const updatedDoor = updatedFloor?.doors?.find(d => d.id === selected.id)
         
         if (updatedDoor && updatedFloor) {
-          const { validateDoorMove } = require('@/core/services')
           const validation = validateDoorMove(updatedDoor, updatedFloor)
           if (!validation.valid) {
             isValid = false
@@ -517,7 +517,7 @@ export function useElementDrag({
   /**
    * Terminer le drag
    */
-  const finishDrag = useCallback(() => {
+  const finishDrag = useCallback(async () => {
     if (!dragState.isDragging) return
 
     if (dragState.isValid && dragState.startPosition && dragState.currentPosition) {
@@ -533,6 +533,34 @@ export function useElementDrag({
         : dragState.draggedElements[0]?.type === 'artwork'
         ? HISTORY_ACTIONS.MOVE_ARTWORK
         : HISTORY_ACTIONS.MOVE_ELEMENTS
+      
+      // ENTRANCES: Persister en DB via API PUT (elles ne passent pas par save-to-db)
+      for (const element of dragState.draggedElements) {
+        if (element.type === 'entrance') {
+          const entrance = currentFloor.entrances?.find(e => e.id === element.id)
+          if (entrance) {
+            // Extraire l'entrance_id depuis l'id (format: "entrance-123")
+            const entranceIdMatch = element.id.match(/^entrance-(\d+)$/)
+            if (entranceIdMatch) {
+              const entranceId = parseInt(entranceIdMatch[1], 10)
+              try {
+                await fetch('/api/museum/entrances', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    entrance_id: entranceId,
+                    x: entrance.x,
+                    y: entrance.y
+                  })
+                })
+                console.log(`✅ Entrance ${entranceId} position mise à jour en DB`)
+              } catch (error) {
+                console.error(`❌ Erreur mise à jour entrance ${entranceId}:`, error)
+              }
+            }
+          }
+        }
+      }
       
       updateState({}, true, description)
     } else {

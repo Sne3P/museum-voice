@@ -139,7 +139,8 @@ export function MuseumEditor() {
       artworks: [],
       verticalLinks: [],
       escalators: [],
-      elevators: []
+      elevators: [],
+      entrances: []
     }
 
     const updatedFloors = direction === 1 

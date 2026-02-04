@@ -150,8 +150,7 @@ export function useCanvasSelection(
           element: { type: 'door', id: door.id },
           selectionInfo: {
             id: door.id,
-            type: 'door',
-            doorId: door.id
+            type: 'door'
           },
           hoverInfo: {
             type: 'door',

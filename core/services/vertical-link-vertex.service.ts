@@ -4,7 +4,7 @@
  */
 
 import type { Point, VerticalLink, Floor, Room } from '@/core/entities'
-import { isVerticalLinkInRoom } from './vertical-link.service'
+import { isVerticalLinkInRoom, validateVerticalLinkCreation } from './vertical-link.service'
 
 /**
  * Convertir position+size en 4 corners
@@ -102,7 +102,6 @@ export function validateVerticalLinkCornerMove(
   }
 
   // Vérifier chevauchement avec autres vertical links
-  const { validateVerticalLinkCreation } = require('./vertical-link.service')
   const validation = validateVerticalLinkCreation(
     updatedLink.position,
     updatedLink.size,

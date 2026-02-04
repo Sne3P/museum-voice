@@ -67,11 +67,12 @@
   appearance: none;
   height: 6px;
   border-radius: 5px;
+  /* Utilise --max-value pour le calcul dynamique du gradient */
   background: linear-gradient(
     to right,
     #66c8ff 0%,
-    #66c8ff calc((var(--value, 3.5) / 5) * 100%),
-    #e7f6ff calc((var(--value, 3.5) / 5) * 100%),
+    #66c8ff calc((var(--value, 1) / var(--max-value, 5)) * 100%),
+    #e7f6ff calc((var(--value, 1) / var(--max-value, 5)) * 100%),
     #e7f6ff 100%
   );
   outline: none;

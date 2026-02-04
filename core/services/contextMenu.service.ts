@@ -9,6 +9,7 @@ import type { EditorState, Point, SelectedElement, Wall, Door, Artwork } from '@
 import { MIN_ZOOM, MAX_ZOOM, ZOOM_STEP, GRID_SIZE } from '@/core/constants'
 import { validateRoomGeometry, validateArtworkPlacement, validateWallPlacement } from './validation.service'
 import { snapToGrid, distanceToSegment } from './geometry.service'
+import { deleteRoomWithChildren, getRoomChildren } from './cascade.service'
 import { v4 as uuidv4 } from 'uuid'
 
 // Presse-papier global
@@ -217,9 +218,6 @@ export async function executeSupprimer(
   const skippedElements: string[] = []
   let successCount = 0
 
-  // Import du service cascade
-  const { deleteRoomWithChildren } = require('./cascade.service')
-
   // SUPPRESSION EN CASCADE - Traiter chaque élément
   for (const selected of state.selectedElements) {
     try {
@@ -335,7 +333,6 @@ export function executeDupliquer(
       updatedFloor = { ...updatedFloor, rooms: [...updatedFloor.rooms, newRoom] }
       
       // DUPLIQUER AUSSI les murs/portes/artworks enfants avec le nouveau roomId
-      const { getRoomChildren } = require('./cascade.service')
       const children = getRoomChildren(floor, room.id)
       
       // Dupliquer les murs enfants
@@ -364,12 +361,27 @@ export function executeDupliquer(
       updatedFloor = { ...updatedFloor, doors: [...(updatedFloor.doors || []), ...newDoors] }
       
       // Dupliquer les artworks enfants
-      const newArtworks = children.artworks.map((artwork: Artwork) => ({
-        ...artwork,
-        id: uuidv4(),
-        roomId: newRoomId,
-        xy: [artwork.xy[0] + deltaX, artwork.xy[1] + deltaY] as const
-      }))
+      // Grouper par zoneId pour conserver les zones multi-œuvres
+      const artworksByZone = new Map<string, Artwork[]>()
+      children.artworks.forEach((artwork: Artwork) => {
+        const zone = artwork.zoneId || artwork.id  // Si pas de zoneId, chaque artwork est sa propre zone
+        if (!artworksByZone.has(zone)) artworksByZone.set(zone, [])
+        artworksByZone.get(zone)!.push(artwork)
+      })
+      
+      const newArtworks: Artwork[] = []
+      artworksByZone.forEach((zoneArtworks) => {
+        const newZoneId = uuidv4()  // Nouveau zoneId pour le groupe dupliqué
+        zoneArtworks.forEach((artwork: Artwork) => {
+          newArtworks.push({
+            ...artwork,
+            id: uuidv4(),
+            roomId: newRoomId,
+            xy: [artwork.xy[0] + deltaX, artwork.xy[1] + deltaY] as const,
+            zoneId: newZoneId
+          })
+        })
+      })
       updatedFloor = { ...updatedFloor, artworks: [...(updatedFloor.artworks || []), ...newArtworks] }
       
       // Valider la géométrie immédiatement
@@ -389,7 +401,8 @@ export function executeDupliquer(
       const newArtwork = {
         ...artwork,
         id: uuidv4(),
-        xy: [snappedMousePos.x, snappedMousePos.y] as const
+        xy: [snappedMousePos.x, snappedMousePos.y] as const,
+        zoneId: uuidv4()  // Nouveau zoneId pour l'œuvre dupliquée (nouvelle zone)
       }
       updatedFloor = { ...updatedFloor, artworks: [...(updatedFloor.artworks || []), newArtwork] }
       

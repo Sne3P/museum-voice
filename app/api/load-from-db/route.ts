@@ -129,6 +129,7 @@ export async function GET() {
             pdfPath: oeuvre?.file_path || oeuvre?.pdf_link || metadata.pdfPath || null,
             image_link: oeuvre?.image_link || '/placeholder.svg',
             roomId: metadata.roomId,
+            zoneId: metadata.zoneId,  // Zone multi-œuvres
             metadata: oeuvre ? {
               title: oeuvre.title,
               artist: oeuvre.artist,

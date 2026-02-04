@@ -542,12 +542,14 @@ export function validateDoorMove(
   }
   
   // Vérifier la largeur
+  // doorWidth est en unités grille (1 unité = 40px = 0.5m)
+  // Formule cohérente: grille * GRID_SIZE / 80 = mètres (40px = 0.5m)
   const doorWidth = Math.sqrt(
     Math.pow(door.segment[1].x - door.segment[0].x, 2) +
     Math.pow(door.segment[1].y - door.segment[0].y, 2)
   )
   
-  const doorWidthMeters = doorWidth * GRID_SIZE / 100
+  const doorWidthMeters = doorWidth * GRID_SIZE / 80
   
   if (doorWidthMeters < CONSTRAINTS.door.minWidth) {
     return {

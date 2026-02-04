@@ -1,9 +1,10 @@
 /**
  * RENDU DES ŒUVRES D'ART
+ * Utilise les constantes de couleur centralisées pour cohérence
  */
 
 import type { Artwork, Point } from '@/core/entities'
-import { COLORS, STROKE_WIDTHS, FONTS } from '@/core/constants'
+import { COLORS, STROKE_WIDTHS, VERTEX_RADIUS } from '@/core/constants'
 import { worldToCanvas } from '@/core/utils'
 
 export function drawArtwork(
@@ -13,7 +14,8 @@ export function drawArtwork(
   pan: Point,
   isSelected: boolean = false,
   isHovered: boolean = false,
-  isInvalid: boolean = false
+  isInvalid: boolean = false,
+  isDuplicating: boolean = false
 ) {
   const size = artwork.size || [1, 1]
   const [x, y] = artwork.xy
@@ -26,17 +28,17 @@ export function drawArtwork(
   const canvasWidth = bottomRight.x - topLeft.x
   const canvasHeight = bottomRight.y - topLeft.y
 
-  // Couleurs selon état
-  const fillColor = isInvalid
-    ? 'rgba(254, 202, 202, 0.5)'
+  // Couleurs selon état (constantes centralisées)
+  const fillColor = isInvalid || isDuplicating
+    ? COLORS.artworkInvalid
     : isSelected
     ? COLORS.artworkSelected
     : isHovered
     ? COLORS.artworkHovered
     : COLORS.artworkDefault
 
-  const strokeColor = isInvalid
-    ? '#ef4444'
+  const strokeColor = isInvalid || isDuplicating
+    ? COLORS.artworkStrokeInvalid
     : COLORS.artworkStroke
 
   // Fond
@@ -65,7 +67,7 @@ export function drawArtwork(
     // Nom de l'œuvre si disponible
     if (artwork.name && canvasHeight > 60) {
       ctx.font = `${Math.min(12 * zoom, 14)}px Arial`
-      ctx.fillStyle = '#1e293b'
+      ctx.fillStyle = COLORS.artworkText
       const maxWidth = canvasWidth - 10
       const truncatedName = artwork.name.length > 20 
         ? artwork.name.substring(0, 17) + '...' 
@@ -76,14 +78,14 @@ export function drawArtwork(
     // Indicateur PDF si présent
     if (artwork.pdf_id || artwork.pdfLink) {
       ctx.font = `${Math.min(10 * zoom, 12)}px Arial`
-      ctx.fillStyle = '#10b981'
+      ctx.fillStyle = COLORS.artworkPdfIndicator
       ctx.fillText('📄', topLeft.x + 8, topLeft.y + 12)
     }
   }
 
   // Points de redimensionnement si sélectionné
   if (isSelected) {
-    const handleSize = 6 * zoom
+    const handleSize = VERTEX_RADIUS.default * zoom
     const handles = [
       { x: topLeft.x, y: topLeft.y }, // top-left
       { x: bottomRight.x, y: topLeft.y }, // top-right
@@ -94,7 +96,7 @@ export function drawArtwork(
     handles.forEach(handle => {
       ctx.beginPath()
       ctx.arc(handle.x, handle.y, handleSize, 0, Math.PI * 2)
-      ctx.fillStyle = '#fff'
+      ctx.fillStyle = COLORS.vertexStroke
       ctx.fill()
       ctx.strokeStyle = strokeColor
       ctx.lineWidth = 2 * zoom
@@ -128,14 +130,14 @@ export function drawArtworkCreationPreview(
   const width = bottomRight.x - topLeft.x
   const height = bottomRight.y - topLeft.y
 
-  // Fond preview
+  // Fond preview (constantes centralisées)
   ctx.beginPath()
   ctx.rect(topLeft.x, topLeft.y, width, height)
   ctx.fillStyle = isValid ? 'rgba(219, 234, 254, 0.4)' : 'rgba(254, 202, 202, 0.4)'
   ctx.fill()
 
   // Contour
-  ctx.strokeStyle = isValid ? '#0ea5e9' : '#ef4444'
+  ctx.strokeStyle = isValid ? COLORS.artworkStroke : COLORS.artworkStrokeInvalid
   ctx.lineWidth = 2 * zoom
   ctx.setLineDash([5 * zoom, 5 * zoom])
   ctx.stroke()
@@ -143,7 +145,7 @@ export function drawArtworkCreationPreview(
 
   // Icône au centre
   if (width > 30 && height > 30) {
-    ctx.fillStyle = isValid ? '#0ea5e9' : '#ef4444'
+    ctx.fillStyle = isValid ? COLORS.artworkStroke : COLORS.artworkStrokeInvalid
     ctx.font = `${20 * zoom}px Arial`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
@@ -154,7 +156,7 @@ export function drawArtworkCreationPreview(
   const worldWidth = Math.abs(end.x - start.x)
   const worldHeight = Math.abs(end.y - start.y)
   ctx.font = `${11 * zoom}px Arial`
-  ctx.fillStyle = '#1e293b'
+  ctx.fillStyle = COLORS.artworkText
   ctx.textAlign = 'center'
   ctx.fillText(
     `${worldWidth.toFixed(1)} × ${worldHeight.toFixed(1)}`,

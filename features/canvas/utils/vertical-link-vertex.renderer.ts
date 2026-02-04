@@ -6,6 +6,7 @@
 import type { Point, VerticalLink, HoverInfo } from '@/core/entities'
 import { worldToCanvas } from '@/core/utils'
 import { getVerticalLinkCorners } from '@/core/services/vertical-link-vertex.service'
+import { COLORS, VERTEX_RADIUS, STROKE_WIDTHS } from '@/core/constants'
 
 interface VertexRenderOptions {
   isSelected: boolean
@@ -28,22 +29,22 @@ function drawVerticalLinkVertex(
   ctx.translate(screenPos.x, screenPos.y)
 
   // Taille selon état
-  const baseRadius = 6 // Légèrement plus gros que les vertices de rooms
+  const baseRadius = VERTEX_RADIUS.default
   const radius = options.isHovered ? baseRadius * 1.5 : baseRadius
   
   // Couleur selon état
-  let fillColor = 'rgba(147, 51, 234, 0.7)' // Violet pour vertical links
-  let strokeColor = '#ffffff'
-  let strokeWidth = 2
+  let fillColor = COLORS.doorDefault // Violet pour vertical links
+  let strokeColor = COLORS.vertexStroke
+  let strokeWidth = STROKE_WIDTHS.vertex
 
   if (options.isSelected) {
-    fillColor = '#22c55e' // Vert = sélectionné
-    strokeColor = '#ffffff'
-    strokeWidth = 2.5
+    fillColor = COLORS.vertexSelected // Vert = sélectionné
+    strokeColor = COLORS.vertexStroke
+    strokeWidth = STROKE_WIDTHS.vertex
   } else if (options.isHovered) {
-    fillColor = '#f59e0b' // Orange = hover
-    strokeColor = '#ffffff'
-    strokeWidth = 3
+    fillColor = COLORS.vertexHovered // Orange = hover
+    strokeColor = COLORS.vertexStroke
+    strokeWidth = STROKE_WIDTHS.vertex + 0.5
   }
 
   // Dessiner le vertex (carré pour différencier des rooms)

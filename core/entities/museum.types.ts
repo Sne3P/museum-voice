@@ -30,6 +30,7 @@ export interface Artwork {
   readonly tempPdfFile?: File | null
   readonly tempPdfBase64?: string | null
   readonly roomId?: string  // Pour liaison parent-enfant (cascade)
+  readonly zoneId?: string  // Identifiant de zone multi-œuvres (œuvres avec même zoneId peuvent partager la même position)
   readonly metadata?: {  // NEW: Métadonnées extraites du PDF
     title?: string
     artist?: string

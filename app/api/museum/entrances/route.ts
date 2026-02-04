@@ -68,21 +68,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Vérifier si une entrée existe déjà à proximité (rayon de 50 unités)
-    const MIN_DISTANCE = 50
-    const nearbyEntrances = await queryPostgres<any>(`
-      SELECT entrance_id, x, y,
-        SQRT(POWER(x - $1, 2) + POWER(y - $2, 2)) as distance
-      FROM museum_entrances
-      WHERE plan_id = $3
-        AND SQRT(POWER(x - $1, 2) + POWER(y - $2, 2)) < $4
-    `, [x, y, plan_id, MIN_DISTANCE])
+    // CONTRAINTE UNIQUE: Vérifier si une entrée existe déjà pour ce plan
+    // Une seule entrée principale autorisée par plan
+    const existingEntrances = await queryPostgres<any>(`
+      SELECT entrance_id, name, x, y FROM museum_entrances WHERE plan_id = $1
+    `, [plan_id])
 
-    if (nearbyEntrances.length > 0) {
+    if (existingEntrances.length > 0) {
       return NextResponse.json(
         { 
           success: false, 
-          error: `Une entrée existe déjà à proximité (${Math.round(nearbyEntrances[0].distance)} unités). Distance minimale: ${MIN_DISTANCE} unités.`
+          error: `Une entrée existe déjà pour ce plan ("${existingEntrances[0].name}"). Supprimez-la d'abord ou déplacez-la.`,
+          existing: existingEntrances[0]
         },
         { status: 400 }
       )
@@ -100,6 +97,84 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Error creating entrance:', error)
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * PUT /api/museum/entrances
+ * Met à jour la position d'un point d'entrée (après drag)
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { entrance_id, x, y, name, icon, is_active } = body
+
+    if (!entrance_id) {
+      return NextResponse.json(
+        { success: false, error: 'entrance_id requis' },
+        { status: 400 }
+      )
+    }
+
+    // Construire la requête de mise à jour dynamiquement
+    const updates: string[] = []
+    const values: any[] = []
+    let paramIndex = 1
+
+    if (x !== undefined) {
+      updates.push(`x = $${paramIndex++}`)
+      values.push(x)
+    }
+    if (y !== undefined) {
+      updates.push(`y = $${paramIndex++}`)
+      values.push(y)
+    }
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`)
+      values.push(name)
+    }
+    if (icon !== undefined) {
+      updates.push(`icon = $${paramIndex++}`)
+      values.push(icon)
+    }
+    if (is_active !== undefined) {
+      updates.push(`is_active = $${paramIndex++}`)
+      values.push(is_active)
+    }
+
+    if (updates.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Aucune mise à jour fournie' },
+        { status: 400 }
+      )
+    }
+
+    values.push(entrance_id)
+
+    const result = await queryPostgres<any>(`
+      UPDATE museum_entrances 
+      SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
+      WHERE entrance_id = $${paramIndex}
+      RETURNING *
+    `, values)
+
+    if (result.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Entrance non trouvée' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      entrance: result[0]
+    })
+  } catch (error: any) {
+    console.error('Error updating entrance:', error)
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

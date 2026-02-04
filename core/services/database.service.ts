@@ -33,7 +33,7 @@ interface ExportOeuvre {
   pdf_path?: string | null  // Nouveau
   file_name?: string | null
   file_path?: string | null
-  room: number
+  room: number | null
   // Métadonnées extraites du PDF
   metadata?: {
     title?: string
@@ -224,6 +224,7 @@ export function convertStateToExportData(state: EditorState): ExportData {
           id: artwork.id,
           size: artwork.size || [40, 40],
           roomId: artwork.roomId,
+          zoneId: artwork.zoneId,  // Zone multi-œuvres
           pdfPath: finalPdfPath
         }),
         oeuvre_id: oeuvreId

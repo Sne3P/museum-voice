@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Appeler le backend Flask
-    const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:5000'
+    const backendUrl = process.env.BACKEND_API_URL || 'http://backend:5000'
     const endpoint = `${backendUrl}/api/admin/generate-narrations-by-profile`
 
     // Créer des agents avec timeout augmenté pour les longues générations Ollama

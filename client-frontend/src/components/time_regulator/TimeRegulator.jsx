@@ -3,20 +3,64 @@ import "./TimeRegulator.css";
 
 export default function TimeRegulator({ onValueChange }) {
   const [value, setValue] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Paramètres dynamiques depuis l'API (valeurs par défaut en attendant)
+  const [settings, setSettings] = useState({
+    maxDuration: 5,
+    timeStep: 0.5,
+    defaultDuration: 1
+  });
 
-  // Load from localStorage once on mount
+  // Charger les paramètres depuis l'API au montage
   useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch('/api/parcours-settings');
+        const data = await response.json();
+        
+        if (data.success) {
+          setSettings({
+            maxDuration: data.maxDuration || 5,
+            timeStep: data.timeStep || 0.5,
+            defaultDuration: data.defaultDuration || 1
+          });
+          console.log('⚙️ Paramètres temps chargés:', data);
+        }
+      } catch (error) {
+        console.warn('⚠️ Erreur chargement paramètres temps, utilisation des défauts:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSettings();
+  }, []);
+
+  // Initialiser la valeur une fois les settings chargés
+  useEffect(() => {
+    if (isLoading) return;
+    
     const savedValue = localStorage.getItem("timeSliderValue");
-    const val = savedValue !== null ? parseFloat(savedValue) : 1; // Défaut à 1h si rien en localStorage
+    let val = savedValue !== null ? parseFloat(savedValue) : settings.defaultDuration;
+    
+    // S'assurer que la valeur est dans les limites
+    if (val > settings.maxDuration) val = settings.maxDuration;
+    if (val < 0) val = 0;
+    
+    // Arrondir au step le plus proche
+    val = Math.round(val / settings.timeStep) * settings.timeStep;
+    
     setValue(val);
     document.documentElement.style.setProperty("--value", val);
+    document.documentElement.style.setProperty("--max-value", settings.maxDuration);
     
     // 👉 Notifier le parent de la valeur initiale
     if (onValueChange) {
       onValueChange(val);
-      console.log(`⏱️ TimeRegulator initialisé à: ${val}h`);
+      console.log(`⏱️ TimeRegulator initialisé à: ${val}h (max: ${settings.maxDuration}h, step: ${settings.timeStep}h)`);
     }
-  }, []); // ✅ no dependency here
+  }, [isLoading, settings, onValueChange]);
 
   // Whenever slider changes
   const handleChange = (e) => {
@@ -34,11 +78,42 @@ export default function TimeRegulator({ onValueChange }) {
 
   const formatTime = (val) => {
     const hours = Math.floor(val);
-    const minutes = (val - hours) * 60;
-    return `${hours}H${minutes === 0 ? "00" : minutes}`;
+    const minutes = Math.round((val - hours) * 60);
+    return `${hours}H${minutes === 0 ? "00" : minutes.toString().padStart(2, '0')}`;
   };
 
-  const ticks = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+  // Générer les ticks dynamiquement selon les settings
+  const generateTicks = () => {
+    const ticks = [];
+    for (let i = 0; i <= settings.maxDuration; i += settings.timeStep) {
+      ticks.push(parseFloat(i.toFixed(2)));
+    }
+    return ticks;
+  };
+
+  // Générer les labels (heures entières seulement)
+  const generateLabels = () => {
+    const labels = [];
+    for (let i = 0; i <= settings.maxDuration; i++) {
+      labels.push(i);
+    }
+    return labels;
+  };
+
+  const ticks = generateTicks();
+  const labels = generateLabels();
+
+  if (isLoading) {
+    return (
+      <div className="time-page">
+        <div className="time-container">
+          <div className="title-row">
+            <h3>Chargement...</h3>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="time-page">
@@ -50,7 +125,7 @@ export default function TimeRegulator({ onValueChange }) {
 
         <div className="slider-wrapper">
           <div className="labels">
-            {[0, 1, 2, 3, 4, 5].map((val) => (
+            {labels.map((val) => (
               <span
                 key={val}
                 style={{ visibility: val === 0 ? "hidden" : "visible" }}
@@ -63,8 +138,8 @@ export default function TimeRegulator({ onValueChange }) {
           <input
             type="range"
             min="0"
-            max="5"
-            step="0.5"
+            max={settings.maxDuration}
+            step={settings.timeStep}
             value={value}
             onChange={handleChange}
             className="slider"
@@ -72,11 +147,12 @@ export default function TimeRegulator({ onValueChange }) {
 
           <div className="ticks">
             {ticks.map((val, i) => {
-              const percent = (val / 5) * 100;
+              const percent = (val / settings.maxDuration) * 100;
+              const isHalfTick = val % 1 !== 0;
               return (
                 <div
                   key={i}
-                  className={`tick ${val % 1 !== 0 ? "half" : ""}`}
+                  className={`tick ${isHalfTick ? "half" : ""}`}
                   style={{ left: `${percent}%` }}
                 ></div>
               );

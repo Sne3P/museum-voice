@@ -1,9 +1,11 @@
 /**
  * RENDU DES VERTICES ET SEGMENTS AVEC FEEDBACK VISUEL
  * Affiche les points et segments sélectionnables avec états hover/selected
+ * Utilise les constantes de couleur centralisées pour cohérence
  */
 
 import type { Point, Room, HoverInfo } from '@/core/entities'
+import { COLORS, VERTEX_RADIUS } from '@/core/constants'
 import { worldToCanvas } from '@/core/utils'
 
 interface VertexRenderOptions {
@@ -32,22 +34,22 @@ export function drawVertex(
   ctx.save()
   ctx.translate(screenPos.x, screenPos.y)
 
-  // Taille selon état
-  const baseRadius = 5
-  const radius = options.isHovered ? baseRadius * 1.5 : baseRadius
+  // Taille selon état (constantes centralisées)
+  const radius = options.isHovered 
+    ? VERTEX_RADIUS.hovered 
+    : options.isSelected 
+    ? VERTEX_RADIUS.selected 
+    : VERTEX_RADIUS.default
   
-  // Couleur selon état
-  let fillColor = 'rgba(59, 130, 246, 0.6)' // Bleu normal
-  let strokeColor = '#ffffff'
+  // Couleur selon état (constantes centralisées)
+  let fillColor = COLORS.vertexDefault
   let strokeWidth = 2
 
   if (options.isSelected) {
-    fillColor = '#22c55e' // Vert = sélectionné
-    strokeColor = '#ffffff'
+    fillColor = COLORS.vertexSelected
     strokeWidth = 2.5
   } else if (options.isHovered) {
-    fillColor = '#f59e0b' // Orange = hover
-    strokeColor = '#ffffff'
+    fillColor = COLORS.vertexHovered
     strokeWidth = 3
   }
 
@@ -56,7 +58,7 @@ export function drawVertex(
   ctx.arc(0, 0, radius, 0, Math.PI * 2)
   ctx.fillStyle = fillColor
   ctx.fill()
-  ctx.strokeStyle = strokeColor
+  ctx.strokeStyle = COLORS.vertexStroke
   ctx.lineWidth = strokeWidth
   ctx.stroke()
 
@@ -76,15 +78,15 @@ export function drawSegment(
   const startScreen = worldToCanvas(start, options.zoom, pan)
   const endScreen = worldToCanvas(end, options.zoom, pan)
 
-  // Couleur et épaisseur selon état
-  let strokeColor = 'rgba(59, 130, 246, 0.4)' // Bleu transparent normal
+  // Couleur et épaisseur selon état (constantes centralisées)
+  let strokeColor = COLORS.segmentDefault
   let lineWidth = 3
 
   if (options.isSelected) {
-    strokeColor = '#22c55e' // Vert = sélectionné
+    strokeColor = COLORS.segmentSelected
     lineWidth = 5
   } else if (options.isHovered) {
-    strokeColor = '#f59e0b' // Orange = hover
+    strokeColor = COLORS.segmentHovered
     lineWidth = 4
   }
 

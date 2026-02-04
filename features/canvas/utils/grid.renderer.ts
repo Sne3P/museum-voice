@@ -1,9 +1,10 @@
 ﻿/**
  * RENDU DE LA GRILLE - OPTIMISE POUR CAO PRO
+ * Utilise les constantes de couleur centralisées pour cohérence
  */
 
 import type { Point } from '@/core/entities'
-import { GRID_SIZE, MAJOR_GRID_INTERVAL } from '@/core/constants'
+import { GRID_SIZE, MAJOR_GRID_INTERVAL, COLORS, STROKE_WIDTHS } from '@/core/constants'
 
 export function drawGrid(
   ctx: CanvasRenderingContext2D,
@@ -20,9 +21,9 @@ export function drawGrid(
   const offsetX = pan.x % gridSize
   const offsetY = pan.y % gridSize
 
-  // Grille mineure (lignes fines grises claires)
-  ctx.strokeStyle = 'rgba(200, 200, 200, 0.4)'
-  ctx.lineWidth = 0.5
+  // Grille mineure (lignes fines grises claires) - constantes centralisées
+  ctx.strokeStyle = COLORS.gridMinor
+  ctx.lineWidth = STROKE_WIDTHS.gridMinor
   ctx.beginPath()
 
   for (let x = offsetX; x < width; x += gridSize) {
@@ -42,8 +43,8 @@ export function drawGrid(
   const majorOffsetX = pan.x % majorGridSize
   const majorOffsetY = pan.y % majorGridSize
 
-  ctx.strokeStyle = 'rgba(150, 150, 150, 0.6)'
-  ctx.lineWidth = 1
+  ctx.strokeStyle = COLORS.gridMajorLine
+  ctx.lineWidth = STROKE_WIDTHS.gridMajor
   ctx.beginPath()
 
   for (let x = majorOffsetX; x < width; x += majorGridSize) {
@@ -63,7 +64,7 @@ export function drawGrid(
   const centerY = pan.y
   
   if (centerX >= 0 && centerX <= width) {
-    ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)'
+    ctx.strokeStyle = COLORS.gridAxis
     ctx.lineWidth = 2
     ctx.beginPath()
     ctx.moveTo(centerX, 0)
@@ -72,7 +73,7 @@ export function drawGrid(
   }
   
   if (centerY >= 0 && centerY <= height) {
-    ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)'
+    ctx.strokeStyle = COLORS.gridAxis
     ctx.lineWidth = 2
     ctx.beginPath()
     ctx.moveTo(0, centerY)
@@ -81,7 +82,7 @@ export function drawGrid(
   }
   
   // Labels de coordonnees avec vraies mesures (1 carré = 0.5m)
-  ctx.fillStyle = 'rgba(100, 100, 100, 0.8)'
+  ctx.fillStyle = COLORS.gridLabel
   ctx.font = '11px monospace'
   
   // GRID_SIZE (40px) = 0.5m, donc 1px = 0.0125m

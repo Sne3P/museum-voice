@@ -9,7 +9,8 @@ import type { Point, EditorState, Floor, Room } from "@/core/entities"
 import { HISTORY_ACTIONS } from "@/core/constants"
 import { updateVertexInPolygon, calculateDelta } from "@/core/services"
 import { snapToGrid, smartSnap } from "@/core/services"
-import { validateRoomGeometry, validateRoomMoveWithDoors, isPointInPolygon } from "@/core/services"
+import { validateRoomGeometry, validateRoomMoveWithDoors, isPointInPolygon, validateArtworkPlacement } from "@/core/services"
+import { validateRoomModificationWithWalls } from "@/core/services/cascade.service"
 import { GRID_SIZE } from "@/core/constants"
 
 interface VertexEditOptions {
@@ -140,15 +141,6 @@ export function useVertexEdit({
       snapType = 'grid'
     }
     
-    console.log('🎯 Vertex Edit Debug:', {
-      worldPos,
-      snappedPos,
-      snapType,
-      mode: editState.editMode,
-      vertexIndices: editState.vertexIndices,
-      zoom: state.zoom
-    })
-    
     // Calculer le delta de déplacement
     const delta = calculateDelta(editState.startPosition!, snappedPos)
     
@@ -183,9 +175,6 @@ export function useVertexEdit({
       polygon: newPolygon
     }
     
-    // Import du service cascade pour validation
-    const { validateRoomModificationWithWalls } = require('@/core/services/cascade.service')
-    
     // Valider la géométrie ET les murs enfants
     const geometryValidation = validateRoomGeometry(tempRoom, {
       floor: currentFloor,
@@ -212,7 +201,6 @@ export function useVertexEdit({
     }) || []
     
     for (const artwork of roomArtworks) {
-      const { validateArtworkPlacement } = require('@/core/services')
       const artworkCheck = validateArtworkPlacement(artwork, {
         floor: { ...currentFloor, rooms: currentFloor.rooms.map(r => r.id === editState.roomId ? tempRoom : r) },
         excludeIds: [artwork.id]

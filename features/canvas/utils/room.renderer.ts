@@ -1,9 +1,11 @@
 /**
  * RENDU DES PIÈCES - CAO PROFESSIONNEL
  * Avec validations et feedback visuel
+ * Utilise les constantes de couleur centralisées pour cohérence
  */
 
 import type { Room, Point } from '@/core/entities'
+import { COLORS, STROKE_WIDTHS } from '@/core/constants'
 import { worldToCanvas } from '@/core/utils'
 import { validateRoomGeometry } from '@/core/services'
 
@@ -35,34 +37,34 @@ export function drawRoom(
   }
   ctx.closePath()
 
-  // Couleur de fond avec états de validation
+  // Couleur de fond avec états de validation (constantes centralisées)
   if (hasError) {
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.2)' // Rouge si erreur (plus opaque)
+    ctx.fillStyle = COLORS.roomInvalid
   } else if (isSelected || isDuplicating) {
-    ctx.fillStyle = 'rgba(59, 130, 246, 0.2)' // Bleu si sélectionné ou en duplication
+    ctx.fillStyle = COLORS.roomSelected
   } else if (isHovered) {
-    ctx.fillStyle = 'rgba(59, 130, 246, 0.15)' // Bleu clair si survolé
+    ctx.fillStyle = COLORS.roomHovered
   } else {
-    ctx.fillStyle = 'rgba(229, 231, 235, 0.5)' // Gris clair par défaut
+    ctx.fillStyle = COLORS.roomDefault
   }
   ctx.fill()
 
-  // Contour avec validation
+  // Contour avec validation (constantes centralisées)
   if (hasError) {
-    ctx.strokeStyle = '#EF4444' // Rouge
-    ctx.lineWidth = 3
+    ctx.strokeStyle = COLORS.roomStrokeInvalid
+    ctx.lineWidth = STROKE_WIDTHS.roomSelected
     ctx.setLineDash([8, 4]) // Pointillés épais pour erreur
   } else if (isSelected || isDuplicating) {
-    ctx.strokeStyle = '#3B82F6' // Bleu
-    ctx.lineWidth = 3
+    ctx.strokeStyle = COLORS.roomStrokeSelected
+    ctx.lineWidth = STROKE_WIDTHS.roomSelected
     ctx.setLineDash([])
   } else if (isHovered) {
-    ctx.strokeStyle = '#60A5FA' // Bleu clair
-    ctx.lineWidth = 2.5
+    ctx.strokeStyle = COLORS.roomStrokeHovered
+    ctx.lineWidth = STROKE_WIDTHS.roomHovered
     ctx.setLineDash([])
   } else {
-    ctx.strokeStyle = '#9CA3AF' // Gris
-    ctx.lineWidth = 2
+    ctx.strokeStyle = COLORS.roomStrokeDefault
+    ctx.lineWidth = STROKE_WIDTHS.roomDefault
     ctx.setLineDash([])
   }
   ctx.stroke()

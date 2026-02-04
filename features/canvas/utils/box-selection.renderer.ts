@@ -3,7 +3,7 @@
  */
 
 import type { Point } from '@/core/entities'
-import { COLORS } from '@/core/constants'
+import { COLORS, STROKE_WIDTHS } from '@/core/constants'
 
 export function drawBoxSelection(
   ctx: CanvasRenderingContext2D,
@@ -28,13 +28,13 @@ export function drawBoxSelection(
   const height = screenEnd.y - screenStart.y
 
   // Rectangle de sélection
-  ctx.strokeStyle = '#3b82f6' // Bleu
-  ctx.lineWidth = 2
+  ctx.strokeStyle = COLORS.selectionStroke
+  ctx.lineWidth = STROKE_WIDTHS.selectionBox
   ctx.setLineDash([5, 5])
   ctx.strokeRect(screenStart.x, screenStart.y, width, height)
 
   // Remplissage semi-transparent
-  ctx.fillStyle = 'rgba(59, 130, 246, 0.1)'
+  ctx.fillStyle = COLORS.selectionBox
   ctx.fillRect(screenStart.x, screenStart.y, width, height)
 
   ctx.restore()
