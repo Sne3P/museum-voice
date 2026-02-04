@@ -1,101 +1,149 @@
-/* Full-page centering */
+/* TimeRegulator - Modern iOS-style design */
+
 .time-page {
-  width: 100vw;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: #f5f5f5;
-}
-
-/* Main box */
-.time-container {
-  background-color: white;
-  border: 1px solid #dcdcdc;
-  border-radius: 10px;
-  padding: 15px 25px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   width: 100%;
-  font-family: "Poppins", sans-serif;
+  padding: 0 var(--space-lg);
 }
 
-/* Title and display */
+.time-container {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  animation: fadeInUp var(--transition-slow) ease-out;
+}
+
 .title-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-lg);
 }
 
 .title-row h3 {
   margin: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #1c1c3b;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
 }
 
 .time-display {
-  border: 1.5px solid #2fafff;
-  border-radius: 6px;
-  padding: 4px 10px;
-  color: #2fafff;
+  background: var(--color-accent-soft);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+  color: var(--color-accent);
   font-weight: 600;
   font-size: 1rem;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Slider wrapper */
 .slider-wrapper {
   position: relative;
   width: 100%;
-  margin-top: 20px;
+  padding-top: var(--space-md);
 }
 
-/* Labels on top */
 .labels {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 10px; /* space between labels and slider */
-  padding: 0;
-  color: #1c1c3b;
-  font-size: 0.9rem;
+  margin-bottom: var(--space-md);
+  color: var(--color-text-tertiary);
+  font-size: 0.75rem;
   font-weight: 500;
-  position: relative;
 }
 
-/* Slider bar */
 .slider {
   width: 100%;
   appearance: none;
+  -webkit-appearance: none;
   height: 6px;
-  border-radius: 5px;
-  /* Utilise --max-value pour le calcul dynamique du gradient */
+  border-radius: 3px;
+  background: var(--color-bg-tertiary);
+  outline: none;
+  transition: background var(--transition-fast);
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
   background: linear-gradient(
     to right,
-    #66c8ff 0%,
-    #66c8ff calc((var(--value, 1) / var(--max-value, 5)) * 100%),
-    #e7f6ff calc((var(--value, 1) / var(--max-value, 5)) * 100%),
-    #e7f6ff 100%
+    var(--color-accent) 0%,
+    var(--color-accent) calc((var(--value, 1) / var(--max-value, 5)) * 100%),
+    var(--color-bg-tertiary) calc((var(--value, 1) / var(--max-value, 5)) * 100%),
+    var(--color-bg-tertiary) 100%
   );
-  outline: none;
-  transition: background 0.3s;
-  z-index: 2;
-  position: relative;
 }
 
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 15px;
-  height: 15px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: #66c8ff;
+  background: white;
   cursor: pointer;
   border: none;
-  z-index: 3;
-  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  margin-top: -9px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .slider::-webkit-slider-thumb:hover {
-  transform: scale(1.05);
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.slider::-webkit-slider-thumb:active {
+  transform: scale(1.15);
+}
+
+.slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-bg-tertiary);
+}
+
+.slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-accent);
+}
+
+.slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Tick marks */
+.tick-marks {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-sm) 0;
+  margin-top: var(--space-xs);
+}
+
+.tick-mark {
+  width: 2px;
+  height: 8px;
+  background: var(--color-border-light);
+  border-radius: 1px;
+}
+
+/* Loading state */
+.time-regulator-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100px;
+  color: var(--color-text-muted);
 }
 
 /* Tick marks */

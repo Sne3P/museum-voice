@@ -1,101 +1,154 @@
-import React, { useState, useEffect } from 'react'; // 👈 Importez useState et useEffect
-import Header from '../../components/header/Header';
-import WelcomeMsg from '../../components/welcome_msg/WelcomeMsg';
-import LangSelector from '../../components/lang-selector/LangSelector';
-import WelcomeBgImg from '../../components/welcome_bg_img/WelcomeBgImg';
-import StartMsg from '../../components/start_msg/StartMsg';
-import GenParcours from '../../components/gen_parcours/GenParcours';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { activateSession } from '../../utils/session';
+import './Accueil.css';
 
+// Icons
+const ArrowRightIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12"/>
+    <polyline points="12 5 19 12 12 19"/>
+  </svg>
+);
+
+const HeadphonesIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
+    <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+  </svg>
+);
+
+const RouteIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="6" cy="19" r="3"/>
+    <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/>
+    <circle cx="18" cy="5" r="3"/>
+  </svg>
+);
 
 const Accueil = () => {
-  // 1. Initialiser l'état de la langue. Par défaut à 'FR' par exemple.
   const [selectedLanguage, setSelectedLanguage] = useState('FR');
   const [museumImageUrl, setMuseumImageUrl] = useState('/placeholder.svg');
+  const [museumTitle, setMuseumTitle] = useState('Louvre-Lens');
+  const [museumSubtitle, setMuseumSubtitle] = useState('Explorez, observez, ressentez. L\'art se devoile a vous.');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // Gérer le token QR code depuis l'URL
+  // Handle QR code token from URL
   useEffect(() => {
     const token = searchParams.get('token');
     if (token) {
-      // Activer la session avec le token
       activateSession(token).then(success => {
         if (success) {
-          console.log('✅ Session activée avec succès');
-          // Nettoyer l'URL
+          console.log('Session activee avec succes');
           window.history.replaceState({}, '', window.location.pathname);
         } else {
-          console.error('❌ Échec activation session');
-          alert('❌ Token invalide ou expiré');
+          console.error('Echec activation session');
         }
       });
     }
   }, [searchParams]);
 
-  // Charger l'image du musée depuis l'API
+  // Load museum settings
   useEffect(() => {
-    const fetchMuseumImage = async () => {
+    const fetchMuseumSettings = async () => {
       try {
         const adminUrl = process.env.REACT_APP_ADMIN_URL || 'http://localhost:3000';
-        const response = await fetch(`${adminUrl}/api/museum-settings?setting_key=museum_image_url`);
-        const data = await response.json();
+        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
         
-        if (data && data.setting_value) {
-          // Si l'URL est relative, ajouter le backendUrl pour les uploads
-          const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
-          const imageUrl = data.setting_value.startsWith('http') 
-            ? data.setting_value 
-            : `${backendUrl}${data.setting_value}`;
+        // Fetch image
+        const imageRes = await fetch(`${adminUrl}/api/museum-settings?setting_key=museum_image_url`);
+        const imageData = await imageRes.json();
+        if (imageData?.setting_value) {
+          const imageUrl = imageData.setting_value.startsWith('http') 
+            ? imageData.setting_value 
+            : `${backendUrl}${imageData.setting_value}`;
           setMuseumImageUrl(imageUrl);
         }
+
+        // Fetch title
+        const titleRes = await fetch(`${adminUrl}/api/museum-settings?setting_key=museum_title`);
+        const titleData = await titleRes.json();
+        if (titleData?.setting_value) {
+          setMuseumTitle(titleData.setting_value.split('\n')[0]);
+        }
       } catch (error) {
-        console.error('Erreur chargement image musée:', error);
-        // Garder le placeholder par défaut en cas d'erreur
+        console.error('Erreur chargement parametres musee:', error);
       }
     };
 
-    fetchMuseumImage();
+    fetchMuseumSettings();
   }, []);
 
-  // [Inference] Optionnel : Utiliser useEffect pour sauvegarder ou charger la langue
-  useEffect(() => {
-    console.log(`La langue actuelle est maintenant : ${selectedLanguage}`);
-    // Ici, vous pourriez implémenter la logique pour changer la langue
-    // de toute l'application (par exemple, charger un fichier de traduction).
-  }, [selectedLanguage]);
-  
-  // Fonction de gestion du changement de langue
-  const handleLanguageChange = (newLang) => {
-    setSelectedLanguage(newLang);
+  const handleLanguageChange = (lang) => {
+    setSelectedLanguage(lang);
+    localStorage.setItem('preferred_language', lang);
   };
-  
-  const goToMesChoix = () => {
-    // [Inference] Vous pourriez passer la langue sélectionnée au composant suivant si nécessaire
-    // navigate('/mes-choix', { state: { lang: selectedLanguage } });
-    navigate('/mes-choix');
-  }
-  
-  return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <Header />
-      <WelcomeMsg />
-      
-      {/* 2. Intégrer le LangSelector avec l'état et le gestionnaire */}
-      <LangSelector 
-        currentLang={selectedLanguage}
-        onSelectLang={handleLanguageChange}
-      />
 
-      <div style={{ flex: 1 }}>
-        <WelcomeBgImg
-          imageUrl={museumImageUrl}
-          altText="Museum Welcome Background"
+  const goToMesChoix = () => {
+    navigate('/mes-choix');
+  };
+
+  const languages = ['FR', 'EN', 'DE', 'ES'];
+
+  return (
+    <div className="accueil-page">
+      {/* Hero Background */}
+      <div className="hero-background">
+        <img 
+          src={museumImageUrl} 
+          alt="Museum" 
+          className="hero-background-image"
         />
       </div>
-      <StartMsg />
-      <GenParcours onClick={goToMesChoix } />
+
+      {/* Content */}
+      <div className="accueil-content">
+        <div className="welcome-section">
+          <span className="welcome-label">Audio Guide</span>
+          <h1 className="welcome-title">{museumTitle}</h1>
+          <p className="welcome-subtitle">{museumSubtitle}</p>
+
+          {/* Language Selector */}
+          <div className="language-selector">
+            {languages.map(lang => (
+              <button
+                key={lang}
+                className={`language-btn ${selectedLanguage === lang ? 'active' : ''}`}
+                onClick={() => handleLanguageChange(lang)}
+              >
+                {lang}
+              </button>
+            ))}
+          </div>
+
+          {/* Features */}
+          <div className="features-preview">
+            <div className="feature-card">
+              <div className="feature-icon">
+                <HeadphonesIcon />
+              </div>
+              <span className="feature-title">Audio Guide</span>
+              <span className="feature-desc">Narration personnalisee</span>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon">
+                <RouteIcon />
+              </div>
+              <span className="feature-title">Parcours</span>
+              <span className="feature-desc">Adapte a vos preferences</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CTA Button */}
+      <div className="cta-container">
+        <button className="cta-button" onClick={goToMesChoix}>
+          Commencer l'experience
+          <ArrowRightIcon />
+        </button>
+      </div>
     </div>
   );
 };

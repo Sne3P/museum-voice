@@ -218,7 +218,7 @@ def get_artwork_pregenerations(oeuvre_id: int) -> List[Dict[str, Any]]:
                 ARRAY_AGG(
                     JSON_BUILD_OBJECT(
                         'criteria_id', c.criteria_id,
-                        'type_name', c.type_name,
+                        'type', c.type,
                         'name', c.name,
                         'label', c.label,
                         'ai_indication', c.ai_indication

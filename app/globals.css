@@ -308,3 +308,207 @@ button:disabled {
   pointer-events: none;
   z-index: 10000;
 }
+
+/* ============================================
+   MUSEUM CLIENT THEME
+   Design system for visitor experience
+   ============================================ */
+
+/* Museum Color Variables */
+:root {
+  /* Background palette */
+  --museum-bg: #0A0A0B;
+  --museum-secondary: #141416;
+  --museum-card: #1C1C1F;
+  --museum-elevated: #242428;
+  --museum-overlay: rgba(0, 0, 0, 0.85);
+  
+  /* Text palette */
+  --museum-text: #FFFFFF;
+  --museum-text-secondary: #A1A1AA;
+  --museum-text-muted: #71717A;
+  --museum-accent: #E4D5B7;
+  --museum-accent-light: #F5EDD9;
+  --museum-accent-dark: #C4B48A;
+  
+  /* Border */
+  --museum-border: #27272A;
+  --museum-border-hover: #3F3F46;
+  
+  /* Status */
+  --museum-success: #22C55E;
+  --museum-error: #EF4444;
+  --museum-warning: #F59E0B;
+}
+
+/* Museum utility classes */
+.bg-museum-bg { background-color: var(--museum-bg); }
+.bg-museum-secondary { background-color: var(--museum-secondary); }
+.bg-museum-card { background-color: var(--museum-card); }
+.bg-museum-elevated { background-color: var(--museum-elevated); }
+.bg-museum-overlay { background-color: var(--museum-overlay); }
+.bg-museum-accent { background-color: var(--museum-accent); }
+
+.text-museum-text { color: var(--museum-text); }
+.text-museum-text-secondary { color: var(--museum-text-secondary); }
+.text-museum-text-muted { color: var(--museum-text-muted); }
+.text-museum-accent { color: var(--museum-accent); }
+.text-museum-bg { color: var(--museum-bg); }
+
+.border-museum-border { border-color: var(--museum-border); }
+.border-museum-accent { border-color: var(--museum-accent); }
+
+/* Museum fonts */
+.font-museum-display {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.font-museum-body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Museum shadows */
+.shadow-glow {
+  box-shadow: 0 0 20px rgba(228, 213, 183, 0.15);
+}
+
+.shadow-glow-strong {
+  box-shadow: 0 0 40px rgba(228, 213, 183, 0.25);
+}
+
+/* Museum gradients */
+.bg-gradient-hero {
+  background: linear-gradient(180deg, rgba(10,10,11,0) 0%, rgba(10,10,11,0.8) 60%, rgba(10,10,11,1) 100%);
+}
+
+.bg-gradient-top-fade {
+  background: linear-gradient(180deg, rgba(10,10,11,1) 0%, transparent 100%);
+}
+
+.bg-gradient-bottom-fade {
+  background: linear-gradient(0deg, rgba(10,10,11,1) 0%, transparent 100%);
+}
+
+/* Safe area for mobile devices with notch */
+.safe-area-inset {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Swipe container styles */
+.swipe-container {
+  touch-action: pan-y;
+  overflow-x: hidden;
+}
+
+.swipe-slide {
+  scroll-snap-align: center;
+  flex-shrink: 0;
+}
+
+/* Audio player styles */
+.audio-controls {
+  backdrop-filter: blur(20px);
+  background: rgba(28, 28, 31, 0.9);
+}
+
+/* Artwork viewer - fullscreen image */
+.artwork-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--museum-bg);
+}
+
+.artwork-fullscreen img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Museum animations */
+@keyframes museum-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes museum-slide-up {
+  from { 
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes museum-slide-in-right {
+  from { 
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to { 
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes museum-slide-in-left {
+  from { 
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to { 
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes museum-scale-in {
+  from { 
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to { 
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes museum-pulse-glow {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(228, 213, 183, 0.15);
+  }
+  50% { 
+    box-shadow: 0 0 30px rgba(228, 213, 183, 0.3);
+  }
+}
+
+.animate-museum-fade { animation: museum-fade-in 0.4s ease-out; }
+.animate-museum-slide-up { animation: museum-slide-up 0.5s ease-out; }
+.animate-museum-slide-right { animation: museum-slide-in-right 0.4s ease-out; }
+.animate-museum-slide-left { animation: museum-slide-in-left 0.4s ease-out; }
+.animate-museum-scale { animation: museum-scale-in 0.3s ease-out; }
+.animate-museum-glow { animation: museum-pulse-glow 2s ease-in-out infinite; }
+
+/* Hide scrollbar for swipe containers */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Progress ring animation */
+.progress-ring {
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+.progress-ring circle {
+  transition: stroke-dashoffset 0.5s ease-out;
+}

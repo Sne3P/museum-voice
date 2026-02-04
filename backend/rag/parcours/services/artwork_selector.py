@@ -68,6 +68,7 @@ class ArtworkSelector:
 
         - Élimine les salles totalement isolées (aucune porte/vertical link)
         - Choisit une composante connexe cible et filtre les œuvres en conséquence
+        - EXCEPTION: Si toutes les œuvres sont dans des salles isolées, on les garde (mode minimal)
         """
         if not candidates:
             return candidates
@@ -87,6 +88,11 @@ class ArtworkSelector:
         # Liens verticaux (relient les salles à travers étages)
         for s in self.graph.stairways:
             add_edge(s.room_id_from, s.room_id_to)
+
+        # Si aucune connexion (pas de portes ni liens), retourner les candidats tels quels (mode minimal)
+        if not adj:
+            print("   ⚠️ Aucune porte/connexion définie - mode parcours minimal")
+            return candidates
 
         # Trouver composantes connexes via BFS
         unvisited = set(self.graph.rooms.keys())
@@ -114,8 +120,11 @@ class ArtworkSelector:
             connected_rooms.update(comp)
 
         filtered_candidates = [a for a in candidates if a.position.room in connected_rooms]
-        if not filtered_candidates:
-            return []
+        
+        # Si tous les candidats sont filtrés, on les garde quand même (mode minimal)
+        if not filtered_candidates and candidates:
+            print("   ⚠️ Toutes les œuvres dans des salles isolées - mode parcours minimal")
+            return candidates
 
         # Choisir une composante cible: prioriser celle qui contient le plus d'œuvres en RDC, sinon la plus dense
         # Indexer œuvres par salle
