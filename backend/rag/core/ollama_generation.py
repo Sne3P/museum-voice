@@ -3,10 +3,41 @@ import time
 import itertools
 import multiprocessing
 from typing import Dict, Any, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 import requests
 from rag.core.pregeneration_db import add_pregeneration
 
+# ===== CONFIGURATION OPTIMISÉE POUR CPU-ONLY (PAS DE GPU) =====
+# Détection CPU réelle
+_CPU_COUNT = multiprocessing.cpu_count()  # Ex: 96 threads sur VPS, 8 sur laptop
+
+# MODE CPU-ONLY: Configuration adaptative selon puissance CPU
+# - Petits CPUs (< 16 threads): 1-2 requêtes parallèles
+# - Moyens CPUs (16-64 threads): 2-4 requêtes parallèles  
+# - Gros CPUs (64+ threads): 4-6 requêtes parallèles
+if _CPU_COUNT >= 64:
+    _OLLAMA_PARALLEL_REQUESTS = min(6, _CPU_COUNT // 16)  # 96 threads -> 6 parallèles
+elif _CPU_COUNT >= 16:
+    _OLLAMA_PARALLEL_REQUESTS = min(4, _CPU_COUNT // 8)   # 32 threads -> 4 parallèles
+else:
+    _OLLAMA_PARALLEL_REQUESTS = max(1, _CPU_COUNT // 4)   # 8 threads -> 2 parallèles
+
+# Threads CPU par requête Ollama - ne pas dépasser 75% du CPU total
+_THREADS_PER_REQUEST = max(4, min(_CPU_COUNT * 3 // 4, _CPU_COUNT // _OLLAMA_PARALLEL_REQUESTS))
+
+# Vérification: ne pas dépasser le CPU disponible
+_TOTAL_THREADS_USED = _OLLAMA_PARALLEL_REQUESTS * _THREADS_PER_REQUEST
+if _TOTAL_THREADS_USED > _CPU_COUNT:
+    _THREADS_PER_REQUEST = _CPU_COUNT // _OLLAMA_PARALLEL_REQUESTS
+
+# Semaphore global pour limiter les requêtes Ollama simultanées
+_ollama_semaphore = threading.Semaphore(_OLLAMA_PARALLEL_REQUESTS)
+
+print(f"🔧 CPU-ONLY Config: {_CPU_COUNT} threads détectés")
+print(f"   → {_OLLAMA_PARALLEL_REQUESTS} requêtes parallèles, {_THREADS_PER_REQUEST} threads/req")
+print(f"   → Utilisation CPU max: {_OLLAMA_PARALLEL_REQUESTS * _THREADS_PER_REQUEST}/{_CPU_COUNT} threads")
 
 
 class OllamaMediationSystem:
@@ -160,9 +191,6 @@ class OllamaMediationSystem:
     ) -> str:
         url = f"{self.ollama_url}/api/chat"
         
-        # Optimisation CPU : utiliser tous les cœurs disponibles (max 8)
-        num_threads = min(multiprocessing.cpu_count(), 8)
-        
         payload = {
             "model": model,
             "messages": messages,
@@ -170,7 +198,12 @@ class OllamaMediationSystem:
             "options": {
                 "temperature": self.temperature if temperature is None else temperature,
                 "num_predict": self.num_predict,
-                "num_threads": num_threads,  
+                # ===== OPTIONS CPU-ONLY =====
+                "num_gpu": 0,  # FORCE CPU - pas de GPU
+                "num_thread": _THREADS_PER_REQUEST,  # Threads CPU par requête
+                "num_ctx": 2048,  # Contexte réduit pour CPU (moins de RAM)
+                "num_batch": 128,  # Batch size réduit pour CPU (512 = GPU)
+                "low_vram": True,  # Mode économie mémoire
             },
         }
         r = requests.post(url, json=payload, timeout=(timeout_s or self.timeout_s))
@@ -179,57 +212,39 @@ class OllamaMediationSystem:
         return data["message"]["content"]
 
     # ---------------------------------------------------------------------
-    # Formatting oeuvre → texte prompt
+    # Formatting oeuvre → texte prompt (OPTIMISÉ - tokens réduits)
     # ---------------------------------------------------------------------
-    def oeuvre_to_prompt_text(self, payload: Dict[str, Any], *, max_chars: int = 7000) -> str:
+    def oeuvre_to_prompt_text(self, payload: Dict[str, Any], *, max_chars: int = 4000) -> str:
+        """Convertit une œuvre en texte de contexte compact pour le LLM"""
         titre = self.normalize_str(payload.get("title") or "Inconnu")
         artiste = self.normalize_str(payload.get("artist") or "Inconnu")
-        date = self.normalize_str(payload.get("date_oeuvre") or "Inconnue")
-        localisation = self.normalize_str(payload.get("room") or "Non précisée")
+        date = self.normalize_str(payload.get("date_oeuvre") or "")
         technique = self.normalize_str(payload.get("materiaux_technique") or "")
-        provenance = self.normalize_str(payload.get("provenance") or "")
 
+        # Troncature plus agressive pour réduire tokens
         description = self.truncate(payload.get("description") or "", max_chars)
-        analyse = self.truncate(payload.get("analyse_materielle_technique") or "", max_chars)
-        iconographie = self.truncate(payload.get("iconographie_symbolique") or "", max_chars)
-        contexte = self.truncate(payload.get("contexte_commande") or "", max_chars)
-        anecdotes = self.truncate(payload.get("anecdotes") or "", max_chars)
+        analyse = self.truncate(payload.get("analyse_materielle_technique") or "", 2000)
+        iconographie = self.truncate(payload.get("iconographie_symbolique") or "", 2000)
+        contexte = self.truncate(payload.get("contexte_commande") or "", 1500)
 
-        lines: List[str] = []
-        lines.append("ENTRÉE")
-        lines.append(f"- Titre : {titre}")
-        lines.append(f"- Artiste : {artiste}")
-        lines.append(f"- Date : {date}")
-        lines.append(f"- Salle / Localisation : {localisation}")
+        lines = [f"ŒUVRE: {titre} par {artiste}"]
+        if date:
+            lines.append(f"Date: {date}")
         if technique:
-            lines.append(f"- Technique : {technique}")
-        if provenance:
-            lines.append(f"- Provenance : {provenance}")
-
+            lines.append(f"Technique: {technique}")
         if description:
-            lines.append("\nDescription visuelle (à reformuler, ne pas citer mot à mot) :")
-            lines.append(description)
-
+            lines.append(f"\n{description}")
         if analyse:
-            lines.append("\nAnalyse matérielle et technique (à reformuler) :")
-            lines.append(analyse)
-
+            lines.append(f"\nAnalyse: {analyse}")
         if iconographie:
-            lines.append("\nIconographie et interprétation (à reformuler) :")
-            lines.append(iconographie)
-
+            lines.append(f"\nIconographie: {iconographie}")
         if contexte:
-            lines.append("\nContexte de création (à reformuler) :")
-            lines.append(contexte)
-        
-        if anecdotes:
-            lines.append("\nAnecdotes intéressantes (à reformuler) :")
-            lines.append(anecdotes)
+            lines.append(f"\nContexte: {contexte}")
 
         return "\n".join(lines)
 
     # ---------------------------------------------------------------------
-    # Prompt building
+    # Prompt building (OPTIMISE - tokens reduits de ~60%)
     # ---------------------------------------------------------------------
     def build_single_work_mediation_prompt(
         self,
@@ -240,66 +255,37 @@ class OllamaMediationSystem:
     ) -> List[Dict[str, str]]:
         bloc_criteres = self.formater_parametres_criteres(combinaison)
         
-        # target_word_count = int(duree_minutes * 130)
-        # word_range = f"{target_word_count - 20} à {target_word_count + 20}"
-        
-        if "enfant" in bloc_criteres.lower():
-            duree_minutes = 1.30
-        else : 
-            duree_minutes = 3
+        # Ajuster duree/mots selon profil
+        is_enfant = "enfant" in bloc_criteres.lower()
+        duree = 1.5 if is_enfant else 3
+        mots = "150-200" if is_enfant else "350-450"
 
+        # System prompt compact (~100 tokens au lieu de ~200)
         system = (
-            "Tu es un guide de musée expert, un caméléon capable d'adapter radicalement ton discours."
-            "Ton objectif est de produire un script d'audioguide destiné à être lu à voix haute."
-            "NE METS RIEN entre parenthèses (...) ou entre étoiles *...*."
-            "Ne commence JAMAIS par *(Ton chaleureux)* ou ce genre d'indication."
-            "Le texte doit être prêt à être lu tel quel par un acteur."
-            "1. VÉRACITÉ : Utilise uniquement la source fournie. N'invente rien."
-            "2. ADAPTATION : Incarne le style demandé par le choix des mots, pas par des indications entre parenthèses."
+            "Guide de musee expert. Genere un script audioguide oral. "
+            "REGLES: Pas de parentheses/asterisques/titres/markdown. "
+            "Texte pret a lire. Utilise UNIQUEMENT les infos fournies."
         )
 
-        user = f"""
-        PARAMÈTRES
-        - Langue : Français
-        - Durée cible : {duree_minutes} minute(s)
+        # User prompt compact (~250 tokens au lieu de ~500)
+        user = f"""Genere un texte audioguide ({mots} mots, ~{duree} min).
 
-        SOURCE UNIQUE
-        Utilise UNIQUEMENT les informations présentes dans l’entrée d’œuvre ci-dessous.
-        N’ajoute aucune information externe. Ne déduis rien.
-        Reformule : ne cite jamais mot à mot.
-        
-        Source de données (source unique)
-        {work_text}
+OEUVRE:
+{work_text}
 
-        --- RÈGLES D'ÉCRITURE ---
-        1. ORALITÉ : Écris pour être lu à voix haute. Fais des phrases courtes. Respire.
-        2. GUIDAGE : Utilise des verbes de perception ("Regardez, voyez, observez"). Guide l'œil du visiteur.
-        3. VÉRACITÉ : N'utilise QUE les informations fournies ci-dessus. N'invente AUCUNE date ou fait historique.
-        4. STRUCTURE :
-        - Accroche visuelle immédiate (détail ou impression générale).
-        - Description guidée (ce qu'on voit).
-        - Contexte/Sens (ce qui est compris à travers le filtre thématique choisi).
-        - Conclusion ouverte.
-        
-        INSTRUCTIONS DE PERSONNALISATION (CRUCIAL)
-        Tu dois modifier radicalement ton vocabulaire et ton approche selon ces règles :
-        {bloc_criteres}
-    
+STYLE:
+{bloc_criteres}
 
-        SORTIE ATTENDUE (TEXTE UNIQUEMENT)
-        Écris un texte de MEDIATION AUDIOGUIDE prêt à être lu à voix haute.
-        - Commence DIRECTEMENT par la première phrase parlée.
-        - INTERDIT : Pas de (parenthèses) ou *astérisques* décrivant l'ambiance.
-        - INTERDIT : Pas de tîtres 
-        - Pas de Markdown (gras, italique).
-        - Description progressive : de loin → de près → matière/lumière/geste → sens (uniquement si présent)
-        - Ton sobre et accessible adapté à un large public
-        - Pas d’injonctions émotionnelles (“ressentez”, “imaginez”…)
-        - Longueur adaptée à {duree_minutes} minute(s) de lecture (Ex : 120–160 mots/min)
-        - Un texte continu, fluide, sans aucun métalangage. Imagine que tu écris directement dans le prompteur de l'acteur.
-        """.strip()
+FORMAT:
+- Accroche visuelle -> Description -> Contexte -> Conclusion
+- Phrases courtes, verbes de perception (regardez, observez)
+- Ton sobre, pas d'injonctions emotionnelles
+- INTERDIT: parentheses, asterisques, markdown, titres, faits inventes"""
 
         return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+
 
     # ---------------------------------------------------------------------
     # Génération (une narration)
@@ -347,7 +333,7 @@ class OllamaMediationSystem:
             return {"success": False, "error": str(e), "text": ""}
 
     # ---------------------------------------------------------------------
-    # Génération style "pregenerate_artwork" (comme ton script)
+    # Generation style "pregenerate_artwork" (PARALLELE - optimisé VPS)
     # ---------------------------------------------------------------------
     def pregenerate_artwork(
         self,
@@ -360,127 +346,115 @@ class OllamaMediationSystem:
         force_regenerate: bool = False,
     ) -> Dict[str, Any]:
         """
-        "Prégénère" une liste de narrations (une par combinaison).
-        Ici, pas de BDD: on retourne un dict résultats + stats, mais structure très proche du script.
+        Pregenere une liste de narrations en PARALLELE.
+        Optimisé pour VPS haute performance (96 threads).
+        Utilise _OLLAMA_PARALLEL_REQUESTS workers dynamiques.
         """
-
         start_time = time.time()
-
         title = artwork.get("title", f"ID {oeuvre_id}")
-        
         self.default_model = model
 
-        print(f"\n{'='*80}")
-        print(f"🎨 GÉNÉRATION ŒUVRE ID {oeuvre_id}")
-        print(f"{'='*80}")
-        print(f"📖 Œuvre: {title}")
-        
-        print(f"Modèle utilisé: {self.default_model}")
-        
+        print(f"\n{'='*60}")
+        print(f"🎨 GENERATION ID {oeuvre_id}: {title[:40]}")
+        print(f"⚙️ Config: {_OLLAMA_PARALLEL_REQUESTS} workers, {_THREADS_PER_REQUEST} threads/req")
+        print(f"{'='*60}")
 
-        # Vérif Ollama
         if not self.check_ollama_available():
-            print("⚠️  ATTENTION: Ollama non disponible (vérifie OLLAMA_API_URL / service)")
-
-        print("\n🤖 Génération Ollama (séquentiel)")
+            print("⚠️ Ollama non disponible")
+            return {"success": False, "error": "Ollama non disponible", 
+                    "oeuvre_id": oeuvre_id, "title": title}
 
         stats = {"generated": 0, "updated": 0, "skipped": 0, "errors": 0}
         results: List[Dict[str, Any]] = []
+        
+        # Filtrer les combinaisons déjà existantes (batch check)
+        to_generate = []
+        for combinaison in combinaisons:
+            if not force_regenerate:
+                existing = self._check_existing(oeuvre_id, combinaison)
+                if existing:
+                    stats['skipped'] += 1
+                    continue
+            to_generate.append(combinaison)
+        
+        print(f"📊 {len(to_generate)}/{len(combinaisons)} à générer (skip: {stats['skipped']})")
+        
+        if not to_generate:
+            return {"success": True, "oeuvre_id": oeuvre_id, "title": title,
+                    "stats": stats, "duration": 0, "results": results}
 
-        total = len(combinaisons)
-        for i, combinaison in enumerate(combinaisons, 1):
+        def generate_one(idx_comb: Tuple[int, Dict]) -> Dict:
+            """Génère une narration avec semaphore"""
+            idx, combinaison = idx_comb
             label = self._format_combinaison_label(combinaison)
-            print(f"   [{i}/{total}] {label}...", end=" ", flush=True)
-
-            # Ici "skip" n'a de sens que si tu branches une BDD/cache.
-            # On le garde pour ressembler au script.
-            # if not force_regenerate:
-            #     stats["skipped"] += 1
-            #     print("⏭️  Skip (force_regenerate=False)")
-            #     continue
             
-            # if not force_regenerate:
-            existing = self._check_existing(oeuvre_id, combinaison)
-            if existing:
-                stats['skipped'] += 1
-                print("⏭️  Skip la génération car elle existe déjà.")
-                continue
-
-            res = self.generate_mediation_for_one_work(
-                artwork=artwork,
-                combinaison=combinaison,
-                duree_minutes=duree_minutes,
-                model=model,
-            )
-
-            if res["success"]:
-                stats["generated"] += 1
-                print("✅ OK")
-                results.append(
-                    {
-                        "oeuvre_id": oeuvre_id,
-                        "title": title,
-                        "combinaison": combinaison,
-                        "text": res["text"],
-                    }
+            with _ollama_semaphore:  # Semaphore dynamique selon CPU
+                res = self.generate_mediation_for_one_work(
+                    artwork=artwork,
+                    combinaison=combinaison,
+                    duree_minutes=duree_minutes,
+                    model=model,
                 )
-                
-                
-                print(" combinaison : " + str(combinaison))
-                print("texte généré : " + res["text"])
-                
-                # SAUVEGARDER
-                text_clean = res["text"].replace("*", "")
-                
-                pregen_id = add_pregeneration(
-                    oeuvre_id=oeuvre_id,
-                    criteria_dict=combinaison,
-                    pregeneration_text=text_clean
-                )
-                
-                
-                if pregen_id:
-                    if force_regenerate:
-                        stats['updated'] += 1
-                        print(f"✅ MAJ (ID: {pregen_id})")
+            
+            return {"idx": idx, "combinaison": combinaison, "label": label, 
+                    "result": res, "oeuvre_id": oeuvre_id, "title": title}
+
+        # Parallélisation optimisée avec workers dynamiques
+        print(f"🚀 Génération parallèle ({_OLLAMA_PARALLEL_REQUESTS} workers)...")
+        completed = 0
+        total = len(to_generate)
+        
+        with ThreadPoolExecutor(max_workers=_OLLAMA_PARALLEL_REQUESTS) as executor:
+            futures = {executor.submit(generate_one, (i, c)): i 
+                      for i, c in enumerate(to_generate)}
+            
+            for future in as_completed(futures):
+                completed += 1
+                try:
+                    data = future.result()
+                    res = data["result"]
+                    combinaison = data["combinaison"]
+                    
+                    if res["success"]:
+                        text_clean = res["text"].replace("*", "")
+                        pregen_id = add_pregeneration(
+                            oeuvre_id=oeuvre_id,
+                            criteria_dict=combinaison,
+                            pregeneration_text=text_clean
+                        )
+                        
+                        if pregen_id:
+                            if force_regenerate:
+                                stats['updated'] += 1
+                            else:
+                                stats['generated'] += 1
+                            # Affichage compact avec progression
+                            print(f"  [{completed}/{total}] ✅ {data['label'][:30]}")
+                        
+                        results.append({
+                            "oeuvre_id": oeuvre_id, "title": title,
+                            "combinaison": combinaison, "text": text_clean
+                        })
                     else:
-                        stats['generated'] += 1
-                        print(f"✨ OK (ID: {pregen_id})")
-            else:
-                stats["errors"] += 1
-                print(f"❌ {str(res['error'])[:60]}")
-                results.append(
-                    {
-                        "oeuvre_id": oeuvre_id,
-                        "title": title,
-                        "combinaison": combinaison,
-                        "error": res["error"],
-                        "text": "",
-                    }
-                )
+                        stats["errors"] += 1
+                        print(f"  [{completed}/{total}] ❌ {str(res['error'])[:40]}")
+                        results.append({
+                            "oeuvre_id": oeuvre_id, "title": title,
+                            "combinaison": combinaison, "error": res["error"], "text": ""
+                        })
+                except Exception as e:
+                    stats["errors"] += 1
+                    print(f"  [{completed}/{total}] ❌ Exception: {str(e)[:40]}")
 
         duration = time.time() - start_time
+        speed = stats['generated'] / duration if duration > 0 else 0
+        
+        print(f"\n📊 RÉSUMÉ: ✨{stats['generated']} 🔄{stats['updated']} ⏭️{stats['skipped']} ❌{stats['errors']}")
+        print(f"⏱️ {duration:.1f}s | ⚡ {speed:.2f} narr/sec")
 
-        print(f"\n{'='*80}")
-        print("📊 RÉSUMÉ GÉNÉRATION")
-        print(f"{'='*80}")
-        print(f"✨ Générées: {stats['generated']}")
-        print(f"🔄 Mises à jour: {stats['updated']}")
-        print(f"⏭️  Ignorées: {stats['skipped']}")
-        print(f"❌ Erreurs: {stats['errors']}")
-        print(f"⏱️  Durée: {duration:.1f}s")
+        return {"success": True, "oeuvre_id": oeuvre_id, "title": title,
+                "stats": stats, "duration": duration, "results": results}
 
-        if stats["generated"] > 0 and duration > 0:
-            print(f"⚡ Vitesse: {stats['generated']/duration:.2f} narrations/seconde")
-
-        return {    # il manque la section sauvegardr
-            "success": True,
-            "oeuvre_id": oeuvre_id,
-            "title": title,
-            "stats": stats,
-            "duration": duration,
-            "results": results,
-        }
 
     # ---------------------------------------------------------------------
     # Helpers

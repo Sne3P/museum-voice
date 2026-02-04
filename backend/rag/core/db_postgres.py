@@ -347,44 +347,7 @@ def get_artwork_anecdotes(oeuvre_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
-# ===== FONCTIONS CHUNKS (RAG) =====
-
-def add_chunk(oeuvre_id: int, chunk_text: str, chunk_index: int = 0) -> int:
-    """Ajoute un chunk pour RAG"""
-    conn = _connect_postgres()
-    cur = conn.cursor()
-    
-    try:
-        cur.execute("""
-            INSERT INTO chunk (oeuvre_id, chunk_text, chunk_index)
-            VALUES (%s, %s, %s)
-            RETURNING chunk_id
-        """, (oeuvre_id, chunk_text, chunk_index))
-        
-        chunk_id = cur.fetchone()['chunk_id']
-        conn.commit()
-        return chunk_id
-        
-    finally:
-        cur.close()
-        conn.close()
-
-
-def get_artwork_chunks(oeuvre_id: int) -> List[Dict[str, Any]]:
-    """Récupère chunks d'une œuvre"""
-    conn = _connect_postgres()
-    cur = conn.cursor()
-    
-    try:
-        cur.execute("""
-            SELECT * FROM chunk 
-            WHERE oeuvre_id = %s 
-            ORDER BY chunk_index
-        """, (oeuvre_id,))
-        return cur.fetchall()
-    finally:
-        cur.close()
-        conn.close()
+# ===== FONCTIONS CRITÈRES =====
 
 def get_criteres() -> Dict[str, List[Any]]:
     """

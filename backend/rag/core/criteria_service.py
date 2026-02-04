@@ -28,7 +28,7 @@ class CriteriaService:
         cur = conn.cursor()
         
         query = """
-            SELECT type, label, ordre, is_required
+            SELECT type_id, type, label, description, ordre
             FROM criteria_types
             ORDER BY ordre
         """
@@ -39,10 +39,11 @@ class CriteriaService:
         criteria_types = []
         for row in rows:
             criteria_types.append({
+                'type_id': row['type_id'],
                 'type': row['type'],
                 'label': row['label'],
-                'ordre': row['ordre'],
-                'is_required': row['is_required']
+                'description': row['description'],
+                'ordre': row['ordre']
             })
         
         cur.close()
@@ -218,31 +219,17 @@ class CriteriaService:
             cur.close()
             conn.close()
     
-    def get_required_criteria_types(self) -> List[str]:
-        """Récupère la liste des types de critères obligatoires
+    def get_all_criteria_types(self) -> List[str]:
+        """Récupère la liste de tous les types de critères
         
         Returns:
-            Liste des types obligatoires (ex: ['age', 'thematique'])
+            Liste des types (ex: ['age', 'thematique', 'style_texte'])
         """
-        conn = _connect_postgres()
-        cur = conn.cursor()
-        
-        try:
-            cur.execute("""
-                SELECT type
-                FROM criteria_types
-                WHERE is_required = true
-                ORDER BY ordre
-            """)
-            
-            return [row['type'] for row in cur.fetchall()]
-            
-        finally:
-            cur.close()
-            conn.close()
+        types = self.get_criteria_types()
+        return [t['type'] for t in types]
     
-    def validate_required_criteria(self, criteria_dict: Dict[str, int]) -> Tuple[bool, List[str]]:
-        """Valide que tous les critères obligatoires sont présents
+    def validate_all_criteria(self, criteria_dict: Dict[str, int]) -> Tuple[bool, List[str]]:
+        """Valide que tous les types de critères ont une sélection
         
         Args:
             criteria_dict: Dict de criteria_ids par type
@@ -250,9 +237,9 @@ class CriteriaService:
         Returns:
             (is_valid, missing_types)
         """
-        required_types = self.get_required_criteria_types()
+        all_types = self.get_all_criteria_types()
         provided_types = set(criteria_dict.keys())
-        missing_types = [t for t in required_types if t not in provided_types]
+        missing_types = [t for t in all_types if t not in provided_types]
         
         return (len(missing_types) == 0, missing_types)
     

@@ -13,10 +13,11 @@ import { getUploadUrl } from '@/lib/uploads'
 
 // ===== TYPES =====
 interface CriteriaType {
+  type_id: number
   type: string
   label: string
+  description?: string
   ordre: number
-  is_required: boolean
 }
 
 interface Criteria {
@@ -36,7 +37,16 @@ interface CriteriaGroup {
 }
 
 // ===== MODAL TYPES =====
-type ModalType = 'create-type' | 'edit-type' | 'create-criteria' | 'edit-criteria' | null
+type ModalType = 'create-type' | 'edit-type' | 'create-criteria' | 'edit-criteria' | 'confirm-delete' | null
+
+interface DeleteConfirmData {
+  type: 'criteria' | 'type'
+  id: number
+  label: string
+  criteriaCount?: number
+  narrationCount?: number
+  loading?: boolean
+}
 
 interface ModalState {
   type: ModalType
@@ -77,17 +87,35 @@ export default function ProfilsPage() {
     loadData()
   }, [authLoading, isAuthenticated, hasPermission, router])
 
+  // ===== HELPER: Invalider le cache backend après modifications =====
+  const invalidateBackendCache = async () => {
+    try {
+      await fetch('/api/criterias/clear-cache', { method: 'POST' })
+      console.log('✅ Cache backend invalidé')
+    } catch (error) {
+      console.warn('⚠️ Erreur invalidation cache:', error)
+    }
+  }
+
   // ===== LOAD DATA =====
   const loadData = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/api/criterias')
-      const data = await response.json()
+      // Charger les types depuis criteria_types (source de vérité)
+      const typesResponse = await fetch('/api/criteria-types')
+      const typesData = await typesResponse.json()
+      
+      // Charger tous les critères
+      const criteriasResponse = await fetch('/api/criterias')
+      const criteriasData = await criteriasResponse.json()
 
-      if (data.success && data.criterias) {
-        // Grouper par type
+      if (typesData.success && criteriasData.success) {
+        const criteriaTypes: CriteriaType[] = typesData.types || []
+        const criterias: Criteria[] = criteriasData.criterias || []
+        
+        // Grouper les critères par type
         const grouped: Record<string, Criteria[]> = {}
-        data.criterias.forEach((c: Criteria) => {
+        criterias.forEach((c: Criteria) => {
           if (!grouped[c.type]) grouped[c.type] = []
           grouped[c.type].push(c)
         })
@@ -96,25 +124,21 @@ export default function ProfilsPage() {
         Object.keys(grouped).forEach(type => {
           grouped[type].sort((a, b) => a.ordre - b.ordre)
         })
-
-        // Récupérer les types depuis les critères existants
-        const types = Array.from(new Set(data.criterias.map((c: Criteria) => c.type))) as string[]
         
-        const groupsList: CriteriaGroup[] = types.map(type => ({
-          type_info: {
-            type,
-            label: type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' '),
-            ordre: 0,
-            is_required: false
-          },
-          criterias: grouped[type] || []
-        })).sort((a, b) => a.type_info.label.localeCompare(b.type_info.label))
+        // Construire les groupes à partir des types (pas des critères)
+        // Cela inclut les types vides (sans critères)
+        const groupsList: CriteriaGroup[] = criteriaTypes
+          .sort((a, b) => a.ordre - b.ordre)
+          .map(typeInfo => ({
+            type_info: typeInfo,
+            criterias: grouped[typeInfo.type] || []
+          }))
 
         setGroups(groupsList)
 
         // Calculer stats
         const totalTypes = groupsList.length
-        const totalCriterias = data.criterias.length
+        const totalCriterias = criterias.length
         
         // Calcul des combinaisons possibles
         // Pour chaque type, nombre d'options. Produit = nombre de combinaisons
@@ -149,7 +173,7 @@ export default function ProfilsPage() {
   }
 
   // ===== CRITERIA TYPE CRUD =====
-  const handleCreateType = async (formData: { label: string }) => {
+  const handleCreateType = async (formData: { label: string; description?: string }) => {
     const type = generateTechnicalName(formData.label)
     
     try {
@@ -160,21 +184,28 @@ export default function ProfilsPage() {
         return
       }
 
-      // Le type sera créé automatiquement lors de l'ajout du premier critère
-      alert(`Type "${formData.label}" prêt. Ajoutez maintenant des critères.`)
-      setModal({ type: null })
-      
-      // Ajouter localement pour l'UI
-      setGroups([...groups, {
-        type_info: {
+      // Créer le type via l'API
+      const response = await fetch('/api/criteria-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           type,
           label: formData.label,
-          ordre: groups.length,
-          is_required: false
-        },
-        criterias: []
-      }])
-      
+          description: formData.description || null,
+          ordre: groups.length
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        await invalidateBackendCache()
+        alert(`Type "${formData.label}" créé avec succès`)
+        setModal({ type: null })
+        loadData()
+      } else {
+        alert(result.error || 'Erreur lors de la création du type')
+      }
     } catch (error) {
       console.error('Erreur création type:', error)
       alert('Erreur lors de la création du type')
@@ -183,24 +214,47 @@ export default function ProfilsPage() {
 
   const handleDeleteType = async (type: string, label: string) => {
     const group = groups.find(g => g.type_info.type === type)
-    const count = group?.criterias.length || 0
-    
-    if (!confirm(
-      `Supprimer le type "${label}" ?\n\n` +
-      `Cela supprimera aussi ${count} critère(s) associé(s) et toutes les prégénérations liées.\n\n` +
-      `Cette action est IRRÉVERSIBLE.`
-    )) return
+    if (!group) return
 
+    // Charger l'impact avant de montrer le modal
     try {
-      // Supprimer tous les critères de ce type
-      const criteriaIds = group?.criterias.map(c => c.criteria_id) || []
+      const response = await fetch(`/api/criteria-types/impact?type_id=${group.type_info.type_id}`)
+      const data = await response.json()
       
-      for (const id of criteriaIds) {
-        await fetch(`/api/criterias?criteria_id=${id}`, { method: 'DELETE' })
+      if (data.success) {
+        setModal({
+          type: 'confirm-delete',
+          data: {
+            type: 'type',
+            id: group.type_info.type_id,
+            label: label,
+            criteriaCount: data.criteria_count,
+            narrationCount: data.narration_count
+          } as DeleteConfirmData
+        })
+      } else {
+        alert('Erreur lors du calcul de l\'impact')
       }
+    } catch (error) {
+      console.error('Erreur:', error)
+      alert('Erreur lors du calcul de l\'impact')
+    }
+  }
 
-      alert('Type supprimé avec succès')
-      loadData()
+  const executeDeleteType = async (typeId: number) => {
+    try {
+      const response = await fetch(`/api/criteria-types?type_id=${typeId}`, { 
+        method: 'DELETE' 
+      })
+      const result = await response.json()
+
+      if (result.success) {
+        await invalidateBackendCache()
+        setModal({ type: null })
+        loadData()
+      } else {
+        alert(result.error || 'Erreur lors de la suppression')
+      }
     } catch (error) {
       console.error('Erreur suppression type:', error)
       alert('Erreur lors de la suppression')
@@ -237,6 +291,7 @@ export default function ProfilsPage() {
       const result = await response.json()
 
       if (result.success) {
+        await invalidateBackendCache()
         alert('Critère créé avec succès')
         setModal({ type: null })
         loadData()
@@ -271,6 +326,7 @@ export default function ProfilsPage() {
       const result = await response.json()
 
       if (result.success) {
+        await invalidateBackendCache()
         alert('Critère modifié avec succès')
         setModal({ type: null })
         loadData()
@@ -284,12 +340,31 @@ export default function ProfilsPage() {
   }
 
   const handleDeleteCriteria = async (criteriaId: number, label: string) => {
-    if (!confirm(
-      `Supprimer "${label}" ?\n\n` +
-      `Toutes les prégénérations liées seront aussi supprimées.\n\n` +
-      `Cette action est IRRÉVERSIBLE.`
-    )) return
+    // Charger l'impact avant de montrer le modal
+    try {
+      const response = await fetch(`/api/criterias/impact?criteria_id=${criteriaId}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setModal({
+          type: 'confirm-delete',
+          data: {
+            type: 'criteria',
+            id: criteriaId,
+            label: label,
+            narrationCount: data.narration_count
+          } as DeleteConfirmData
+        })
+      } else {
+        alert('Erreur lors du calcul de l\'impact')
+      }
+    } catch (error) {
+      console.error('Erreur:', error)
+      alert('Erreur lors du calcul de l\'impact')
+    }
+  }
 
+  const executeDeleteCriteria = async (criteriaId: number) => {
     try {
       const response = await fetch(`/api/criterias?criteria_id=${criteriaId}`, {
         method: 'DELETE'
@@ -298,7 +373,8 @@ export default function ProfilsPage() {
       const result = await response.json()
 
       if (result.success) {
-        alert('Critère supprimé avec succès')
+        await invalidateBackendCache()
+        setModal({ type: null })
         loadData()
       } else {
         alert(result.error || 'Erreur lors de la suppression')
@@ -430,6 +506,20 @@ export default function ProfilsPage() {
           onSave={handleEditCriteria}
         />
       )}
+      {modal.type === 'confirm-delete' && modal.data && (
+        <DeleteConfirmModal
+          data={modal.data as DeleteConfirmData}
+          onClose={() => setModal({ type: null })}
+          onConfirm={() => {
+            const d = modal.data as DeleteConfirmData
+            if (d.type === 'criteria') {
+              executeDeleteCriteria(d.id)
+            } else {
+              executeDeleteType(d.id)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -440,7 +530,7 @@ function CriteriaGroupCard({
   onAddCriteria, 
   onEditCriteria, 
   onDeleteCriteria,
-  onDeleteType 
+  onDeleteType
 }: {
   group: CriteriaGroup
   onAddCriteria: () => void
@@ -455,7 +545,7 @@ function CriteriaGroupCard({
           <div>
             <CardTitle>{group.type_info.label}</CardTitle>
             <CardDescription>
-              {group.criterias.length} critère(s)
+              {group.criterias.length} critère(s) • Type: <code className="text-xs bg-gray-200 px-1 rounded">{group.type_info.type}</code>
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -554,9 +644,10 @@ function CriteriaGroupCard({
 // ===== MODALS =====
 function CreateTypeModal({ onClose, onCreate }: {
   onClose: () => void
-  onCreate: (data: { label: string }) => void
+  onCreate: (data: { label: string; description?: string }) => void
 }) {
   const [label, setLabel] = useState('')
+  const [description, setDescription] = useState('')
 
   const generateTechnicalName = (label: string): string => {
     return label
@@ -574,7 +665,7 @@ function CreateTypeModal({ onClose, onCreate }: {
       alert('Le nom du type est requis')
       return
     }
-    onCreate({ label: label.trim() })
+    onCreate({ label: label.trim(), description: description.trim() || undefined })
   }
 
   return (
@@ -603,8 +694,20 @@ function CreateTypeModal({ onClose, onCreate }: {
                 autoFocus
               />
               <p className="text-xs text-gray-500 mt-1">
-                L'identifiant technique sera généré automatiquement
+                Identifiant technique : <code className="bg-gray-100 px-1 rounded">{generateTechnicalName(label) || '...'}</code>
               </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Description optionnelle du type de critère"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={2}
+              />
             </div>
             <div className="flex gap-3">
               <Button
@@ -1053,6 +1156,99 @@ function EditCriteriaModal({ criteria, onClose, onSave }: {
             </div>
           </CardContent>
         </form>
+      </Card>
+    </div>
+  )
+}
+
+// ===== DELETE CONFIRM MODAL =====
+function DeleteConfirmModal({ data, onClose, onConfirm }: {
+  data: DeleteConfirmData
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const handleConfirm = async () => {
+    setIsDeleting(true)
+    await onConfirm()
+    setIsDeleting(false)
+  }
+
+  const hasImpact = (data.criteriaCount && data.criteriaCount > 0) || (data.narrationCount && data.narrationCount > 0)
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="max-w-md w-full">
+        <CardHeader className="pb-3 bg-red-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              <CardTitle className="text-red-700">Confirmer la suppression</CardTitle>
+            </div>
+            <Button onClick={onClose} variant="ghost" size="icon" className="h-8 w-8" disabled={isDeleting}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          <p className="text-gray-700">
+            Êtes-vous sûr de vouloir supprimer <strong>"{data.label}"</strong> ?
+          </p>
+
+          {hasImpact && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-2">
+              <p className="text-amber-800 font-medium flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                Impact de la suppression :
+              </p>
+              <ul className="text-sm text-amber-700 space-y-1 ml-6 list-disc">
+                {data.type === 'type' && data.criteriaCount && data.criteriaCount > 0 && (
+                  <li><strong>{data.criteriaCount}</strong> critère(s) seront supprimés</li>
+                )}
+                {data.narrationCount && data.narrationCount > 0 && (
+                  <li><strong>{data.narrationCount}</strong> narration(s) pré-générée(s) seront supprimées</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          <p className="text-red-600 text-sm font-medium">
+            ⚠️ Cette action est IRRÉVERSIBLE
+          </p>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              onClick={onClose}
+              variant="outline"
+              className="flex-1"
+              disabled={isDeleting}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              variant="destructive"
+              className="flex-1"
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Suppression...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
       </Card>
     </div>
   )

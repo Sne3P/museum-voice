@@ -5,6 +5,7 @@ SYSTÈME VRAIMENT DYNAMIQUE - Support de N critères variables (pas seulement 3)
 
 import psycopg2
 import json
+from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Tuple
 from .db_postgres import _connect_postgres
 
@@ -237,7 +238,7 @@ def get_artwork_pregenerations(oeuvre_id: int) -> List[Dict[str, Any]]:
 
 
 def get_pregeneration_stats() -> Dict[str, Any]:
-    """Statistiques sur les prégénérations"""
+    """Statistiques sur les prégénérations (système dynamique N critères)"""
     conn = _connect_postgres()
     cur = conn.cursor()
     
@@ -255,26 +256,21 @@ def get_pregeneration_stats() -> Dict[str, Any]:
         """)
         by_artwork = cur.fetchall()
         
-        # Par critères
-        cur.execute("""
-            SELECT age_cible, COUNT(*) as count
-            FROM pregenerations
-            GROUP BY age_cible
-        """)
-        by_age = cur.fetchall()
+        # Nombre d'œuvres avec prégénérations
+        cur.execute("SELECT COUNT(DISTINCT oeuvre_id) as count FROM pregenerations")
+        artworks_with_pregen = cur.fetchone()['count']
         
         return {
             'total': total,
-            'by_artwork': by_artwork,
-            'by_age': {row['age_cible']: row['count'] for row in by_age}
+            'by_artwork': [dict(row) for row in by_artwork],
+            'artworks_with_pregen': artworks_with_pregen
         }
     finally:
         cur.close()
         conn.close()
 
 
-def check_existing_pregeneration(oeuvre_id: int, age_cible: str,
-                                 thematique: str, style_texte: str) -> bool:
-    """Vérifie si une prégénération existe"""
-    result = get_pregeneration(oeuvre_id, age_cible, thematique, style_texte)
+def check_existing_pregeneration(oeuvre_id: int, criteria_dict: Dict[str, int]) -> bool:
+    """Vérifie si une prégénération existe pour une combinaison de critères"""
+    result = get_pregeneration(oeuvre_id, criteria_dict)
     return result is not None

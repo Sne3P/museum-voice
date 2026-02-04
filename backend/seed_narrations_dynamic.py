@@ -33,15 +33,10 @@ def connect_db():
     )
 
 def get_criteria_types_and_options(conn):
-    """Récupère tous les types de critères et leurs options depuis la DB
-    
-    Returns:
-        Dict[str, List[Dict]] - {"age": [{criteria_id: 1, name: "enfant", label: "Enfant", description: "...", ai_indication: "...", ...}], ...}
-    """
+    """Récupère tous les types de critères et leurs options depuis la DB"""
     with conn.cursor() as cur:
-        # 1. Charger les types de critères (ordre important)
         cur.execute("""
-            SELECT type, label, ordre, is_required
+            SELECT type, label, ordre
             FROM criteria_types
             ORDER BY ordre
         """)
@@ -53,8 +48,7 @@ def get_criteria_types_and_options(conn):
         
         print(f"\n📋 {len(types)} types de critères trouvés:")
         for t in types:
-            req_flag = "✅ REQUIS" if t['is_required'] else "⚪ Optionnel"
-            print(f"   [{t['ordre']}] {t['type']} - {t['label']} ({req_flag})")
+            print(f"   [{t['ordre']}] {t['type']} - {t['label']}")
         
         # 2. Charger les options pour chaque type (AVEC tous les détails pour Ollama)
         criteria_map = {}

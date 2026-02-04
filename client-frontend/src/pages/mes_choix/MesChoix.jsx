@@ -68,17 +68,18 @@ const MesChoix = () => {
     }));
   }, []);
 
-  // Validation : tous les critères requis doivent être sélectionnés
+  // Validation : tous les critères doivent être sélectionnés
   const isFormValid = () => {
     if (timeValue <= 0) return false;
     
-    const requiredTypes = criteriaTypes.filter(t => t.is_required);
-    return requiredTypes.every(type => selectedCriterias[type.type_name]);
+    // Tous les types de critères doivent avoir une sélection
+    return criteriaTypes.length > 0 && 
+           criteriaTypes.every(type => selectedCriterias[type.type_name]);
   };
 
   const handleSendData = async () => {
     if (!isFormValid()) {
-      alert('⚠️ Veuillez remplir tous les choix requis avant de générer le parcours');
+      alert('⚠️ Veuillez sélectionner un choix pour chaque critère avant de générer le parcours');
       return;
     }
 

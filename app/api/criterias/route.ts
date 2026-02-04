@@ -92,8 +92,8 @@ export async function POST(request: NextRequest) {
     const typeLabel = type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ')
     
     await pool.query(
-      `INSERT INTO criteria_types (type, label, ordre, is_required)
-       VALUES ($1, $2, 0, false)
+      `INSERT INTO criteria_types (type, label, ordre)
+       VALUES ($1, $2, 0)
        ON CONFLICT (type) DO NOTHING`,
       [type, typeLabel]
     )

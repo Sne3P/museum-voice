@@ -200,6 +200,14 @@ CREATE TABLE IF NOT EXISTS pregenerations (
 CREATE INDEX IF NOT EXISTS idx_pregenerations_criteria_combination 
     ON pregenerations USING GIN (criteria_combination);
 
+-- Index pour requêtes temporelles (prégénérations récentes)
+CREATE INDEX IF NOT EXISTS idx_pregenerations_updated_at 
+    ON pregenerations(updated_at DESC);
+
+-- Index composite pour recherche par œuvre + date
+CREATE INDEX IF NOT EXISTS idx_pregenerations_oeuvre_updated 
+    ON pregenerations(oeuvre_id, updated_at DESC);
+
 -- ===============================
 -- TABLE : Museum Settings (Paramètres globaux du musée)
 -- ===============================
@@ -222,7 +230,6 @@ CREATE TABLE IF NOT EXISTS criteria_types (
     label TEXT NOT NULL,               -- 'Âge du visiteur', 'Thématique', 'Style de texte'
     description TEXT,                  -- Description du critère
     ordre INTEGER DEFAULT 0,           -- Ordre d'affichage dans les formulaires
-    is_required BOOLEAN DEFAULT TRUE,  -- Si le critère est obligatoire pour générer
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -264,21 +271,19 @@ CREATE INDEX IF NOT EXISTS idx_pregeneration_criterias_criteria
     ON pregeneration_criterias(criteria_id);
 
 -- ===============================
--- TABLES LEGACY SUPPRIMÉES
--- (generated_guide, criterias_guide - jamais utilisées)
--- ===============================
-
+-- INDEX PERFORMANCES
 -- ===============================
 CREATE INDEX IF NOT EXISTS idx_oeuvres_artiste ON oeuvres(artiste_id);
 CREATE INDEX IF NOT EXISTS idx_oeuvres_mouvement ON oeuvres(mouvement_id);
 CREATE INDEX IF NOT EXISTS idx_pregenerations_oeuvre ON pregenerations(oeuvre_id);
+CREATE INDEX IF NOT EXISTS idx_pregenerations_updated_at ON pregenerations(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pregenerations_oeuvre_updated ON pregenerations(oeuvre_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sections_oeuvre ON sections(oeuvre_id);
 CREATE INDEX IF NOT EXISTS idx_anecdotes_oeuvre ON anecdotes(oeuvre_id);
 
 -- ===============================
--- INDEX ET TABLE LEGACY SUPPRIMÉS
+-- INDEX LEGACY SUPPRIMÉS
 -- (idx_chunk_oeuvre, idx_embeddings_chunk - tables chunk/embeddings supprimées)
--- (criterias_pregeneration - doublon de pregeneration_criterias)
 -- ===============================
 
 -- ===============================
@@ -306,10 +311,10 @@ CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
 CREATE INDEX IF NOT EXISTS idx_points_entity_id ON points(entity_id);
 CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source_id);
 CREATE INDEX IF NOT EXISTS idx_relations_cible ON relations(cible_id);
--- INDEX LEGACY SUPPRIMÉ : idx_chunk_oeuvre_id (table chunk supprimée)
 
 -- ===============================
 -- TABLE : Users (Authentification)
+-- Note: musee_id = 'default' car 1 instance Docker = 1 musée
 -- ===============================
 CREATE TABLE IF NOT EXISTS users (
   user_id SERIAL PRIMARY KEY,
@@ -317,7 +322,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NOT NULL,
   role VARCHAR(20) NOT NULL CHECK (role IN ('super_admin', 'admin_musee', 'accueil')),
   name VARCHAR(100) NOT NULL,
-  musee_id VARCHAR(50),
+  musee_id VARCHAR(50) DEFAULT 'default',
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT NOW(),
   last_login TIMESTAMP
@@ -346,11 +351,11 @@ INSERT INTO museum_settings (setting_key, setting_value, description, category) 
 ('opening_hours', '{"lundi": {"open": "09:00", "close": "18:00", "closed": false}, "mardi": {"open": "09:00", "close": "18:00", "closed": false}, "mercredi": {"open": "09:00", "close": "18:00", "closed": false}, "jeudi": {"open": "09:00", "close": "18:00", "closed": false}, "vendredi": {"open": "09:00", "close": "18:00", "closed": false}, "samedi": {"open": "10:00", "close": "19:00", "closed": false}, "dimanche": {"open": "10:00", "close": "18:00", "closed": false}}'::jsonb, 'Horaires d''ouverture du musée', 'general')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- Insertion des types de critères par défaut
-INSERT INTO criteria_types (type, label, description, ordre, is_required) VALUES
-('age', 'Âge du visiteur', 'Profil d''âge pour adapter le niveau de langage', 1, true),
-('thematique', 'Thématique', 'Angle d''approche de l''œuvre', 2, true),
-('style_texte', 'Style de narration', 'Ton et structure du texte généré', 3, true)
+-- Insertion des types de critères par défaut (is_required=false : l'admin décide)
+INSERT INTO criteria_types (type, label, description, ordre) VALUES
+('age', 'Âge du visiteur', 'Profil d''age pour adapter le niveau de langage', 1),
+('thematique', 'Thématique', 'Angle d''approche de l''œuvre', 2),
+('style_texte', 'Style de narration', 'Ton et structure du texte généré', 3)
 ON CONFLICT (type) DO NOTHING;
 
 -- Insertion des paramètres de critères par défaut

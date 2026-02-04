@@ -15,8 +15,7 @@ export async function GET() {
         type,
         label,
         description,
-        ordre,
-        is_required
+        ordre
       FROM criteria_types
       ORDER BY ordre, type
     `)
@@ -41,11 +40,13 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { type_name, label, description, icon, ordre, is_required } = body
+    // Accepter type_name ou type pour compatibilité
+    const type = body.type || body.type_name
+    const { label, description, ordre } = body
 
-    if (!type_name || !label) {
+    if (!type || !label) {
       return NextResponse.json(
-        { success: false, error: 'type_name et label sont requis' },
+        { success: false, error: 'type et label sont requis' },
         { status: 400 }
       )
     }
@@ -53,10 +54,10 @@ export async function POST(request: NextRequest) {
     const pool = await getPostgresPool()
 
     const result = await pool.query(
-      `INSERT INTO criteria_types (type_name, label, description, icon, ordre, is_required, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, true)
+      `INSERT INTO criteria_types (type, label, description, ordre)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [type_name, label, description, icon, ordre || 0, is_required !== undefined ? is_required : true]
+      [type, label, description, ordre || 0]
     )
 
     return NextResponse.json({
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { type_id, label, description, icon, ordre, is_required, is_active } = body
+    const { type_id, label, description, ordre } = body
 
     if (!type_id) {
       return NextResponse.json(
@@ -110,21 +111,9 @@ export async function PUT(request: NextRequest) {
       updates.push(`description = $${paramCount++}`)
       values.push(description)
     }
-    if (icon !== undefined) {
-      updates.push(`icon = $${paramCount++}`)
-      values.push(icon)
-    }
     if (ordre !== undefined) {
       updates.push(`ordre = $${paramCount++}`)
       values.push(ordre)
-    }
-    if (is_required !== undefined) {
-      updates.push(`is_required = $${paramCount++}`)
-      values.push(is_required)
-    }
-    if (is_active !== undefined) {
-      updates.push(`is_active = $${paramCount++}`)
-      values.push(is_active)
     }
 
     if (updates.length === 0) {
@@ -168,7 +157,7 @@ export async function PUT(request: NextRequest) {
 
 /**
  * DELETE /api/criteria-types
- * Désactive un type de critère
+ * Supprime définitivement un type de critère (CASCADE sur criterias et pregenerations)
  */
 export async function DELETE(request: NextRequest) {
   try {
@@ -184,8 +173,9 @@ export async function DELETE(request: NextRequest) {
 
     const pool = await getPostgresPool()
 
+    // DELETE réel - les FK CASCADE supprimeront les criterias et pregeneration_criterias
     const result = await pool.query(
-      'UPDATE criteria_types SET is_active = false WHERE type_id = $1 RETURNING type_id',
+      'DELETE FROM criteria_types WHERE type_id = $1 RETURNING type_id, type',
       [typeId]
     )
 
@@ -198,7 +188,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Type de critère désactivé'
+      message: `Type "${result.rows[0].type}" supprimé avec succès`
     })
   } catch (error) {
     console.error('Erreur lors de la suppression du type de critère:', error)
