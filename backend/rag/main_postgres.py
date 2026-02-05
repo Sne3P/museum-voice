@@ -6,11 +6,15 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import sys
 import os
+import logging
 from pathlib import Path
 from typing import Dict, List
 import psycopg2
 import psycopg2.extras
 import requests
+
+# Configuration du logger
+logger = logging.getLogger(__name__)
 
 from .core.ollama_generation import OllamaMediationSystem
 from .core.generation_queue import get_endpoint_rate_limiter
@@ -375,6 +379,11 @@ def extract_pdf_metadata():
 
 # ===== API PRÉGÉNÉRATION OLLAMA =====
 
+# Import du gestionnaire de jobs
+from .core.generation_jobs import get_job_manager, JobStatus, get_combination_hash
+import time as time_module
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 @app.route('/api/pregenerate-artwork/<int:oeuvre_id>', methods=['POST'])
 def pregenerate_single_artwork(oeuvre_id):
     # Rate limiting
@@ -483,6 +492,599 @@ def pregenerate_all_artworks():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ===== API JOBS DE GÉNÉRATION ASYNCHRONE =====
+
+@app.route('/api/generation/jobs', methods=['GET'])
+def get_generation_jobs():
+    """Liste tous les jobs de génération (actifs et historique)"""
+    try:
+        job_manager = get_job_manager()
+        active_jobs = [j.to_dict() for j in job_manager.get_active_jobs()]
+        all_jobs = [j.to_dict() for j in job_manager.get_all_jobs(limit=20)]
+        stats = job_manager.get_stats()
+        
+        return jsonify({
+            'success': True,
+            'active_jobs': active_jobs,
+            'recent_jobs': all_jobs,
+            'stats': stats
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generation/jobs/<string:job_id>', methods=['GET'])
+def get_generation_job(job_id):
+    """Récupère le statut d'un job spécifique"""
+    try:
+        job_manager = get_job_manager()
+        job = job_manager.get_job(job_id)
+        
+        if not job:
+            return jsonify({'success': False, 'error': 'Job non trouvé'}), 404
+        
+        return jsonify({
+            'success': True,
+            'job': job.to_dict()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generation/jobs/<string:job_id>/cancel', methods=['POST'])
+def cancel_generation_job(job_id):
+    """Annule un job (même en cours avec force=true)"""
+    try:
+        data = request.get_json() or {}
+        force = data.get('force', False)
+        
+        job_manager = get_job_manager()
+        cancelled = job_manager.cancel_job(job_id, force=force)
+        
+        if cancelled:
+            return jsonify({'success': True, 'message': 'Job annulé'})
+        return jsonify({'success': False, 'error': 'Impossible d\'annuler ce job (déjà terminé ou inexistant)'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generation/jobs/cancel-all', methods=['POST'])
+def cancel_all_generation_jobs():
+    """Annule tous les jobs en cours ou en attente"""
+    try:
+        job_manager = get_job_manager()
+        cancelled = job_manager.cancel_all_running_jobs()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'{cancelled} job(s) annulé(s)',
+            'cancelled_count': cancelled
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generation/async/all', methods=['POST'])
+def start_async_pregenerate_all():
+    """Lance la prégénération de toutes les œuvres en arrière-plan avec parallélisation"""
+    try:
+        data = request.get_json() or {}
+        force_regenerate = data.get('force_regenerate', False)
+        
+        job_manager = get_job_manager()
+        
+        # Vérifier qu'il n'y a pas déjà un job "all" en cours
+        active = job_manager.get_active_jobs()
+        if any(j.job_type == 'all' for j in active):
+            return jsonify({
+                'success': False, 
+                'error': 'Une génération globale est déjà en cours'
+            }), 409
+        
+        # Créer le job
+        job = job_manager.create_job('all', {'force_regenerate': force_regenerate})
+        
+        # Définir la tâche de génération avec parallélisation
+        def run_generation(job):
+            import threading
+            
+            try:
+                conn = _connect_postgres()
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("SELECT oeuvre_id, title FROM oeuvres ORDER BY oeuvre_id")
+                oeuvres = cur.fetchall()
+                cur.close()
+                conn.close()
+                
+                if not oeuvres:
+                    job_manager.complete_job(job.job_id, success=False, error_message="Aucune œuvre trouvée")
+                    return
+                
+                system = OllamaMediationSystem()
+                all_criteres = get_criteres()
+                combinaisons = system.generate_combinaisons(all_criteres)
+                
+                # Créer la liste de toutes les tâches à effectuer
+                tasks = []
+                for oeuvre_row in oeuvres:
+                    oeuvre_id = oeuvre_row['oeuvre_id']
+                    title = oeuvre_row.get('title', f'Œuvre {oeuvre_id}')
+                    artwork = get_artwork(oeuvre_id)
+                    if artwork:
+                        for combo in combinaisons:
+                            tasks.append({
+                                'oeuvre_id': oeuvre_id,
+                                'title': title,
+                                'artwork': artwork,
+                                'combination': combo
+                            })
+                
+                total_tasks = len(tasks)
+                job_manager.start_job(job.job_id, total_tasks)
+                
+                # Compteurs thread-safe
+                stats_lock = threading.Lock()
+                stats = {'completed': 0, 'generated': 0, 'skipped': 0, 'errors': 0}
+                
+                def process_single_task(task):
+                    """Traite une seule combinaison"""
+                    start_time = time_module.time()
+                    result_type = 'error'
+                    
+                    try:
+                        result = system.pregenerate_single_combination(
+                            oeuvre_id=task['oeuvre_id'],
+                            artwork=task['artwork'],
+                            combination=task['combination'],
+                            model="ministral-3:3b",
+                            force_regenerate=force_regenerate
+                        )
+                        
+                        if result.get('generated'):
+                            result_type = 'generate'
+                        elif result.get('skipped'):
+                            result_type = 'skip'
+                    except Exception as e:
+                        logger.error(f"Erreur génération: {e}")
+                    
+                    duration_ms = int((time_module.time() - start_time) * 1000)
+                    
+                    # Enregistrer le timing
+                    try:
+                        combo_hash = get_combination_hash(task['combination'])
+                        job_manager.record_timing(
+                            job.job_id, result_type, duration_ms,
+                            task['oeuvre_id'], combo_hash
+                        )
+                        logger.debug(f"Timing enregistré: {result_type} - {duration_ms}ms")
+                    except Exception as timing_error:
+                        logger.error(f"Erreur enregistrement timing: {timing_error}")
+                    
+                    return result_type, task['title']
+                
+                # Utiliser ThreadPoolExecutor pour paralléliser
+                pool = job_manager.get_thread_pool()
+                futures = {pool.submit(process_single_task, task): task for task in tasks}
+                
+                for future in as_completed(futures):
+                    task = futures[future]
+                    try:
+                        result_type, title = future.result()
+                        
+                        with stats_lock:
+                            stats['completed'] += 1
+                            if result_type == 'generate':
+                                stats['generated'] += 1
+                            elif result_type == 'skip':
+                                stats['skipped'] += 1
+                            else:
+                                stats['errors'] += 1
+                            
+                            # Mettre à jour la progression
+                            job_manager.update_job_progress(
+                                job.job_id,
+                                completed_items=stats['completed'],
+                                current_item=f"{title} ({stats['completed']}/{total_tasks})",
+                                generated=stats['generated'],
+                                skipped=stats['skipped'],
+                                errors=stats['errors']
+                            )
+                    except Exception:
+                        with stats_lock:
+                            stats['completed'] += 1
+                            stats['errors'] += 1
+                
+                job_manager.complete_job(job.job_id, success=True)
+                
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                job_manager.complete_job(job.job_id, success=False, error_message=str(e))
+        
+        # Lancer en arrière-plan
+        job_manager.run_async(job, run_generation)
+        
+        return jsonify({
+            'success': True,
+            'job_id': job.job_id,
+            'message': 'Génération lancée en arrière-plan',
+            'job': job.to_dict()
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generation/async/artwork/<int:oeuvre_id>', methods=['POST'])
+def start_async_pregenerate_artwork(oeuvre_id):
+    """Lance la prégénération d'une œuvre en arrière-plan avec métriques de temps"""
+    try:
+        data = request.get_json() or {}
+        force_regenerate = data.get('force_regenerate', False)
+        
+        job_manager = get_job_manager()
+        
+        # Vérifier que l'œuvre existe
+        artwork = get_artwork(oeuvre_id)
+        if not artwork:
+            return jsonify({'success': False, 'error': 'Œuvre non trouvée'}), 404
+        
+        # Créer le job
+        job = job_manager.create_job('artwork', {
+            'oeuvre_id': oeuvre_id,
+            'title': artwork.get('title', f'Œuvre {oeuvre_id}'),
+            'force_regenerate': force_regenerate
+        })
+        
+        def run_generation(job):
+            import threading
+            
+            try:
+                system = OllamaMediationSystem()
+                all_criteres = get_criteres()
+                combinaisons = system.generate_combinaisons(all_criteres)
+                
+                job_manager.start_job(job.job_id, len(combinaisons))
+                
+                # Compteurs thread-safe
+                stats_lock = threading.Lock()
+                stats = {'completed': 0, 'generated': 0, 'skipped': 0, 'errors': 0}
+                
+                def process_single_combo(combo, idx):
+                    """Traite une seule combinaison"""
+                    start_time = time_module.time()
+                    result_type = 'error'
+                    
+                    try:
+                        result = system.pregenerate_single_combination(
+                            oeuvre_id=oeuvre_id,
+                            artwork=artwork,
+                            combination=combo,
+                            model="ministral-3:3b",
+                            force_regenerate=force_regenerate
+                        )
+                        
+                        if result.get('generated'):
+                            result_type = 'generate'
+                        elif result.get('skipped'):
+                            result_type = 'skip'
+                    except Exception as e:
+                        logger.error(f"Erreur génération combo {idx}: {e}")
+                    
+                    duration_ms = int((time_module.time() - start_time) * 1000)
+                    
+                    # Enregistrer le timing
+                    try:
+                        combo_hash = get_combination_hash(combo)
+                        job_manager.record_timing(
+                            job.job_id, result_type, duration_ms,
+                            oeuvre_id, combo_hash
+                        )
+                        logger.debug(f"Timing enregistré: {result_type} - {duration_ms}ms")
+                    except Exception as timing_error:
+                        logger.error(f"Erreur enregistrement timing: {timing_error}")
+                    
+                    return result_type, idx
+                
+                # Utiliser ThreadPoolExecutor pour paralléliser
+                pool = job_manager.get_thread_pool()
+                futures = {pool.submit(process_single_combo, combo, idx): idx 
+                          for idx, combo in enumerate(combinaisons)}
+                
+                total = len(combinaisons)
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    try:
+                        result_type, _ = future.result()
+                        
+                        with stats_lock:
+                            stats['completed'] += 1
+                            if result_type == 'generate':
+                                stats['generated'] += 1
+                            elif result_type == 'skip':
+                                stats['skipped'] += 1
+                            else:
+                                stats['errors'] += 1
+                            
+                            job_manager.update_job_progress(
+                                job.job_id,
+                                completed_items=stats['completed'],
+                                current_item=f"Combinaison {stats['completed']}/{total}",
+                                generated=stats['generated'],
+                                skipped=stats['skipped'],
+                                errors=stats['errors']
+                            )
+                    except Exception:
+                        with stats_lock:
+                            stats['completed'] += 1
+                            stats['errors'] += 1
+                
+                job_manager.complete_job(job.job_id, success=True)
+                
+            except Exception as e:
+                job_manager.complete_job(job.job_id, success=False, error_message=str(e))
+        
+        job_manager.run_async(job, run_generation)
+        
+        return jsonify({
+            'success': True,
+            'job_id': job.job_id,
+            'message': f'Génération de "{artwork.get("title")}" lancée',
+            'job': job.to_dict()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generation/async/profile', methods=['POST'])
+def start_async_pregenerate_profile():
+    """Lance la prégénération pour un profil (combinaison) sur toutes les œuvres - AVEC PARALLELISATION"""
+    try:
+        data = request.get_json() or {}
+        criteria_combination = data.get('criteria_combination')
+        force_regenerate = data.get('force_regenerate', False)
+        
+        if not criteria_combination:
+            return jsonify({'success': False, 'error': 'criteria_combination requis'}), 400
+        
+        # ENRICHIR les critères: convertir IDs en objets complets avec name/description
+        all_criteres = get_criteres()
+        combinaison_enrichie = {}
+        for crit_type, crit_id in criteria_combination.items():
+            critere = next((c for c in all_criteres.get(crit_type, []) if c['criteria_id'] == crit_id), None)
+            if critere:
+                combinaison_enrichie[crit_type] = critere
+            else:
+                return jsonify({'success': False, 'error': f'Critère invalide: {crit_type}={crit_id}'}), 400
+        
+        job_manager = get_job_manager()
+        
+        # Créer le job avec les IDs pour le stockage
+        job = job_manager.create_job('profile', {
+            'criteria_combination': criteria_combination,  # IDs pour stockage
+            'force_regenerate': force_regenerate
+        })
+        
+        def run_generation(job):
+            import threading
+            
+            try:
+                conn = _connect_postgres()
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("SELECT oeuvre_id, title FROM oeuvres ORDER BY oeuvre_id")
+                oeuvres = cur.fetchall()
+                cur.close()
+                conn.close()
+                
+                if not oeuvres:
+                    job_manager.complete_job(job.job_id, success=False, error_message="Aucune œuvre")
+                    return
+                
+                system = OllamaMediationSystem()
+                total_oeuvres = len(oeuvres)
+                job_manager.start_job(job.job_id, total_oeuvres)
+                
+                # Compteurs thread-safe
+                stats_lock = threading.Lock()
+                stats = {'completed': 0, 'generated': 0, 'skipped': 0, 'errors': 0}
+                
+                def process_single_oeuvre(oeuvre_row):
+                    """Traite une seule œuvre pour ce profil"""
+                    oeuvre_id = oeuvre_row['oeuvre_id']
+                    title = oeuvre_row.get('title', f'Œuvre {oeuvre_id}')
+                    
+                    start_time = time_module.time()
+                    result_type = 'error'
+                    
+                    try:
+                        artwork = get_artwork(oeuvre_id)
+                        if not artwork:
+                            return 'error', title
+                        
+                        # Utiliser la combinaison ENRICHIE (avec name/description)
+                        result = system.pregenerate_single_combination(
+                            oeuvre_id=oeuvre_id,
+                            artwork=artwork,
+                            combination=combinaison_enrichie,  # Enrichie avec name/description
+                            model="ministral-3:3b",
+                            force_regenerate=force_regenerate
+                        )
+                        
+                        if result.get('generated'):
+                            result_type = 'generate'
+                        elif result.get('skipped'):
+                            result_type = 'skip'
+                    except Exception as e:
+                        logger.error(f"Erreur génération profil pour œuvre {oeuvre_id}: {e}")
+                    
+                    duration_ms = int((time_module.time() - start_time) * 1000)
+                    
+                    # Enregistrer le timing - ESSENTIEL pour l'estimation du temps
+                    try:
+                        combo_hash = get_combination_hash(combinaison_enrichie)
+                        job_manager.record_timing(
+                            job.job_id, result_type, duration_ms,
+                            oeuvre_id, combo_hash
+                        )
+                        logger.debug(f"[Profile] Timing enregistré: {result_type} - {duration_ms}ms pour {title}")
+                    except Exception as timing_error:
+                        logger.error(f"Erreur enregistrement timing: {timing_error}")
+                    
+                    return result_type, title
+                
+                # Utiliser ThreadPoolExecutor pour paralléliser (comme les autres routes)
+                pool = job_manager.get_thread_pool()
+                futures = {pool.submit(process_single_oeuvre, oeuvre_row): oeuvre_row for oeuvre_row in oeuvres}
+                
+                for future in as_completed(futures):
+                    oeuvre_row = futures[future]
+                    try:
+                        result_type, title = future.result()
+                        
+                        with stats_lock:
+                            stats['completed'] += 1
+                            if result_type == 'generate':
+                                stats['generated'] += 1
+                            elif result_type == 'skip':
+                                stats['skipped'] += 1
+                            else:
+                                stats['errors'] += 1
+                            
+                            job_manager.update_job_progress(
+                                job.job_id,
+                                completed_items=stats['completed'],
+                                current_item=f"{title} ({stats['completed']}/{total_oeuvres})",
+                                generated=stats['generated'],
+                                skipped=stats['skipped'],
+                                errors=stats['errors']
+                            )
+                    except Exception:
+                        with stats_lock:
+                            stats['completed'] += 1
+                            stats['errors'] += 1
+                
+                job_manager.complete_job(job.job_id, success=True)
+                
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                job_manager.complete_job(job.job_id, success=False, error_message=str(e))
+        
+        job_manager.run_async(job, run_generation)
+        
+        return jsonify({
+            'success': True,
+            'job_id': job.job_id,
+            'message': 'Génération par profil lancée',
+            'job': job.to_dict()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generation/async/single', methods=['POST'])
+def start_async_pregenerate_single():
+    """
+    Lance la génération d'UNE SEULE narration (1 œuvre + 1 profil) via le système de jobs.
+    Permet de ne pas interrompre les autres jobs en cours.
+    """
+    try:
+        data = request.get_json() or {}
+        oeuvre_id = data.get('oeuvre_id')
+        criteria_combination = data.get('criteria_combination')
+        force_regenerate = data.get('force_regenerate', True)  # Par défaut on force pour régénérer
+        
+        if not oeuvre_id or not criteria_combination:
+            return jsonify({'success': False, 'error': 'oeuvre_id et criteria_combination requis'}), 400
+        
+        # Vérifier que l'œuvre existe
+        artwork = get_artwork(oeuvre_id)
+        if not artwork:
+            return jsonify({'success': False, 'error': 'Œuvre non trouvée'}), 404
+        
+        # ENRICHIR les critères: convertir IDs en objets complets avec name/description
+        all_criteres = get_criteres()
+        combinaison_enrichie = {}
+        for crit_type, crit_id in criteria_combination.items():
+            critere = next((c for c in all_criteres.get(crit_type, []) if c['criteria_id'] == crit_id), None)
+            if critere:
+                combinaison_enrichie[crit_type] = critere
+            else:
+                return jsonify({'success': False, 'error': f'Critère invalide: {crit_type}={crit_id}'}), 400
+        
+        job_manager = get_job_manager()
+        
+        # Créer le job pour 1 seule narration
+        job = job_manager.create_job('single', {
+            'oeuvre_id': oeuvre_id,
+            'title': artwork.get('title', f'Œuvre {oeuvre_id}'),
+            'criteria_combination': criteria_combination,  # IDs pour stockage
+            'force_regenerate': force_regenerate
+        })
+        
+        def run_generation(job):
+            try:
+                system = OllamaMediationSystem()
+                job_manager.start_job(job.job_id, 1)  # 1 seul item
+                
+                job_manager.update_job_progress(
+                    job.job_id, 
+                    current_item=f"{artwork.get('title', 'Œuvre')} (1/1)"
+                )
+                
+                start_time = time_module.time()
+                
+                # Utiliser la combinaison ENRICHIE
+                result = system.pregenerate_single_combination(
+                    oeuvre_id=oeuvre_id,
+                    artwork=artwork,
+                    combination=combinaison_enrichie,
+                    model="ministral-3:3b",
+                    force_regenerate=force_regenerate
+                )
+                
+                duration_ms = int((time_module.time() - start_time) * 1000)
+                
+                generated = 0
+                skipped = 0
+                errors = 0
+                
+                if result.get('generated'):
+                    generated = 1
+                    job_manager.record_timing(job.job_id, 'generate', duration_ms, oeuvre_id)
+                elif result.get('skipped'):
+                    skipped = 1
+                    job_manager.record_timing(job.job_id, 'skip', duration_ms, oeuvre_id)
+                else:
+                    errors = 1
+                
+                job_manager.update_job_progress(
+                    job.job_id,
+                    completed_items=1,
+                    generated=generated,
+                    skipped=skipped,
+                    errors=errors
+                )
+                
+                job_manager.complete_job(job.job_id, success=True)
+                
+            except Exception as e:
+                logger.error(f"Erreur génération single: {e}")
+                job_manager.complete_job(job.job_id, success=False, error_message=str(e))
+        
+        job_manager.run_async(job, run_generation)
+        
+        return jsonify({
+            'success': True,
+            'job_id': job.job_id,
+            'message': f'Génération de 1 narration lancée',
+            'job': job.to_dict()
+        })
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

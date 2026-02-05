@@ -16,9 +16,8 @@ const MapViewer = ({ parcours, currentIndex }) => {
     useEffect(() => {
         if (!parcours || !parcours.artworks) return;
 
-        // Récupérer le plan du musée via le proxy Next.js
-        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000'
-        fetch(`${backendUrl}/api/museum/floor-plan`)
+        // Récupérer le plan du musée via URL relative (nginx route vers Next.js)
+        fetch(`/api/museum/floor-plan`)
             .then(res => res.json())
             .then(data => {
                 if (data.success) {

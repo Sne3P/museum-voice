@@ -53,21 +53,18 @@ const Accueil = () => {
   useEffect(() => {
     const fetchMuseumSettings = async () => {
       try {
-        const adminUrl = process.env.REACT_APP_ADMIN_URL || 'http://localhost:3000';
-        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+        // Utiliser URLs relatives pour passer par nginx
         
         // Fetch image
-        const imageRes = await fetch(`${adminUrl}/api/museum-settings?setting_key=museum_image_url`);
+        const imageRes = await fetch(`/api/museum-settings?setting_key=museum_image_url`);
         const imageData = await imageRes.json();
         if (imageData?.setting_value) {
-          const imageUrl = imageData.setting_value.startsWith('http') 
-            ? imageData.setting_value 
-            : `${backendUrl}${imageData.setting_value}`;
-          setMuseumImageUrl(imageUrl);
+          // L'URL peut être absolue ou relative
+          setMuseumImageUrl(imageData.setting_value);
         }
 
         // Fetch title
-        const titleRes = await fetch(`${adminUrl}/api/museum-settings?setting_key=museum_title`);
+        const titleRes = await fetch(`/api/museum-settings?setting_key=museum_title`);
         const titleData = await titleRes.json();
         if (titleData?.setting_value) {
           setMuseumTitle(titleData.setting_value.split('\n')[0]);

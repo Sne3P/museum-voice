@@ -3,7 +3,7 @@
  * Vérifie la validité des sessions via token QR code
  */
 
-const ADMIN_URL = process.env.REACT_APP_ADMIN_URL || 'http://localhost:3000';
+// Pas besoin d'URL absolue - nginx route les appels API
 
 /**
  * Vérifie si une session est active et valide
@@ -17,8 +17,8 @@ export async function checkSession() {
       return { valid: false, token: null, data: null };
     }
 
-    // Vérifier la validité du token via l'API
-    const response = await fetch(`${ADMIN_URL}/api/qrcode?token=${token}`);
+    // Vérifier la validité du token via l'API (URL relative → nginx)
+    const response = await fetch(`/api/qrcode?token=${token}`);
     
     if (!response.ok) {
       // Token invalide ou expiré
@@ -51,7 +51,7 @@ export async function checkSession() {
  */
 export async function activateSession(token) {
   try {
-    const response = await fetch(`${ADMIN_URL}/api/qrcode/use`, {
+    const response = await fetch(`/api/qrcode/use`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token })

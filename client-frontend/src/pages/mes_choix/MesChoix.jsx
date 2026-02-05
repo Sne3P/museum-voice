@@ -102,7 +102,7 @@ const MesChoix = () => {
     
     // Tous les types de critères doivent avoir une sélection
     return criteriaTypes.length > 0 && 
-           criteriaTypes.every(type => selectedCriterias[type.type_name]);
+           criteriaTypes.every(ct => selectedCriterias[ct.type]);
   };
 
   const handleSendData = async () => {
@@ -227,8 +227,8 @@ const MesChoix = () => {
         {/* Dynamic Criteria */}
         {criteriaTypes.map((criteriaType) => (
           <CriteriaSelector
-            key={criteriaType.type_name}
-            criteriaType={criteriaType.type_name}
+            key={criteriaType.type}
+            criteriaType={criteriaType.type}
             title={criteriaType.label}
             onSelect={handleCriteriaSelect}
           />

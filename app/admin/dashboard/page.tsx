@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { getUploadUrl } from '@/lib/uploads'
 import { 
   ArrowLeft, 
@@ -16,7 +17,12 @@ import {
   Sparkles,
   CheckCircle,
   AlertCircle,
-  X
+  X,
+  Play,
+  Pause,
+  Loader2,
+  Clock,
+  XCircle
 } from 'lucide-react'
 
 // ==========================================
@@ -37,7 +43,6 @@ interface CriteriaType {
   type: string
   label: string
   ordre: number
-  // Note: is_required a été supprimé - tous les critères sont obligatoires
 }
 
 interface Criteria {
@@ -52,11 +57,10 @@ interface Criteria {
 interface Pregeneration {
   pregeneration_id: number
   oeuvre_id: number
-  criteria_combination: Record<string, number> // {"age": 1, "thematique": 4, ...}
+  criteria_combination: Record<string, number>
   pregeneration_text: string
   created_at: string
   voice_link: string | null
-  // Enrichi côté client
   criteria_labels?: Record<string, string>
 }
 
@@ -64,8 +68,44 @@ interface Stats {
   total_oeuvres: number
   total_pregenerations: number
   expected_pregenerations: number
- expected_per_oeuvre: number
+  expected_per_oeuvre: number
   completion_rate: number
+}
+
+// Types pour les jobs de génération asynchrone
+interface GenerationJob {
+  job_id: string
+  job_type: string  // 'all', 'artwork', 'profile' ou variations avec préfixes
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+  progress: {
+    total: number
+    completed: number
+    current: string
+    percentage: number
+  }
+  stats: {
+    generated: number
+    skipped: number
+    errors: number
+  }
+  params: Record<string, unknown>
+  error: string | null
+  elapsed_seconds: number | null
+  estimated_remaining_seconds: number | null
+}
+
+interface JobsState {
+  active_jobs: GenerationJob[]
+  recent_jobs: GenerationJob[]
+  stats: {
+    active_jobs: number
+    pending_jobs: number
+    total_jobs_in_history: number
+    current_generations: number
+  }
 }
 
 // ==========================================
@@ -89,6 +129,11 @@ export default function NarrationsDashboard() {
   // États pour génération précise
   const [showGeneratePreciseModal, setShowGeneratePreciseModal] = useState(false)
   const [selectedCombination, setSelectedCombination] = useState<Record<string, number> | null>(null)
+  
+  // États pour les jobs de génération async
+  const [jobsState, setJobsState] = useState<JobsState | null>(null)
+  const [showJobsPanel, setShowJobsPanel] = useState(false)
+  const pollingRef = useRef<NodeJS.Timeout | null>(null)
   
   // États pour génération par profil
   const [showGenerateByProfileModal, setShowGenerateByProfileModal] = useState(false)
@@ -268,150 +313,75 @@ export default function NarrationsDashboard() {
   }
 
   async function generateNarrationsForOeuvre(oeuvreId: number) {
-    if (!confirm('Générer les narrations manquantes pour cette œuvre ?\n\nCela utilisera le script de seed intelligent.')) {
+    if (!confirm('Générer les narrations manquantes pour cette œuvre ?\n\nLa génération se fera en arrière-plan.')) {
       return
     }
-
-    setLoading(true)
-    try {
-      // const res = await fetch('/api/admin/seed-narrations', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ oeuvre_id: oeuvreId })
-      // })
-      const res = await fetch(`/api/admin/pregenerate-artwork/${oeuvreId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oeuvre_id: oeuvreId })
-      })
-
-      const data = await res.json()
-      if (data.success) {
-        alert(`✅ Narrations générées !\n\n${data.inserted} nouvelles narrations`)
-        await loadStats()
-        await loadOeuvres()
-        if (selectedOeuvre) {
-          await loadPregenerationsForOeuvre(oeuvreId)
-        }
-      } else {
-        alert(`❌ Erreur: ${data.error}`)
-      }
-    } catch (error) {
-      console.error('Erreur génération:', error)
-      alert(`❌ Erreur: ${error}`)
-    }
-    setLoading(false)
+    // Utiliser la version async pour ne pas bloquer
+    await startAsyncGenerateArtwork(oeuvreId)
   }
 
   async function generateAllMissingNarrations() {
-    const expectedTotal = oeuvres.length * (stats?.expected_per_oeuvre || 36)
-    const missing = expectedTotal - (stats?.total_pregenerations || 0)
-
-    if (!confirm(`Générer toutes les narrations manquantes pour ${oeuvres.length} œuvres ?\n\nCela va utiliser Ollama pour générer les narrations.\nCette opération peut prendre plusieurs minutes.`)) {
+    if (!confirm(`Générer toutes les narrations manquantes pour ${oeuvres.length} œuvres ?\n\nLa génération se fera en arrière-plan.`)) {
       return
     }
-
-    setLoading(true)
-    try {
-      const res = await fetch('/api/admin/pregenerate-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force_regenerate: false })
-      })
-
-      const data = await res.json()
-      if (data.success) {
-        const stats = data.stats || {}
-        alert(`✅ Génération terminée !\n\n${stats.total_generated || 0} nouvelles narrations\n${stats.total_skipped || 0} déjà existantes\n\nDurée: ${data.duration || 'N/A'}`)
-        await loadStats()
-        await loadOeuvres()
-      } else {
-        alert(`❌ Erreur: ${data.error}`)
-      }
-    } catch (error) {
-      console.error('Erreur génération globale:', error)
-      alert(`❌ Erreur: ${error}`)
-    }
-    setLoading(false)
+    // Utiliser la version async pour ne pas bloquer
+    await startAsyncGenerateAll(false)
   }
 
   async function regenerateAllNarrations() {
-    if (!confirm('⚠️ ATTENTION !\n\nRégénérer TOUTES les narrations ?\n\nCela va supprimer et recréer toutes les narrations existantes.\nCette opération peut prendre plusieurs minutes.')) {
+    if (!confirm('⚠️ ATTENTION !\n\nRégénérer TOUTES les narrations ?\n\nCela va recréer toutes les narrations existantes.\nLa génération se fera en arrière-plan.')) {
       return
     }
-
-    setLoading(true)
-    try {
-      // 1. Supprimer
-      await fetch('/api/admin/delete-all-narrations', { method: 'DELETE' })
-      
-      // 2. Re-générer avec Ollama (force_regenerate pour tout recréer)
-      const res = await fetch('/api/admin/pregenerate-all', { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force_regenerate: true })
-      })
-      const data = await res.json()
-      
-      if (data.success) {
-        const stats = data.stats || {}
-        alert(`✅ Régénération terminée !\n\n${stats.total_generated || 0} narrations créées\n\nDurée: ${data.duration || 'N/A'}`)
-        await loadStats()
-        await loadOeuvres()
-        setPregenerations([])
-      } else {
-        alert(`❌ Erreur: ${data.error}`)
-      }
-    } catch (error) {
-      console.error('Erreur régénération:', error)
-      alert(`❌ Erreur: ${error}`)
-    }
-    setLoading(false)
+    // Utiliser la version async avec force_regenerate pour ne pas bloquer
+    await startAsyncGenerateAll(true)
   }
 
   // ==========================================
   // NOUVELLES ACTIONS: GÉNÉRATION PRÉCISE & PAR PROFIL
   // ==========================================
 
-  async function generatePreciseNarration(oeuvreId: number, combination: Record<string, number>) {
-    setLoading(true)
+  // Génération d'une narration précise via le système de jobs (async)
+  async function generatePreciseNarrationAsync(oeuvreId: number, combination: Record<string, number>, forceRegenerate: boolean = true) {
     try {
-      const res = await fetch('/api/admin/generate-narration-precise', {
+      const res = await fetch('/api/admin/generate-async/single', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           oeuvre_id: oeuvreId,
-          criteria_combination: combination
+          criteria_combination: combination,
+          force_regenerate: forceRegenerate
         })
       })
 
       const data = await res.json()
       if (data.success) {
-        alert(`✅ Narration générée avec succès !`)
-        // Recharger les narrations
-        if (selectedOeuvre) {
-          await loadPregenerationsForOeuvre(oeuvreId)
-        }
-        await loadStats()
+        setShowJobsPanel(true)
+        await loadJobs()
         setShowGeneratePreciseModal(false)
+        setModalPregen(null)
       } else {
         alert(`❌ Erreur: ${data.error}`)
       }
     } catch (error) {
-      console.error('Erreur génération précise:', error)
+      console.error('Erreur génération précise async:', error)
       alert(`❌ Erreur: ${error}`)
     }
-    setLoading(false)
   }
 
   async function regenerateSingleNarration(pregen: Pregeneration) {
     if (!selectedOeuvre) return
 
-    if (!confirm(`Régénérer cette narration ?\n\nProfil: ${Object.values(pregen.criteria_labels || {}).join(', ')}\n\nLa narration actuelle sera remplacée.`)) {
+    if (!confirm(`Régénérer cette narration ?\n\nProfil: ${Object.values(pregen.criteria_labels || {}).join(', ')}\n\nLa génération sera ajoutée à la file d'attente.`)) {
       return
     }
 
-    await generatePreciseNarration(selectedOeuvre.oeuvre_id, pregen.criteria_combination)
+    // Utiliser le système de jobs pour ne pas interrompre les autres
+    await generatePreciseNarrationAsync(selectedOeuvre.oeuvre_id, pregen.criteria_combination, true)
+  }
+
+  // Wrapper pour le modal de génération précise
+  async function generatePreciseNarration(oeuvreId: number, combination: Record<string, number>) {
+    await generatePreciseNarrationAsync(oeuvreId, combination, false)
   }
 
   async function generateNarrationsByProfile(combination: Record<string, number>) {
@@ -420,34 +390,211 @@ export default function NarrationsDashboard() {
       return criteria ? criteria.label : `${type}:${id}`
     })
 
-    if (!confirm(`Générer les narrations pour ce profil dans TOUTES les œuvres ?\n\nProfil: ${labels.join(', ')}\n\nCela peut prendre plusieurs minutes.`)) {
+    if (!confirm(`Générer les narrations pour ce profil dans TOUTES les œuvres ?\n\nProfil: ${labels.join(', ')}\n\nLa génération se fera en arrière-plan.`)) {
       return
     }
 
-    setLoading(true)
+    // Utiliser la version async pour ne pas bloquer
+    await startAsyncGenerateByProfile(combination)
+  }
+
+  // ==========================================
+  // GÉNÉRATION ASYNC AVEC SUIVI EN TEMPS RÉEL
+  // ==========================================
+
+  // Référence pour détecter les changements d'état des jobs
+  const previousJobsRef = useRef<Map<string, string>>(new Map())
+
+  // Charger l'état des jobs
+  const loadJobs = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/generate-narrations-by-profile', {
+      const res = await fetch('/api/admin/generation-jobs')
+      if (res.ok) {
+        const data = await res.json()
+        
+        // Filtrer les jobs sans ID valide (protection)
+        const activeJobs = (data.active_jobs || []).filter((job: GenerationJob) => job?.job_id)
+        const recentJobs = (data.recent_jobs || []).filter((job: GenerationJob) => job?.job_id)
+        
+        // Détecter si un job vient de se terminer
+        const previousJobs = previousJobsRef.current
+        let jobJustCompleted = false
+        
+        for (const job of [...activeJobs, ...recentJobs]) {
+          const prevStatus = previousJobs.get(job.job_id)
+          if (prevStatus && prevStatus !== 'completed' && job.status === 'completed') {
+            jobJustCompleted = true
+          }
+          previousJobs.set(job.job_id, job.status)
+        }
+        
+        // Si un job vient de se terminer, rafraîchir les données
+        if (jobJustCompleted) {
+          console.log('🔄 Un job vient de se terminer, rafraîchissement des données...')
+          await loadStats()
+          await loadOeuvres()
+        }
+        
+        // Mettre à jour le state avec les jobs filtrés
+        setJobsState({
+          ...data,
+          active_jobs: activeJobs,
+          recent_jobs: recentJobs
+        })
+        
+        // Afficher le panel si des jobs sont actifs
+        if (data.stats?.active_jobs > 0 || data.stats?.pending_jobs > 0) {
+          setShowJobsPanel(true)
+        }
+      }
+    } catch (error) {
+      console.error('Erreur chargement jobs:', error)
+    }
+  }, [])
+
+  // Polling des jobs actifs
+  useEffect(() => {
+    // Charger les jobs au démarrage
+    loadJobs()
+
+    // Démarrer le polling si des jobs sont actifs
+    const startPolling = () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+      }
+      pollingRef.current = setInterval(loadJobs, 2000) // Poll toutes les 2s
+    }
+
+    startPolling()
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+      }
+    }
+  }, [loadJobs])
+
+  // Lancer une génération async pour toutes les œuvres
+  async function startAsyncGenerateAll(forceRegenerate: boolean = false) {
+    try {
+      const res = await fetch('/api/admin/generate-async/all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          criteria_combination: combination
-        })
+        body: JSON.stringify({ force_regenerate: forceRegenerate })
       })
-
       const data = await res.json()
       if (data.success) {
-        alert(`✅ Génération terminée !\n\n${data.inserted} narrations générées\n${data.skipped} déjà existantes`)
-        await loadStats()
-        await loadOeuvres()
+        setShowJobsPanel(true)
+        await loadJobs()
+      } else {
+        alert(`❌ Erreur: ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Erreur démarrage génération async:', error)
+      alert(`❌ Erreur: ${error}`)
+    }
+  }
+
+  // Lancer une génération async pour une œuvre spécifique
+  async function startAsyncGenerateArtwork(oeuvreId: number) {
+    if (!oeuvreId || oeuvreId === undefined) {
+      console.error('Erreur: oeuvreId est undefined')
+      alert('❌ Impossible de générer: ID de l\'œuvre manquant')
+      return
+    }
+    try {
+      console.log(`🚀 Lancement génération async pour œuvre ${oeuvreId}`)
+      const res = await fetch(`/api/admin/generate-async/artwork/${oeuvreId}`, {
+        method: 'POST'
+      })
+      const data = await res.json()
+      if (data.success) {
+        setShowJobsPanel(true)
+        await loadJobs()
+      } else {
+        alert(`❌ Erreur: ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Erreur démarrage génération async œuvre:', error)
+      alert(`❌ Erreur: ${error}`)
+    }
+  }
+
+  // Lancer une génération async par profil
+  async function startAsyncGenerateByProfile(combination: Record<string, number>) {
+    try {
+      const res = await fetch('/api/admin/generate-async/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ criteria_combination: combination })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setShowJobsPanel(true)
+        await loadJobs()
         setShowGenerateByProfileModal(false)
       } else {
         alert(`❌ Erreur: ${data.error}`)
       }
     } catch (error) {
-      console.error('Erreur génération par profil:', error)
+      console.error('Erreur démarrage génération async profil:', error)
       alert(`❌ Erreur: ${error}`)
     }
-    setLoading(false)
+  }
+
+  // Annuler un job (force=true pour arrêter même les jobs en cours)
+  async function cancelJob(jobId: string, force: boolean = true) {
+    if (!jobId) {
+      console.error('Erreur: jobId est undefined ou null')
+      alert('❌ Impossible d\'annuler: ID du job manquant')
+      return
+    }
+    try {
+      console.log(`🛑 Annulation job ${jobId} (force=${force})`)
+      const res = await fetch(`/api/admin/generation-jobs/${jobId}?force=${force}`, {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      if (data.success) {
+        console.log(`✅ Job ${jobId} annulé`)
+        await loadJobs()
+      } else {
+        console.error(`❌ Échec annulation job ${jobId}:`, data.error)
+        alert(`❌ Erreur: ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Erreur annulation job:', error)
+      alert(`❌ Erreur réseau lors de l'annulation`)
+    }
+  }
+
+  // Annuler tous les jobs
+  async function cancelAllJobs() {
+    if (!confirm('Annuler TOUS les jobs en cours ?\n\nCette action est irréversible.')) {
+      return
+    }
+    try {
+      const res = await fetch('/api/admin/generation-jobs/cancel-all', {
+        method: 'POST'
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert(`✅ ${data.cancelled_count} job(s) annulé(s)`)
+        await loadJobs()
+      } else {
+        alert(`❌ Erreur: ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Erreur annulation en masse:', error)
+    }
+  }
+
+  // Formatage du temps restant
+  function formatDuration(seconds: number | null): string {
+    if (seconds === null || seconds < 0) return '--'
+    if (seconds < 60) return `${Math.round(seconds)}s`
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
+    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
   }
 
   // ==========================================
@@ -490,16 +637,181 @@ export default function NarrationsDashboard() {
             </Button>
             <h1 className="text-3xl font-bold">Dashboard Narrations</h1>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={loadInitialData}
-            disabled={loading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Actualiser
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Indicateur de jobs actifs */}
+            {jobsState && (jobsState.stats.active_jobs > 0 || jobsState.stats.pending_jobs > 0) && (
+              <Button
+                variant={showJobsPanel ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowJobsPanel(!showJobsPanel)}
+                className="relative"
+              >
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {jobsState.stats.active_jobs + jobsState.stats.pending_jobs} job(s) actif(s)
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadInitialData}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Actualiser
+            </Button>
+          </div>
         </div>
+
+        {/* Panel des Jobs en cours - Affiché quand des jobs sont actifs */}
+        {showJobsPanel && jobsState && (
+          <Card className="mb-6 border-blue-200 bg-blue-50/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                  Générations en cours
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  {(jobsState.stats.active_jobs > 0 || jobsState.stats.pending_jobs > 0) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={cancelAllJobs}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
+                    >
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Tout arrêter
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowJobsPanel(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Jobs actifs */}
+              {jobsState.active_jobs.map(job => (
+                <div key={job.job_id} className="bg-white rounded-lg p-4 border">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {job.status === 'running' ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                      ) : job.status === 'pending' ? (
+                        <Clock className="h-4 w-4 text-yellow-600" />
+                      ) : job.status === 'completed' ? (
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-red-600" />
+                      )}
+                      <span className="font-medium capitalize">
+                        {job.job_type.includes('all') ? 'Toutes les œuvres' :
+                         job.job_type.includes('artwork') ? `Œuvre #${job.params.oeuvre_id}` :
+                         job.job_type.includes('profile') ? 'Par profil' : job.job_type}
+                      </span>
+                      <Badge variant={
+                        job.status === 'running' ? 'default' :
+                        job.status === 'pending' ? 'secondary' :
+                        job.status === 'completed' ? 'outline' : 'destructive'
+                      }>
+                        {job.status}
+                      </Badge>
+                    </div>
+                    {(job.status === 'running' || job.status === 'pending') && job.job_id && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => cancelJob(job.job_id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <XCircle className="h-4 w-4 mr-1" />
+                        Annuler
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Barre de progression */}
+                  {job.status === 'running' && (
+                    <>
+                      <div className="mb-2">
+                        <div className="flex justify-between text-sm text-gray-600 mb-1">
+                          <span>
+                            {job.progress.completed} / {job.progress.total} 
+                            {job.progress.current && ` • ${job.progress.current}`}
+                          </span>
+                          <span>{job.progress.percentage.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                          <div
+                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                            style={{ width: `${job.progress.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Écoulé: {formatDuration(job.elapsed_seconds)}
+                        </span>
+                        <span>
+                          Restant estimé: {formatDuration(job.estimated_remaining_seconds)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Stats si terminé */}
+                  {job.status === 'completed' && (
+                    <div className="flex gap-4 text-sm">
+                      <span className="text-green-600">✓ {job.stats.generated} générées</span>
+                      <span className="text-gray-500">⊘ {job.stats.skipped} ignorées</span>
+                      {job.stats.errors > 0 && (
+                        <span className="text-red-600">✗ {job.stats.errors} erreurs</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Erreur si échec */}
+                  {job.status === 'failed' && job.error && (
+                    <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+                      {job.error}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Résumé des jobs récents terminés */}
+              {jobsState.recent_jobs.filter(j => j.status === 'completed').length > 0 && (
+                <div className="border-t pt-3 mt-3">
+                  <p className="text-sm text-gray-600 mb-2">Récemment terminés:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {jobsState.recent_jobs
+                      .filter(j => j.status === 'completed')
+                      .slice(0, 3)
+                      .map(job => (
+                        <Badge key={job.job_id} variant="outline" className="text-green-600">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          {job.stats.generated} générées
+                        </Badge>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Si aucun job actif */}
+              {jobsState.active_jobs.length === 0 && (
+                <div className="text-center text-gray-500 py-4">
+                  <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                  Aucune génération en cours
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Cards */}
         {stats && (
@@ -657,10 +969,14 @@ export default function NarrationsDashboard() {
                               )}
                               <Button
                                 size="sm"
-                                onClick={() => generateNarrationsForOeuvre(oeuvre.oeuvre_id)}
-                                disabled={loading}
+                                onClick={() => {
+                                  console.log('🔍 Oeuvre cliquée:', oeuvre)
+                                  console.log('🔍 oeuvre_id:', oeuvre.oeuvre_id)
+                                  startAsyncGenerateArtwork(oeuvre.oeuvre_id)
+                                }}
+                                title="Lance la génération en arrière-plan"
                               >
-                                <Zap className="h-3 w-3 mr-1" />
+                                <Play className="h-3 w-3 mr-1" />
                                 Générer
                               </Button>
                             </td>
@@ -783,66 +1099,89 @@ export default function NarrationsDashboard() {
               <div className="space-y-6">
                 <h2 className="text-xl font-semibold">Actions globales</h2>
 
-                {/* Seed Database */}
-                <Card>
+                {/* Génération avec suivi en temps réel - Section principale */}
+                <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Database className="h-5 w-5" />
-                      Seed de la base de données
+                    <CardTitle className="flex items-center gap-2 text-blue-700">
+                      <Play className="h-5 w-5" />
+                      Générer les narrations
                     </CardTitle>
                     <CardDescription>
-                      Génère automatiquement toutes les combinaisons de narrations manquantes pour toutes les œuvres.
-                      Utilise les critères dynamiques de la base de données.
+                      Lance les générations en arrière-plan. Vous pouvez naviguer ou rafraîchir la page, 
+                      la génération continue et vous pouvez suivre sa progression en temps réel.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <Button onClick={seedDatabase} disabled={loading}>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Lancer le seed
-                    </Button>
-                  </CardContent>
-                </Card>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Générer manquantes */}
+                      <div className="p-4 bg-white rounded-lg border">
+                        <h4 className="font-medium mb-2 flex items-center gap-2">
+                          <Play className="h-4 w-4 text-green-600" />
+                          Toutes les œuvres (manquantes)
+                        </h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Génère uniquement les narrations qui n'existent pas encore
+                        </p>
+                        <Button 
+                          onClick={() => startAsyncGenerateAll(false)}
+                          size="sm"
+                          className="w-full bg-blue-600 hover:bg-blue-700"
+                        >
+                          <Play className="h-4 w-4 mr-2" />
+                          Lancer la génération
+                        </Button>
+                      </div>
 
-                {/* Génération ciblée */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Zap className="h-5 w-5" />
-                      Génération de narrations
-                    </CardTitle>
-                    <CardDescription>
-                      Générez les narrations manquantes ou régénérez toutes les narrations.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <Button 
-                        onClick={generateAllMissingNarrations} 
-                        disabled={loading}
-                        className="w-full sm:w-auto"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Générer les narrations manquantes
-                      </Button>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Génère seulement les combinaisons qui n'existent pas encore
-                      </p>
+                      {/* Régénérer tout */}
+                      <div className="p-4 bg-white rounded-lg border">
+                        <h4 className="font-medium mb-2 flex items-center gap-2">
+                          <RefreshCw className="h-4 w-4 text-orange-600" />
+                          Tout régénérer (forcer)
+                        </h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Remplace toutes les narrations existantes par de nouvelles
+                        </p>
+                        <Button 
+                          onClick={() => startAsyncGenerateAll(true)}
+                          size="sm"
+                          variant="outline"
+                          className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
+                        >
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Forcer régénération
+                        </Button>
+                      </div>
                     </div>
 
-                    <div>
-                      <Button 
-                        onClick={regenerateAllNarrations} 
-                        disabled={loading}
-                        variant="outline"
-                        className="w-full sm:w-auto"
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Tout régénérer (avec suppression)
-                      </Button>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Supprime et recrée toutes les narrations
-                      </p>
-                    </div>
+                    {/* Indicateur d'état des jobs */}
+                    {jobsState && (
+                      <div className="flex items-center justify-between p-3 bg-white rounded-lg border">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${
+                            jobsState.stats.active_jobs > 0 ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+                          }`} />
+                          <span className="text-sm">
+                            {jobsState.stats.active_jobs > 0 
+                              ? `${jobsState.stats.active_jobs} génération(s) en cours`
+                              : 'Aucune génération active'}
+                          </span>
+                        </div>
+                        {!showJobsPanel && jobsState.stats.active_jobs > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowJobsPanel(true)}
+                          >
+                            Voir progression
+                          </Button>
+                        )}
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      La progression s'affiche automatiquement en haut de la page quand une génération est active
+                    </p>
                   </CardContent>
                 </Card>
 
@@ -860,7 +1199,6 @@ export default function NarrationsDashboard() {
                   <CardContent>
                     <Button 
                       onClick={() => setShowGenerateByProfileModal(true)} 
-                      disabled={loading}
                       className="bg-purple-600 hover:bg-purple-700"
                     >
                       <Sparkles className="h-4 w-4 mr-2" />
@@ -1024,6 +1362,9 @@ export default function NarrationsDashboard() {
           onConfirm={(combination) => {
             generateNarrationsByProfile(combination)
           }}
+          onConfirmAsync={(combination) => {
+            startAsyncGenerateByProfile(combination)
+          }}
           onCancel={() => setShowGenerateByProfileModal(false)}
           loading={loading}
         />
@@ -1042,6 +1383,7 @@ interface ProfileSelectorModalProps {
   criteriaTypes: CriteriaType[]
   allCriterias: Criteria[]
   onConfirm: (combination: Record<string, number>) => void
+  onConfirmAsync?: (combination: Record<string, number>) => void
   onCancel: () => void
   loading: boolean
 }
@@ -1052,6 +1394,7 @@ function ProfileSelectorModal({
   criteriaTypes,
   allCriterias,
   onConfirm,
+  onConfirmAsync,
   onCancel,
   loading
 }: ProfileSelectorModalProps) {
@@ -1156,7 +1499,16 @@ function ProfileSelectorModal({
               Annuler
             </Button>
             <Button 
-              onClick={handleConfirm} 
+              onClick={() => {
+                if (isComplete) {
+                  // Préférer async si disponible
+                  if (onConfirmAsync) {
+                    onConfirmAsync(selectedCombination)
+                  } else {
+                    onConfirm(selectedCombination)
+                  }
+                }
+              }}
               disabled={!isComplete || loading}
             >
               {loading ? (
@@ -1166,8 +1518,8 @@ function ProfileSelectorModal({
                 </>
               ) : (
                 <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Générer
+                  <Play className="h-4 w-4 mr-2" />
+                  Lancer la génération
                 </>
               )}
             </Button>

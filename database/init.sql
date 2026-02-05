@@ -334,6 +334,31 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active);
 
 -- ===============================
+-- TABLE : Jobs de génération asynchrone
+-- Persiste les jobs entre les workers Gunicorn
+-- ===============================
+CREATE TABLE IF NOT EXISTS generation_jobs (
+    job_id VARCHAR(16) PRIMARY KEY,
+    job_type VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    total_items INTEGER DEFAULT 0,
+    completed_items INTEGER DEFAULT 0,
+    current_item TEXT DEFAULT '',
+    generated INTEGER DEFAULT 0,
+    skipped INTEGER DEFAULT 0,
+    errors INTEGER DEFAULT 0,
+    params JSONB DEFAULT '{}',
+    error_message TEXT
+);
+
+-- Index pour récupération rapide des jobs actifs
+CREATE INDEX IF NOT EXISTS idx_generation_jobs_status ON generation_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_generation_jobs_created ON generation_jobs(created_at DESC);
+
+-- ===============================
 -- DONNÉES PAR DÉFAUT
 -- ===============================
 INSERT INTO stats (stats_id) VALUES (1) ON CONFLICT DO NOTHING;

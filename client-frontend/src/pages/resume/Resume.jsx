@@ -78,7 +78,7 @@ const Resume = () => {
   const [translateX, setTranslateX] = useState(0);
   const swipeContainerRef = useRef(null);
   
-  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+  // Les fichiers audio sont servis par nginx depuis /uploads/audio/ - URLs relatives
 
   // Check session
   useEffect(() => {
@@ -115,11 +115,9 @@ const Resume = () => {
 
   // Audio handling
   const currentArtwork = parcours?.artworks?.[currentIndex];
-  const audioUrl = currentArtwork?.audio_path 
-    ? (currentArtwork.audio_path.startsWith('http') 
-      ? currentArtwork.audio_path 
-      : `${backendUrl}${currentArtwork.audio_path}`)
-    : null;
+  // Les audio_path sont des URLs relatives comme /uploads/audio/...
+  // Nginx sert ces fichiers directement
+  const audioUrl = currentArtwork?.audio_path || null;
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -259,9 +257,8 @@ const Resume = () => {
   const artwork = parcours.artworks[currentIndex];
   const totalArtworks = parcours.artworks.length;
   const progressPercent = ((currentIndex + 1) / totalArtworks) * 100;
-  const imageUrl = artwork?.image_link?.startsWith('http') 
-    ? artwork.image_link 
-    : (artwork?.image_link ? `${backendUrl}${artwork.image_link}` : null);
+  // Les images peuvent être des URLs absolues ou relatives
+  const imageUrl = artwork?.image_link || null;
 
   return (
     <div className="resume-page">
@@ -300,9 +297,8 @@ const Resume = () => {
           }}
         >
           {parcours.artworks.map((art, index) => {
-            const artImageUrl = art?.image_link?.startsWith('http') 
-              ? art.image_link 
-              : (art?.image_link ? `${backendUrl}${art.image_link}` : null);
+            // Les images peuvent être des URLs absolues ou relatives
+            const artImageUrl = art?.image_link || null;
             
             return (
               <div key={art.oeuvre_id || index} className="swipe-slide">

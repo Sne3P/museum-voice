@@ -26,17 +26,14 @@ const CriteriaSelector = ({
   useEffect(() => {
     const fetchParameters = async () => {
       try {
-        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
-        const response = await fetch(`${backendUrl}/api/criterias?type=${criteriaType}`);
+        // Utiliser URL relative pour passer par nginx
+        const response = await fetch(`/api/criterias?type=${criteriaType}`);
         const data = await response.json();
         
         if (data.success && data.criterias) {
           const params = data.criterias.map(c => {
-            // Préfixer l'URL de l'image si elle est relative
+            // Les images sont servies depuis /api/criteria-image ou en URL absolue
             let imageUrl = c.image_link || '/placeholder.svg';
-            if (imageUrl !== '/placeholder.svg' && !imageUrl.startsWith('http')) {
-              imageUrl = `${backendUrl}${imageUrl}`;
-            }
             
             return {
               id: c.name,

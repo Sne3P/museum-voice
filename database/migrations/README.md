@@ -35,6 +35,8 @@ docker exec -i museum-database psql -U postgres -d museum_db < /path/to/migratio
 | 002     | 2026-02-04 | Supprimer is_required de criteria_types |
 | 003     | 2026-02-04 | Créer le plan par défaut              |
 | 004     | 2026-02-04 | Simplifier DB + index performances    |
+| 005     | 2026-02-04 | Ajouter updated_at aux entrances      |
+| 006     | 2026-02-04 | Jobs génération async + métriques temps |
 
 ## Bonnes pratiques
 

@@ -469,3 +469,64 @@ FORMAT:
         for k, v in combinaison.items():
             parts.append(f"{k}={v.get('name', '')}")
         return " | ".join(parts)
+
+    # ---------------------------------------------------------------------
+    # Génération d'une seule combinaison (pour jobs asynchrones)
+    # ---------------------------------------------------------------------
+    def pregenerate_single_combination(
+        self,
+        *,
+        oeuvre_id: int,
+        artwork: Dict[str, Any],
+        combination: Dict[str, Any],
+        model: Optional[str] = None,
+        force_regenerate: bool = False,
+        duree_minutes: int = 3,
+    ) -> Dict[str, Any]:
+        """
+        Génère une seule narration pour une œuvre + combinaison.
+        Utilisé par le système de jobs asynchrones pour un suivi granulaire.
+        
+        Returns:
+            {
+                'generated': bool,  # True si nouvelle génération
+                'skipped': bool,    # True si existait déjà
+                'error': str|None   # Message d'erreur éventuel
+            }
+        """
+        try:
+            # Vérifier si existe déjà
+            if not force_regenerate and self._check_existing(oeuvre_id, combination):
+                return {'generated': False, 'skipped': True, 'error': None}
+            
+            # Générer la narration
+            with _ollama_semaphore:
+                result = self.generate_mediation_for_one_work(
+                    artwork=artwork,
+                    combinaison=combination,
+                    duree_minutes=duree_minutes,
+                    model=model or self.default_model,
+                )
+            
+            if not result.get('success'):
+                return {
+                    'generated': False, 
+                    'skipped': False, 
+                    'error': result.get('error', 'Génération échouée')
+                }
+            
+            # Sauvegarder en DB
+            text_clean = result['text'].replace('*', '')
+            pregen_id = add_pregeneration(
+                oeuvre_id=oeuvre_id,
+                criteria_dict=combination,
+                pregeneration_text=text_clean
+            )
+            
+            if pregen_id:
+                return {'generated': True, 'skipped': False, 'error': None}
+            else:
+                return {'generated': False, 'skipped': False, 'error': 'Échec sauvegarde DB'}
+                
+        except Exception as e:
+            return {'generated': False, 'skipped': False, 'error': str(e)}

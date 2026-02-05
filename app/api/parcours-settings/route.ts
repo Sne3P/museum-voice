@@ -4,24 +4,18 @@
  */
 
 import { NextResponse } from 'next/server'
-import { Pool } from 'pg'
-
-const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5432/museum_db'
-})
+import { getPostgresPool } from '@/lib/database-postgres'
 
 export async function GET() {
   try {
-    const client = await pool.connect()
+    const pool = await getPostgresPool()
     
     // Récupérer les paramètres de temps de parcours
-    const result = await client.query(`
+    const result = await pool.query(`
       SELECT setting_key, setting_value 
       FROM museum_settings 
       WHERE setting_key IN ('parcours_max_duration', 'parcours_time_step', 'parcours_default_duration')
     `)
-    
-    client.release()
 
     // Valeurs par défaut
     const settings = {

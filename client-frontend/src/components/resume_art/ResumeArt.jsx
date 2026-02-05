@@ -13,15 +13,9 @@ const ResumeArt = ({ artwork }) => {
   const [volume, setVolume] = useState(0.3); // Volume initial à 30%
   const [showVolumeWarning, setShowVolumeWarning] = useState(false);
 
-  // Backend URL pour préfixer les chemins relatifs
-  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
-
-  // URL de l'audio - préfixer si relatif
-  let audioUrl = artwork?.audio_path;
-  if (audioUrl && !audioUrl.startsWith('http')) {
-    audioUrl = `${backendUrl}${audioUrl}`;
-  }
-  audioUrl = audioUrl || null;
+  // URL de l'audio - les chemins sont relatifs (/uploads/audio/...)
+  // Nginx sert ces fichiers directement
+  const audioUrl = artwork?.audio_path || null;
 
   // Recharger l'audio quand la source change
   useEffect(() => {
