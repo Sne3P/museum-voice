@@ -96,8 +96,22 @@ export function convertStateToExportData(state: EditorState): ExportData {
   let entityIdCounter = 1
   let pointIdCounter = 1
   let relationIdCounter = 1
-  let oeuvreIdCounter = 1
   // chunkIdCounter removed - chunks created by backend
+
+  // Collecter les oeuvre_id existants pour éviter les conflits
+  const existingOeuvreIds = new Set<number>()
+  state.floors.forEach((floor) => {
+    floor.artworks.forEach((artwork) => {
+      if ((artwork as any).oeuvre_id) {
+        existingOeuvreIds.add((artwork as any).oeuvre_id)
+      }
+    })
+  })
+  
+  // Trouver le prochain ID disponible pour les nouvelles œuvres
+  let nextOeuvreId = existingOeuvreIds.size > 0 
+    ? Math.max(...existingOeuvreIds) + 1 
+    : 1
 
   // Plans (1 par floor)
   const plans = state.floors.map((floor, index) => ({
@@ -162,7 +176,8 @@ export function convertStateToExportData(state: EditorState): ExportData {
 
     // ARTWORKS
     floor.artworks.forEach((artwork) => {
-      const oeuvreId = oeuvreIdCounter++
+      // Utiliser l'oeuvre_id existant si présent, sinon en créer un nouveau
+      const oeuvreId = (artwork as any).oeuvre_id || nextOeuvreId++
       
       let finalPdfPath = artwork.pdfPath || artwork.pdfLink || null
       let fileName: string | null = null

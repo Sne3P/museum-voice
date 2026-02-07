@@ -232,7 +232,7 @@ def get_all_artworks() -> List[Dict[str, Any]]:
             FROM oeuvres o
             LEFT JOIN artistes a ON o.artiste_id = a.artiste_id
             LEFT JOIN mouvements m ON o.mouvement_id = m.mouvement_id
-            ORDER BY o.created_at DESC
+            ORDER BY o.oeuvre_id ASC
         """)
         return cur.fetchall()
     finally:

@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPostgresPool } from '@/lib/database-postgres'
 
+const BACKEND_URL = process.env.BACKEND_API_URL || 'http://backend:5000'
+
+// Fonction pour invalider le cache du backend
+async function invalidateBackendCache() {
+  try {
+    await fetch(`${BACKEND_URL}/api/criterias/clear-cache`, { method: 'POST' })
+    console.log('✅ Cache backend invalidé')
+  } catch (e) {
+    console.warn('⚠️ Impossible d\'invalider le cache backend:', e)
+  }
+}
+
 /**
  * GET /api/criteria-types
  * Récupère tous les types de critères actifs
@@ -59,6 +71,9 @@ export async function POST(request: NextRequest) {
        RETURNING *`,
       [type, label, description, ordre || 0]
     )
+
+    // Invalider le cache backend après création
+    await invalidateBackendCache()
 
     return NextResponse.json({
       success: true,
@@ -142,6 +157,9 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    // Invalider le cache backend après modification
+    await invalidateBackendCache()
+
     return NextResponse.json({
       success: true,
       type: result.rows[0]
@@ -185,6 +203,9 @@ export async function DELETE(request: NextRequest) {
         { status: 404 }
       )
     }
+
+    // Invalider le cache backend après suppression
+    await invalidateBackendCache()
 
     return NextResponse.json({
       success: true,

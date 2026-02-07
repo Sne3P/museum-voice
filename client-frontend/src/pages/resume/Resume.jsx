@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import MapModal from "../../components/map_modal/MapModal";
+import ThemeToggle from "../../components/theme_toggle/ThemeToggle";
 import { checkSession } from "../../utils/session";
 import "./Resume.css";
 
-// Icons as inline SVGs
+// Icons
 const PlayIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor">
     <path d="M8 5v14l11-7z"/>
@@ -32,23 +33,6 @@ const SkipForwardIcon = () => (
   </svg>
 );
 
-const ImageIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-    <circle cx="8.5" cy="8.5" r="1.5"/>
-    <polyline points="21 15 16 10 5 21"/>
-  </svg>
-);
-
-const TextIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="17" y1="10" x2="3" y2="10"/>
-    <line x1="21" y1="6" x2="3" y2="6"/>
-    <line x1="21" y1="14" x2="3" y2="14"/>
-    <line x1="17" y1="18" x2="3" y2="18"/>
-  </svg>
-);
-
 const MapIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
@@ -63,8 +47,10 @@ const Resume = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isMapOpen, setIsMapOpen] = useState(false);
-  const [showText, setShowText] = useState(false);
-  const [showSwipeHint, setShowSwipeHint] = useState(true);
+  const [viewMode, setViewMode] = useState('image'); // 'image' or 'text'
+  const [showTutorial, setShowTutorial] = useState(true);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
   
   // Audio state
   const audioRef = useRef(null);
@@ -73,18 +59,21 @@ const Resume = () => {
   const [duration, setDuration] = useState(0);
   
   // Swipe state
-  const [isDragging, setIsDragging] = useState(false);
+  const [swipeX, setSwipeX] = useState(0);
+  const [swipeY, setSwipeY] = useState(0);
   const [startX, setStartX] = useState(0);
-  const [translateX, setTranslateX] = useState(0);
-  const swipeContainerRef = useRef(null);
+  const [startY, setStartY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState(null); // 'horizontal' or 'vertical'
+  const [isInScrollableArea, setIsInScrollableArea] = useState(false);
   
-  // Les fichiers audio sont servis par nginx depuis /uploads/audio/ - URLs relatives
+  const containerRef = useRef(null);
+  const textScrollRef = useRef(null);
 
   // Check session
   useEffect(() => {
     checkSession().then(({ valid }) => {
       if (!valid) {
-        console.warn('Session invalide ou expirée');
         navigate('/');
       }
     });
@@ -101,28 +90,25 @@ const Resume = () => {
       const parsedParcours = JSON.parse(storedParcours);
       setParcours(parsedParcours);
       setLoading(false);
+      
+      // Check if tutorial was already seen
+      const tutorialSeen = localStorage.getItem('resumeTutorialSeen');
+      if (tutorialSeen) {
+        setShowTutorial(false);
+      }
     } catch (error) {
       console.error("Erreur parsing parcours:", error);
       navigate('/mes-choix');
     }
   }, [navigate]);
 
-  // Hide swipe hint after first interaction
-  useEffect(() => {
-    const timeout = setTimeout(() => setShowSwipeHint(false), 5000);
-    return () => clearTimeout(timeout);
-  }, []);
-
   // Audio handling
   const currentArtwork = parcours?.artworks?.[currentIndex];
-  // Les audio_path sont des URLs relatives comme /uploads/audio/...
-  // Nginx sert ces fichiers directement
   const audioUrl = currentArtwork?.audio_path || null;
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-
     audio.pause();
     audio.currentTime = 0;
     setIsPlaying(false);
@@ -177,32 +163,113 @@ const Resume = () => {
     audioRef.current.currentTime = percent * duration;
   }, [duration]);
 
-  // Swipe handling
+  // Swipe handlers
   const handleTouchStart = useCallback((e) => {
+    if (showTutorial) return;
+    const touch = e.touches[0];
+    setStartX(touch.clientX);
+    setStartY(touch.clientY);
     setIsDragging(true);
-    setStartX(e.touches[0].clientX);
-    setShowSwipeHint(false);
-  }, []);
+    setSwipeDirection(null);
+    
+    // Check if touch started in scrollable text area
+    const scrollableEl = textScrollRef.current;
+    if (scrollableEl && viewMode === 'text') {
+      const rect = scrollableEl.getBoundingClientRect();
+      const isInArea = (
+        touch.clientX >= rect.left &&
+        touch.clientX <= rect.right &&
+        touch.clientY >= rect.top &&
+        touch.clientY <= rect.bottom
+      );
+      // Check if content is actually scrollable (content height > visible height)
+      const isScrollable = scrollableEl.scrollHeight > scrollableEl.clientHeight;
+      setIsInScrollableArea(isInArea && isScrollable);
+    } else {
+      setIsInScrollableArea(false);
+    }
+  }, [showTutorial, viewMode]);
 
   const handleTouchMove = useCallback((e) => {
-    if (!isDragging) return;
-    const currentX = e.touches[0].clientX;
-    const diff = currentX - startX;
-    setTranslateX(diff);
-  }, [isDragging, startX]);
+    if (!isDragging || showTutorial) return;
+    
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - startX;
+    const deltaY = touch.clientY - startY;
+    
+    // Determine direction if not set
+    if (!swipeDirection) {
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 15) {
+        setSwipeDirection('horizontal');
+      } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 15) {
+        // If in scrollable text area, don't capture vertical swipe - let native scroll work
+        if (isInScrollableArea) {
+          setIsDragging(false);
+          return;
+        }
+        setSwipeDirection('vertical');
+      }
+    }
+    
+    if (swipeDirection === 'horizontal') {
+      setSwipeX(deltaX);
+    } else if (swipeDirection === 'vertical') {
+      setSwipeY(deltaY);
+    }
+  }, [isDragging, startX, startY, swipeDirection, showTutorial, isInScrollableArea]);
 
   const handleTouchEnd = useCallback(() => {
-    if (!isDragging || !parcours) return;
-    setIsDragging(false);
+    if (!isDragging || showTutorial) return;
     
-    const threshold = 80;
-    if (translateX > threshold && currentIndex > 0) {
-      setCurrentIndex(prev => prev - 1);
-    } else if (translateX < -threshold && currentIndex < parcours.artworks.length - 1) {
-      setCurrentIndex(prev => prev + 1);
+    const threshold = 100;
+    
+    // Horizontal swipe - toggle view
+    if (swipeDirection === 'horizontal' && Math.abs(swipeX) > threshold) {
+      setIsAnimating(true);
+      if (swipeX < 0) {
+        // Swipe left - go to text
+        setViewMode('text');
+      } else {
+        // Swipe right - go to image
+        setViewMode('image');
+      }
+      setTimeout(() => setIsAnimating(false), 400);
     }
-    setTranslateX(0);
-  }, [isDragging, translateX, currentIndex, parcours]);
+    
+    // Vertical swipe - change artwork
+    if (swipeDirection === 'vertical' && parcours) {
+      if (swipeY > threshold && currentIndex > 0) {
+        setIsAnimating(true);
+        setCurrentIndex(prev => prev - 1);
+        setTimeout(() => setIsAnimating(false), 400);
+      } else if (swipeY < -threshold && currentIndex < parcours.artworks.length - 1) {
+        setIsAnimating(true);
+        setCurrentIndex(prev => prev + 1);
+        setTimeout(() => setIsAnimating(false), 400);
+      }
+    }
+    
+    // Reset
+    setIsDragging(false);
+    setSwipeDirection(null);
+    setSwipeX(0);
+    setSwipeY(0);
+  }, [isDragging, swipeDirection, swipeX, swipeY, currentIndex, parcours, showTutorial]);
+
+  // Tutorial handlers
+  const handleTutorialNext = () => {
+    if (tutorialStep < 2) {
+      setTutorialStep(tutorialStep + 1);
+    } else {
+      setShowTutorial(false);
+      localStorage.setItem('resumeTutorialSeen', 'true');
+    }
+  };
+
+  const handleSkipTutorial = () => {
+    setShowTutorial(false);
+    localStorage.setItem('resumeTutorialSeen', 'true');
+  };
 
   // Format time
   const formatTime = (seconds) => {
@@ -214,236 +281,315 @@ const Resume = () => {
 
   // Calculate remaining time
   const calculateRemainingTime = () => {
-    if (!parcours?.metadata?.duration_breakdown) return '--:--';
+    if (!parcours?.metadata?.duration_breakdown) return '--';
     const totalMinutes = parcours.metadata.duration_breakdown.total_minutes;
     const elapsedMinutes = parcours.artworks.slice(0, currentIndex).reduce((sum, artwork) => {
-      const narrationMinutes = (artwork.narration_duration || 0) / 60;
-      return sum + narrationMinutes + 2;
+      return sum + ((artwork.narration_duration || 0) / 60) + 2;
     }, 0);
     const remainingMinutes = Math.max(0, totalMinutes - elapsedMinutes);
-    const hours = Math.floor(remainingMinutes / 60);
-    const minutes = Math.floor(remainingMinutes % 60);
-    return hours > 0 ? `${hours}h ${minutes}min` : `${minutes} min`;
+    return `${Math.round(remainingMinutes)} min`;
   };
 
   if (loading || !parcours) {
     return (
-      <div className="loading-overlay">
+      <div className="resume-loading">
         <div className="loading-spinner" />
-        <p>Chargement du parcours...</p>
+        <p>Chargement...</p>
       </div>
     );
   }
 
   if (!parcours.artworks || parcours.artworks.length === 0) {
     return (
-      <div className="error-container">
+      <div className="resume-error">
         <div className="error-card">
-          <svg className="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
           <h2>Aucune œuvre disponible</h2>
-          <p>Impossible de générer un parcours avec vos critères. Veuillez modifier vos choix et réessayer.</p>
-          <button className="btn-back" onClick={() => navigate('/mes-choix')}>
-            Modifier mes choix
+          <p>Veuillez modifier vos choix.</p>
+          <button className="btn-primary" onClick={() => navigate('/mes-choix')}>
+            Retour
           </button>
         </div>
       </div>
     );
   }
 
-  const artwork = parcours.artworks[currentIndex];
+  const artwork = currentArtwork;
   const totalArtworks = parcours.artworks.length;
   const progressPercent = ((currentIndex + 1) / totalArtworks) * 100;
-  // Les images peuvent être des URLs absolues ou relatives
   const imageUrl = artwork?.image_link || null;
 
+  // Oeuvres adjacentes pour l'animation style Reels
+  const prevArtwork = currentIndex > 0 ? parcours.artworks[currentIndex - 1] : null;
+  const nextArtwork = currentIndex < totalArtworks - 1 ? parcours.artworks[currentIndex + 1] : null;
+
+  // Calcul du déplacement en pourcentage pour l'animation Reels
+  const getSlideOffset = () => {
+    if (swipeDirection === 'vertical' && isDragging) {
+      // Convertir le swipe en pourcentage de la hauteur visible (environ 60vh pour le main)
+      const maxOffset = window.innerHeight * 0.6;
+      return (swipeY / maxOffset) * 100;
+    }
+    return 0;
+  };
+
+  const slideOffset = getSlideOffset();
+
+  // Transform pour le swipe horizontal uniquement
+  const getHorizontalTransform = () => {
+    if (swipeDirection === 'horizontal') {
+      return `translateX(${swipeX * 0.5}px)`;
+    }
+    return 'none';
+  };
+
   return (
-    <div className="resume-page">
-      {/* Hidden Audio Element */}
+    <div 
+      className={`resume-page ${isAnimating ? 'animating' : ''}`}
+      ref={containerRef}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Audio */}
       <audio ref={audioRef} src={audioUrl} preload="metadata" />
-      
-      {/* Progress Header */}
-      <div className="progress-header">
-        <div className="progress-header-content">
-          <div className="progress-info">
-            <span className="progress-count">{currentIndex + 1} sur {totalArtworks}</span>
-            <span className="progress-time">{calculateRemainingTime()} restant</span>
-          </div>
-          <div className="progress-bar-mini">
-            <div 
-              className="progress-bar-mini-fill" 
-              style={{ width: `${progressPercent}%` }}
-            />
+
+      {/* Tutorial Overlay */}
+      {showTutorial && (
+        <div className="tutorial-overlay">
+          <div className="tutorial-card">
+            {tutorialStep === 0 && (
+              <>
+                <div className="tutorial-icon">
+                  <div className="swipe-demo horizontal">
+                    <span className="arrow">←</span>
+                    <span className="arrow">→</span>
+                  </div>
+                </div>
+                <h3>Swipe horizontal</h3>
+                <p>Glissez à gauche ou à droite pour basculer entre l'image et le texte de narration</p>
+              </>
+            )}
+            {tutorialStep === 1 && (
+              <>
+                <div className="tutorial-icon">
+                  <div className="swipe-demo vertical">
+                    <span className="arrow">↑</span>
+                    <span className="arrow">↓</span>
+                  </div>
+                </div>
+                <h3>Swipe vertical</h3>
+                <p>Glissez vers le haut pour l'œuvre suivante, vers le bas pour revenir en arrière</p>
+              </>
+            )}
+            {tutorialStep === 2 && (
+              <>
+                <div className="tutorial-icon">
+                  <div className="audio-demo">🎧</div>
+                </div>
+                <h3>Audio guide</h3>
+                <p>Utilisez le lecteur en bas pour écouter la narration de chaque œuvre</p>
+              </>
+            )}
+            <div className="tutorial-actions">
+              <button className="btn-skip" onClick={handleSkipTutorial}>Passer</button>
+              <button className="btn-next" onClick={handleTutorialNext}>
+                {tutorialStep < 2 ? 'Suivant' : 'Commencer'}
+              </button>
+            </div>
+            <div className="tutorial-dots">
+              {[0, 1, 2].map(i => (
+                <span key={i} className={`dot ${tutorialStep === i ? 'active' : ''}`} />
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-      <div className="progress-header-spacer" />
+      )}
 
-      {/* Swipe Container */}
-      <div 
-        className="swipe-container"
-        ref={swipeContainerRef}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
+      {/* Header */}
+      <header className="resume-header">
+        <div className="header-row">
+          <div className="progress-info">
+            <span className="progress-count">{currentIndex + 1}/{totalArtworks}</span>
+            <span className="progress-time">{calculateRemainingTime()} restantes</span>
+          </div>
+          <ThemeToggle className="small" />
+        </div>
+        <div className="progress-track">
+          <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+        </div>
+      </header>
+
+      {/* Vertical Swipe Indicators - FIXED position */}
+      {swipeDirection === 'vertical' && isDragging && (
+        <>
+          {currentIndex > 0 && swipeY > 30 && (
+            <div className="swipe-indicator-fixed top">
+              <span>↑ {prevArtwork?.title || 'Précédent'}</span>
+            </div>
+          )}
+          {currentIndex < totalArtworks - 1 && swipeY < -30 && (
+            <div className="swipe-indicator-fixed bottom">
+              <span>{nextArtwork?.title || 'Suivant'} ↓</span>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Slides Container - Style Instagram Reels */}
+      <div className="slides-container">
+        {/* Previous Artwork Slide */}
+        {prevArtwork && (
+          <div 
+            className={`artwork-slide prev ${swipeDirection === 'vertical' && swipeY > 0 ? 'visible' : ''}`}
+            style={{
+              transform: `translateY(${-100 + slideOffset}%)`,
+              transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+            }}
+          >
+            <div className="slide-content">
+              {prevArtwork.image_link ? (
+                <img src={prevArtwork.image_link} alt={prevArtwork.title} className="slide-image" />
+              ) : (
+                <div className="no-image"><span>Image non disponible</span></div>
+              )}
+              <div className="slide-info">
+                <h2>{prevArtwork.title || 'Titre inconnu'}</h2>
+                <p>{prevArtwork.artist || 'Artiste inconnu'}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Current Artwork Slide */}
         <div 
-          className={`swipe-track ${isDragging ? 'dragging' : ''}`}
-          style={{ 
-            transform: `translateX(calc(-${currentIndex * 100}% + ${translateX}px))` 
+          className="artwork-slide current"
+          style={{
+            transform: swipeDirection === 'vertical' ? `translateY(${slideOffset}%)` : getHorizontalTransform(),
+            transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
           }}
         >
-          {parcours.artworks.map((art, index) => {
-            // Les images peuvent être des URLs absolues ou relatives
-            const artImageUrl = art?.image_link || null;
-            
-            return (
-              <div key={art.oeuvre_id || index} className="swipe-slide">
-                <div className="artwork-hero">
-                  {/* Toggle Button */}
-                  <button 
-                    className="toggle-view-btn"
-                    onClick={() => setShowText(!showText)}
-                    aria-label={showText ? "Voir l'image" : "Voir le texte"}
-                  >
-                    {showText ? <ImageIcon /> : <TextIcon />}
-                  </button>
-
-                  {showText ? (
-                    <div className="artwork-text-view">
-                      <p className="artwork-narration">
-                        {art.narration || "Description non disponible"}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="artwork-image-container">
-                      {artImageUrl ? (
-                        <img 
-                          src={artImageUrl} 
-                          alt={art.title || 'Œuvre'} 
-                          className="artwork-image"
-                          loading={Math.abs(index - currentIndex) <= 1 ? "eager" : "lazy"}
-                        />
-                      ) : (
-                        <div className="artwork-placeholder">
-                          <ImageIcon />
-                        </div>
-                      )}
-                      <div className="artwork-gradient" />
-                    </div>
-                  )}
-                </div>
+          <main className={`resume-main ${viewMode}`}>
+            {/* Background Image (always visible as backdrop) */}
+            {imageUrl && (
+              <div className="artwork-backdrop">
+                <img src={imageUrl} alt="" />
               </div>
-            );
-          })}
+            )}
+
+            {/* Image View */}
+            <div className={`view-panel image-view ${viewMode === 'image' ? 'active' : ''}`}>
+              <div className="image-container">
+                {imageUrl ? (
+                  <img 
+                    src={imageUrl} 
+                    alt={artwork.title || 'Œuvre'} 
+                    className="artwork-img"
+                  />
+                ) : (
+                  <div className="no-image">
+                    <span>Image non disponible</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Text View */}
+            <div className={`view-panel text-view ${viewMode === 'text' ? 'active' : ''}`}>
+              <div className="text-scroll" ref={textScrollRef}>
+                <p className="narration">
+                  {artwork.narration || "Description non disponible."}
+                </p>
+              </div>
+            </div>
+
+            {/* View Mode Tabs */}
+            <div className="view-tabs">
+              <button 
+                className={`tab ${viewMode === 'image' ? 'active' : ''}`}
+                onClick={() => setViewMode('image')}
+              >
+                Image
+              </button>
+              <button 
+                className={`tab ${viewMode === 'text' ? 'active' : ''}`}
+                onClick={() => setViewMode('text')}
+              >
+                Texte
+              </button>
+            </div>
+
+            {/* Swipe indicators - horizontal only */}
+            {isDragging && swipeDirection === 'horizontal' && (
+              <div className={`swipe-indicator ${swipeX < -50 ? 'show-right' : swipeX > 50 ? 'show-left' : ''}`}>
+                {swipeX < -50 && <span className="indicator-text">Texte →</span>}
+                {swipeX > 50 && <span className="indicator-text">← Image</span>}
+              </div>
+            )}
+          </main>
         </div>
 
-        {/* Swipe Hint */}
-        {showSwipeHint && totalArtworks > 1 && (
-          <div className="swipe-hint">
-            <div className="swipe-hint-icon">
-              <span>←</span>
-              <span>→</span>
+        {/* Next Artwork Slide */}
+        {nextArtwork && (
+          <div 
+            className={`artwork-slide next ${swipeDirection === 'vertical' && swipeY < 0 ? 'visible' : ''}`}
+            style={{
+              transform: `translateY(${100 + slideOffset}%)`,
+              transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+            }}
+          >
+            <div className="slide-content">
+              {nextArtwork.image_link ? (
+                <img src={nextArtwork.image_link} alt={nextArtwork.title} className="slide-image" />
+              ) : (
+                <div className="no-image"><span>Image non disponible</span></div>
+              )}
+              <div className="slide-info">
+                <h2>{nextArtwork.title || 'Titre inconnu'}</h2>
+                <p>{nextArtwork.artist || 'Artiste inconnu'}</p>
+              </div>
             </div>
-            <span>Glissez pour naviguer</span>
           </div>
         )}
       </div>
 
       {/* Artwork Info */}
-      <div className="artwork-info-bar">
-        <h1 className="artwork-title">{artwork.title || "Titre inconnu"}</h1>
-        <p className="artwork-artist">{artwork.artist || "Artiste inconnu"}</p>
-        <div className="artwork-meta">
-          {artwork.date && (
-            <span className="artwork-meta-item">{artwork.date}</span>
-          )}
-          {artwork.materiaux_technique && (
-            <span className="artwork-meta-item">{artwork.materiaux_technique}</span>
-          )}
-          {artwork.position?.room && (
-            <span className="artwork-meta-item">Salle {artwork.position.room}</span>
-          )}
+      <div className="artwork-meta">
+        <h1 className="meta-title">{artwork.title || "Titre inconnu"}</h1>
+        <div className="meta-details">
+          <span className="meta-artist">{artwork.artist || "Artiste inconnu"}</span>
+          {artwork.date && <span className="meta-date">{artwork.date}</span>}
+          {artwork.style && <span className="meta-style">{artwork.style}</span>}
+          {artwork.room && <span className="meta-room">Salle {artwork.room}</span>}
         </div>
-      </div>
-
-      {/* Navigation Dots */}
-      <div className="nav-dots">
-        {parcours.artworks.map((_, index) => (
-          <button
-            key={index}
-            className={`nav-dot ${index === currentIndex ? 'active' : ''}`}
-            onClick={() => setCurrentIndex(index)}
-            aria-label={`Aller à l'œuvre ${index + 1}`}
-          />
-        ))}
       </div>
 
       {/* Audio Player */}
       <div className="audio-player">
-        {audioUrl && (
-          <>
-            <div className="audio-progress">
-              <div 
-                className="audio-progress-bar" 
-                onClick={handleProgressClick}
-              >
-                <div 
-                  className="audio-progress-fill" 
-                  style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }}
-                />
-                <div 
-                  className="audio-progress-thumb"
-                  style={{ left: duration ? `${(currentTime / duration) * 100}%` : '0%' }}
-                />
-              </div>
-              <div className="audio-time">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-          </>
-        )}
+        <div className="audio-progress" onClick={handleProgressClick}>
+          <div className="audio-track">
+            <div className="audio-fill" style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
+          </div>
+          <div className="audio-times">
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+        </div>
         
         <div className="audio-controls">
-          <button 
-            className="audio-btn audio-btn-skip" 
-            onClick={skipBackward}
-            disabled={!audioUrl}
-            aria-label="Reculer de 10 secondes"
-          >
+          <button className="audio-btn" onClick={skipBackward} disabled={!audioUrl}>
             <SkipBackIcon />
           </button>
-          
-          <button 
-            className="audio-btn audio-btn-play" 
-            onClick={togglePlay}
-            disabled={!audioUrl}
-            aria-label={isPlaying ? "Pause" : "Lecture"}
-          >
+          <button className="audio-btn play-btn" onClick={togglePlay} disabled={!audioUrl}>
             {isPlaying ? <PauseIcon /> : <PlayIcon />}
           </button>
-          
-          <button 
-            className="audio-btn audio-btn-skip" 
-            onClick={skipForward}
-            disabled={!audioUrl}
-            aria-label="Avancer de 10 secondes"
-          >
+          <button className="audio-btn" onClick={skipForward} disabled={!audioUrl}>
             <SkipForwardIcon />
           </button>
         </div>
       </div>
 
       {/* Map Button */}
-      <button 
-        className="map-btn"
-        onClick={() => setIsMapOpen(true)}
-        aria-label="Voir le plan"
-      >
+      <button className="map-btn" onClick={() => setIsMapOpen(true)}>
         <MapIcon />
       </button>
 

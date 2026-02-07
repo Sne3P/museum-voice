@@ -18,7 +18,7 @@ export async function GET() {
       LEFT JOIN pregenerations p ON o.oeuvre_id = p.oeuvre_id
       WHERE e.entity_type = 'ARTWORK'
       GROUP BY o.oeuvre_id
-      ORDER BY o.created_at DESC
+      ORDER BY o.oeuvre_id ASC
     `)
 
     console.log(`✅ ${result.rows.length} œuvre(s) trouvée(s)`)

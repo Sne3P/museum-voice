@@ -1,11 +1,10 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/components/auth-context'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+// Utilisation de fonts système pour éviter les problèmes de téléchargement lors du build Docker
+// Les fonts Geist peuvent être chargées dynamiquement côté client si nécessaire
 
 export const metadata: Metadata = {
   title: 'MuseumVoice - Administration',

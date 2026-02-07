@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPostgresPool } from '@/lib/database-postgres'
 
+const BACKEND_URL = process.env.BACKEND_API_URL || 'http://backend:5000'
+
+// Fonction pour invalider le cache du backend
+async function invalidateBackendCache() {
+  try {
+    await fetch(`${BACKEND_URL}/api/criterias/clear-cache`, { method: 'POST' })
+    console.log('✅ Cache backend invalidé')
+  } catch (e) {
+    console.warn('⚠️ Impossible d\'invalider le cache backend:', e)
+  }
+}
+
 // Helper pour ajouter les headers CORS
 function addCORSHeaders(response: NextResponse) {
   response.headers.set('Access-Control-Allow-Origin', '*')
@@ -105,6 +117,9 @@ export async function POST(request: NextRequest) {
       [type, name, label, description, image_link, ai_indication, ordre || 0]
     )
 
+    // Invalider le cache backend après création
+    await invalidateBackendCache()
+
     return addCORSHeaders(NextResponse.json({
       success: true,
       criteria: result.rows[0]
@@ -195,6 +210,9 @@ export async function PUT(request: NextRequest) {
       ))
     }
 
+    // Invalider le cache backend après modification
+    await invalidateBackendCache()
+
     return addCORSHeaders(NextResponse.json({
       success: true,
       criteria: result.rows[0]
@@ -238,6 +256,9 @@ export async function DELETE(request: NextRequest) {
         { status: 404 }
       ))
     }
+
+    // Invalider le cache backend après suppression
+    await invalidateBackendCache()
 
     return addCORSHeaders(NextResponse.json({
       success: true,

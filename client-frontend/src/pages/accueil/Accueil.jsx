@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { activateSession } from '../../utils/session';
+import ThemeToggle from '../../components/theme_toggle/ThemeToggle';
 import './Accueil.css';
 
 // Icons
@@ -90,6 +91,11 @@ const Accueil = () => {
 
   return (
     <div className="accueil-page">
+      {/* Theme Toggle */}
+      <div className="theme-toggle-container">
+        <ThemeToggle />
+      </div>
+
       {/* Hero Background */}
       <div className="hero-background">
         <img 

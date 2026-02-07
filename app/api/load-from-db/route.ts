@@ -122,6 +122,7 @@ export async function GET() {
           
           return {
             id: metadata.id || `artwork-${entity.entity_id}`,
+            oeuvre_id: entity.oeuvre_id,  // PRÉSERVER l'oeuvre_id original de la DB
             xy: artworkPoints.length > 0 ? [artworkPoints[0].x, artworkPoints[0].y] : [0, 0],
             size: metadata.size || [40, 40],
             name: oeuvre?.title || entity.name || 'Sans titre',

@@ -180,14 +180,12 @@ export default function NarrationsDashboard() {
 
   async function loadAllCriterias() {
     try {
-      // Charger tous les critères (pas de type filter)
-      const types = ['age', 'thematique', 'style_texte'] // Hardcode pour l'instant
-      const allPromises = types.map(type => 
-        fetch(`/api/criterias?type=${type}`).then(r => r.json())
-      )
-      const results = await Promise.all(allPromises)
-      const merged = results.flatMap(data => data.criterias || [])
-      setAllCriterias(merged)
+      // Charger tous les critères sans filtre de type - récupère TOUS les critères
+      const res = await fetch('/api/criterias')
+      if (res.ok) {
+        const data = await res.json()
+        setAllCriterias(data.criterias || [])
+      }
     } catch (error) {
       console.error('Erreur chargement criterias:', error)
     }

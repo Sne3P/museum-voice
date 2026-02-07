@@ -19,6 +19,7 @@ export interface Room {
 
 export interface Artwork {
   readonly id: string
+  readonly oeuvre_id?: number  // ID de la base de données - DOIT ÊTRE PRÉSERVÉ
   readonly xy: readonly [number, number]
   readonly size?: readonly [number, number]
   readonly name?: string

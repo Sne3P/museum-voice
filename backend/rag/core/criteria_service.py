@@ -4,15 +4,32 @@ Service pour gérer les critères dynamiques depuis la BDD
 Remplace tous les systèmes hardcodés (AGE, THEMATIQUE, STYLE_TEXTE)
 """
 
+import time
 from typing import Dict, List, Optional, Any, Tuple
 from .db_postgres import _connect_postgres
+
+# TTL du cache en secondes (5 secondes pour un refresh rapide)
+CACHE_TTL = 5
 
 
 class CriteriaService:
     """Service pour charger et gérer les critères depuis la base PostgreSQL"""
     
     def __init__(self):
-        self._cache = {}
+        self._cache: Dict[str, Any] = {}
+        self._cache_timestamps: Dict[str, float] = {}
+    
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """Vérifie si le cache est encore valide (TTL non expiré)"""
+        if cache_key not in self._cache_timestamps:
+            return False
+        age = time.time() - self._cache_timestamps[cache_key]
+        return age < CACHE_TTL
+    
+    def _set_cache(self, cache_key: str, value: Any):
+        """Enregistre une valeur dans le cache avec timestamp"""
+        self._cache[cache_key] = value
+        self._cache_timestamps[cache_key] = time.time()
     
     def get_criteria_types(self) -> List[Dict[str, Any]]:
         """Récupère tous les types de critères
@@ -21,7 +38,7 @@ class CriteriaService:
             Liste des types de critères avec leurs métadonnées
         """
         cache_key = "types_all"
-        if cache_key in self._cache:
+        if self._is_cache_valid(cache_key):
             return self._cache[cache_key]
         
         conn = _connect_postgres()
@@ -49,7 +66,7 @@ class CriteriaService:
         cur.close()
         conn.close()
         
-        self._cache[cache_key] = criteria_types
+        self._set_cache(cache_key, criteria_types)
         return criteria_types
     
     def get_criteria_by_type(self, type_name: str) -> List[Dict[str, Any]]:
@@ -62,7 +79,7 @@ class CriteriaService:
             Liste des critères avec leurs métadonnées
         """
         cache_key = f"criteria_{type_name}"
-        if cache_key in self._cache:
+        if self._is_cache_valid(cache_key):
             return self._cache[cache_key]
         
         conn = _connect_postgres()
@@ -95,7 +112,7 @@ class CriteriaService:
         cur.close()
         conn.close()
         
-        self._cache[cache_key] = criterias
+        self._set_cache(cache_key, criterias)
         return criterias
     
     def get_criteria_by_id(self, criteria_id: int) -> Optional[Dict[str, Any]]:
@@ -258,6 +275,7 @@ class CriteriaService:
     def clear_cache(self):
         """Vide le cache des critères (utile après modifications en BDD)"""
         self._cache = {}
+        self._cache_timestamps = {}
 
 
 # Instance globale du service
