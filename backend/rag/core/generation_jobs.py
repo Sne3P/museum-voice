@@ -129,19 +129,13 @@ class GenerationJob:
     
     def _estimate_remaining_intelligent(self) -> Optional[float]:
         """
-        Estimation intelligente du temps restant qui DESCEND progressivement.
+        Estimation du temps restant basée UNIQUEMENT sur les vraies générations.
+        Les skips sont instantanés et ne comptent pas.
         
-        Méthode: Calculer le "drift" (écart) entre le temps réel et le temps théorique.
-        - temps_théorique = completed_items × avg_time_per_item
-        - drift = elapsed - temps_théorique
-        - remaining = (remaining_items × avg_time) - drift
-        
-        Quand elapsed augmente de 1s (entre les completions):
-        - drift augmente de 1
-        - remaining diminue de 1 ✓
-        
-        Quand un item est complété:
-        - Le calcul se réajuste avec les nouvelles stats
+        Méthode:
+        1. Calculer le throughput de GÉNÉRATIONS: generated / elapsed
+        2. Estimer le nombre de générations restantes
+        3. Temps restant = générations_restantes / throughput
         """
         if not self.started_at:
             return None
@@ -151,62 +145,49 @@ class GenerationJob:
             return 0
         
         elapsed = (datetime.now() - self.started_at).total_seconds()
+        generations_done = self.generated
         
         # Vérifier si force_regenerate est activé
         force_regenerate = self.params.get('force_regenerate', False)
         
-        # Estimation de base: ~45 secondes par génération, ajusté par parallélisation
-        base_generation_time = 45.0  # secondes
-        parallel_factor = max(1, MAX_PARALLEL_GENERATIONS * 0.8)
-        default_generation_time = base_generation_time / parallel_factor
-        
-        # Si on a des vraies métriques de génération, les utiliser
-        if self.avg_generation_time_ms and self.avg_generation_time_ms > 1000:
-            actual_generation_time = (self.avg_generation_time_ms / 1000.0) / parallel_factor
-        else:
-            actual_generation_time = default_generation_time
-        
-        # Déterminer le ratio de génération
+        # === ESTIMER LE NOMBRE DE GÉNÉRATIONS RESTANTES ===
         if force_regenerate:
-            generation_ratio = 1.0
-        elif self.completed_items > 0:
-            generation_ratio = self.generated / self.completed_items
-            # Si beaucoup de skips au début, les restants sont probablement des générations
-            if generation_ratio < 0.2 and self.skipped > 5:
-                generation_ratio = 0.9
-            generation_ratio = max(0.1, generation_ratio)
+            # Tout sera des générations
+            generations_remaining = remaining_items
+        elif self.completed_items > 0 and generations_done > 0:
+            # Ratio de génération observé
+            gen_ratio = generations_done / self.completed_items
+            generations_remaining = int(remaining_items * gen_ratio)
+            # Au minimum 1 si il reste des items
+            generations_remaining = max(1, generations_remaining)
         else:
-            generation_ratio = 0.5
+            # Pas encore de données, on suppose tout est à générer
+            generations_remaining = remaining_items
         
-        # Temps moyen estimé par item (pondéré entre génération et skip)
-        # Skip = ~0.005 secondes, Génération = actual_generation_time
-        skip_time = 0.005
-        avg_time_per_item = (generation_ratio * actual_generation_time) + ((1 - generation_ratio) * skip_time)
+        # Si aucune génération restante estimée, temps = 0
+        if generations_remaining <= 0:
+            return 0
         
-        # === FORMULE QUI DESCEND SECONDE PAR SECONDE ===
-        # Temps théorique qu'on aurait dû mettre pour les items complétés
-        expected_elapsed_for_completed = self.completed_items * avg_time_per_item
+        # === CALCULER LE THROUGHPUT DE GÉNÉRATIONS ===
+        # Phase de démarrage: pas assez de données
+        if elapsed < 10 or generations_done < 1:
+            # Estimation initiale: ~15s par génération, parallélisé
+            time_per_gen = 15.0 / MAX_PARALLEL_GENERATIONS
+            return generations_remaining * time_per_gen
         
-        # Drift = écart entre temps réel et temps théorique
-        # Si on est en avance (skips rapides), drift < 0
-        # Si on est en retard, drift > 0
-        time_drift = elapsed - expected_elapsed_for_completed
+        # Throughput réel observé: générations par seconde
+        generation_throughput = generations_done / elapsed
         
-        # Temps "brut" pour les items restants
-        raw_remaining = remaining_items * avg_time_per_item
-        
-        # Temps restant = temps brut - drift
-        # Le drift augmente de 1 seconde chaque seconde → remaining diminue de 1
-        remaining = raw_remaining - time_drift
+        # Temps restant = générations restantes / throughput
+        remaining = generations_remaining / generation_throughput
         
         # Ne pas retourner de valeur négative
         remaining = max(0, remaining)
         
-        # Log pour debug
         logger.debug(
-            f"Estimation: {self.completed_items}/{self.total_items}, "
-            f"gen_ratio={generation_ratio:.1%}, avg_time={avg_time_per_item:.1f}s, "
-            f"drift={time_drift:.1f}s, remaining={remaining:.0f}s"
+            f"Estimation: {generations_done} générés en {elapsed:.0f}s, "
+            f"throughput={generation_throughput:.3f}/s, "
+            f"restant={generations_remaining} → {remaining:.0f}s"
         )
         
         return remaining
