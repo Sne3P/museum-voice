@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth-context'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { AdminLayout } from '../components'
+import { cn } from '@/lib/utils'
 import { 
-  ArrowLeft, Plus, Pencil, Trash2, X, Save, 
-  FolderPlus, ListTree, Hash, ImageIcon, AlertCircle, CheckCircle
+  Plus, Pencil, Trash2, X, Save, 
+  FolderPlus, ListTree, Hash, ImageIcon, AlertCircle, Layers, Tag
 } from 'lucide-react'
 import { getUploadUrl } from '@/lib/uploads'
 
@@ -388,82 +388,69 @@ export default function ProfilsPage() {
   // ===== RENDER LOADING =====
   if (authLoading || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-auto">
-          <CardContent className="pt-6 text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">
+      <AdminLayout title="Gestion des Critères" description="Chargement..." showBackButton>
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <div className="w-12 h-12 border-2 border-black border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-neutral-500 text-sm">
               {authLoading ? 'Vérification des permissions...' : 'Chargement des critères...'}
             </p>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      </AdminLayout>
     )
   }
 
   // ===== RENDER MAIN =====
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <Card className="mb-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => router.push('/admin')}
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div>
-                  <CardTitle className="text-2xl">Gestion des Critères</CardTitle>
-                  <CardDescription>Configurez les types de critères et leurs options</CardDescription>
-                </div>
-              </div>
-              <Button onClick={() => setModal({ type: 'create-type' })}>
-                <FolderPlus className="h-4 w-4 mr-2" />
-                Nouveau Type
-              </Button>
+    <AdminLayout 
+      title="Gestion des Critères" 
+      description="Configurez les types de critères et leurs options"
+      showBackButton
+    >
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* Stats + Action Bar */}
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex gap-4">
+            <div className="bg-white rounded-xl border border-neutral-200 px-4 py-3 text-center min-w-[100px]">
+              <p className="text-2xl font-bold text-black">{stats.totalTypes}</p>
+              <p className="text-xs text-neutral-500">Types</p>
             </div>
-          </CardHeader>
-
-          {/* Stats */}
-          <CardContent>
-            <div className="grid grid-cols-3 gap-4">
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <p className="text-3xl font-bold text-blue-600">{stats.totalTypes}</p>
-                  <p className="text-sm text-gray-600 mt-1">Types de Critères</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <p className="text-3xl font-bold text-purple-600">{stats.totalCriterias}</p>
-                  <p className="text-sm text-gray-600 mt-1">Critères Totaux</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <p className="text-3xl font-bold text-green-600">{stats.totalCombinations.toLocaleString()}</p>
-                  <p className="text-sm text-gray-600 mt-1">Combinaisons Possibles</p>
-                </CardContent>
-              </Card>
+            <div className="bg-white rounded-xl border border-neutral-200 px-4 py-3 text-center min-w-[100px]">
+              <p className="text-2xl font-bold text-black">{stats.totalCriterias}</p>
+              <p className="text-xs text-neutral-500">Critères</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="bg-white rounded-xl border border-neutral-200 px-4 py-3 text-center min-w-[100px]">
+              <p className="text-2xl font-bold text-black">{stats.totalCombinations.toLocaleString()}</p>
+              <p className="text-xs text-neutral-500">Combinaisons</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setModal({ type: 'create-type' })}
+            className="flex items-center gap-2 px-4 py-2.5 bg-black text-white rounded-xl text-sm font-medium hover:bg-neutral-800 transition-colors"
+          >
+            <FolderPlus className="h-4 w-4" />
+            Nouveau Type
+          </button>
+        </div>
 
         {/* Criteria Groups */}
-        <div className="space-y-4 max-h-[calc(100vh-350px)] overflow-y-auto pr-2">
+        <div className="space-y-4">
           {groups.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <ListTree className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                <CardTitle className="text-gray-600 mb-2">Aucun critère défini</CardTitle>
-                <CardDescription>Commencez par créer un type de critère</CardDescription>
-              </CardContent>
-            </Card>
+            <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto mb-4">
+                <ListTree className="h-8 w-8 text-neutral-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-black mb-2">Aucun critère défini</h3>
+              <p className="text-neutral-500 text-sm mb-6">Commencez par créer un type de critère</p>
+              <button
+                onClick={() => setModal({ type: 'create-type' })}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl text-sm font-medium hover:bg-neutral-800 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Créer un type
+              </button>
+            </div>
           ) : (
             groups.map(group => (
               <CriteriaGroupCard
@@ -520,7 +507,7 @@ export default function ProfilsPage() {
           }}
         />
       )}
-    </div>
+    </AdminLayout>
   )
 }
 
@@ -539,105 +526,100 @@ function CriteriaGroupCard({
   onDeleteType: (type: string, label: string) => void
 }) {
   return (
-    <Card>
-      <CardHeader className="bg-gray-50">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>{group.type_info.label}</CardTitle>
-            <CardDescription>
-              {group.criterias.length} critère(s) • Type: <code className="text-xs bg-gray-200 px-1 rounded">{group.type_info.type}</code>
-            </CardDescription>
+    <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center">
+            <Layers className="h-5 w-5 text-white" />
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={onAddCriteria}
-              size="sm"
-              variant="outline"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter
-            </Button>
-            <Button
-              onClick={() => onDeleteType(group.type_info.type, group.type_info.label)}
-              size="sm"
-              variant="destructive"
-              title="Supprimer le type"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+          <div>
+            <h3 className="font-semibold text-black">{group.type_info.label}</h3>
+            <p className="text-sm text-neutral-500">
+              {group.criterias.length} critère{group.criterias.length > 1 ? 's' : ''} • 
+              <code className="ml-1 text-xs bg-neutral-200 px-1.5 py-0.5 rounded font-mono">{group.type_info.type}</code>
+            </p>
           </div>
         </div>
-      </CardHeader>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onAddCriteria}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 text-sm font-medium hover:bg-neutral-100 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Ajouter
+          </button>
+          <button
+            onClick={() => onDeleteType(group.type_info.type, group.type_info.label)}
+            className="p-2 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+            title="Supprimer le type"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
 
-      <CardContent className="pt-6">
+      {/* Content */}
+      <div className="p-4">
         {group.criterias.length === 0 ? (
-          <p className="text-center text-gray-400 py-8 italic">Aucun critère dans ce type</p>
+          <p className="text-center text-neutral-400 py-8 text-sm">Aucun critère dans ce type</p>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {group.criterias.map(criteria => (
-              <Card
+              <div
                 key={criteria.criteria_id}
-                className="hover:shadow-md transition-shadow"
+                className="border border-neutral-200 rounded-xl p-3 hover:shadow-md transition-all group"
               >
-                <CardContent className="p-3">
-                  <div className="flex items-start gap-3">
-                    {/* Image */}
-                    <div className="flex-shrink-0">
-                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
-                        <img
-                          src={getUploadUrl(criteria.image_link || '/placeholder.svg')}
-                          alt={criteria.label}
-                          className="w-full h-full object-cover"
-                          onError={(e: any) => {
-                            (e.target as HTMLImageElement).src = '/placeholder.svg'
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-grow min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">{criteria.label}</h3>
-                      {criteria.description && (
-                        <p className="text-sm text-gray-600 mt-1 line-clamp-2">{criteria.description}</p>
-                      )}
-                      {criteria.ai_indication && (
-                        <div className="mt-2 bg-purple-50 border border-purple-200 rounded p-2">
-                          <p className="text-xs text-purple-700 font-medium">IA:</p>
-                          <p className="text-xs text-purple-900 line-clamp-2">{criteria.ai_indication}</p>
-                        </div>
-                      )}
-
-                      {/* Actions */}
-                      <div className="flex gap-1 mt-2">
-                        <Button
-                          onClick={() => onEditCriteria(criteria)}
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2"
-                          title="Modifier"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          onClick={() => onDeleteCriteria(criteria.criteria_id, criteria.label)}
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
+                <div className="flex items-start gap-3">
+                  {/* Image */}
+                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 flex-shrink-0">
+                    <img
+                      src={getUploadUrl(criteria.image_link || '/placeholder.svg')}
+                      alt={criteria.label}
+                      className="w-full h-full object-cover"
+                      onError={(e: any) => {
+                        (e.target as HTMLImageElement).src = '/placeholder.svg'
+                      }}
+                    />
                   </div>
-                </CardContent>
-              </Card>
+
+                  {/* Content */}
+                  <div className="flex-grow min-w-0">
+                    <h4 className="font-medium text-black truncate">{criteria.label}</h4>
+                    {criteria.description && (
+                      <p className="text-sm text-neutral-500 mt-0.5 line-clamp-2">{criteria.description}</p>
+                    )}
+                    {criteria.ai_indication && (
+                      <div className="mt-2 bg-neutral-50 border border-neutral-200 rounded p-2">
+                        <p className="text-xs text-neutral-500">IA: {criteria.ai_indication}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-1 mt-3 pt-2 border-t border-neutral-100 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => onEditCriteria(criteria)}
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded transition-colors"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Modifier
+                  </button>
+                  <button
+                    onClick={() => onDeleteCriteria(criteria.criteria_id, criteria.label)}
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Supprimer
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
@@ -670,19 +652,17 @@ function CreateTypeModal({ onClose, onCreate }: {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="max-w-md w-full">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle>Nouveau Type de Critère</CardTitle>
-            <Button onClick={onClose} variant="ghost" size="icon" className="h-8 w-8">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardHeader>
+      <div className="bg-white rounded-2xl max-w-md w-full shadow-xl">
+        <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-black">Nouveau Type de Critère</h2>
+          <button onClick={onClose} className="p-2 hover:bg-neutral-100 rounded-lg transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
         <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
+          <div className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-black mb-2">
                 Nom du Type <span className="text-red-500">*</span>
               </label>
               <input
@@ -690,45 +670,42 @@ function CreateTypeModal({ onClose, onCreate }: {
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="ex: Âge, Thématique, Accessibilité"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
                 autoFocus
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Identifiant technique : <code className="bg-gray-100 px-1 rounded">{generateTechnicalName(label) || '...'}</code>
+              <p className="text-xs text-neutral-500 mt-2">
+                Identifiant technique : <code className="bg-neutral-100 px-1.5 py-0.5 rounded font-mono">{generateTechnicalName(label) || '...'}</code>
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description
-              </label>
+              <label className="block text-sm font-medium text-black mb-2">Description</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Description optionnelle du type de critère"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all resize-none"
                 rows={2}
               />
             </div>
-            <div className="flex gap-3">
-              <Button
+            <div className="flex gap-3 pt-2">
+              <button
                 type="button"
                 onClick={onClose}
-                variant="outline"
-                className="flex-1"
+                className="flex-1 py-3 px-4 rounded-xl border border-neutral-200 font-medium text-sm hover:bg-neutral-50 transition-colors"
               >
                 Annuler
-              </Button>
-              <Button
+              </button>
+              <button
                 type="submit"
-                className="flex-1"
+                className="flex-1 py-3 px-4 rounded-xl bg-black text-white font-medium text-sm hover:bg-neutral-800 transition-colors flex items-center justify-center gap-2"
               >
-                <Save className="h-4 w-4 mr-2" />
+                <Save className="h-4 w-4" />
                 Créer
-              </Button>
+              </button>
             </div>
-          </CardContent>
+          </div>
         </form>
-      </Card>
+      </div>
     </div>
   )
 }
@@ -746,19 +723,8 @@ function CreateCriteriaModal({ type, onClose, onCreate }: {
   })
   const [uploading, setUploading] = useState(false)
 
-  const generateTechnicalName = (label: string): string => {
-    return label
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9\s]/g, '')
-      .trim()
-      .replace(/\s+/g, '_')
-  }
-
   const handleImageChange = async (file: File | null) => {
     if (!file) {
-      // Suppression de l'image
       setFormData(prev => ({ ...prev, image_link: '/placeholder.svg' }))
       return
     }
@@ -805,25 +771,23 @@ function CreateCriteriaModal({ type, onClose, onCreate }: {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <Card className="max-w-2xl w-full my-8">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle>Nouveau Critère</CardTitle>
-            <Button onClick={onClose} variant="ghost" size="icon" className="h-8 w-8">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardHeader>
+      <div className="bg-white rounded-2xl max-w-2xl w-full my-8 shadow-xl">
+        <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-black">Nouveau Critère</h2>
+          <button onClick={onClose} className="p-2 hover:bg-neutral-100 rounded-lg transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
         <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded p-3">
-              <p className="text-sm text-blue-900">
-                Type : <strong>{type}</strong>
+          <div className="p-6 space-y-4">
+            <div className="bg-neutral-50 rounded-xl px-4 py-3">
+              <p className="text-sm text-neutral-600">
+                Type : <span className="font-medium text-black">{type}</span>
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-black mb-2">
                 Nom <span className="text-red-500">*</span>
               </label>
               <input
@@ -831,55 +795,50 @@ function CreateCriteriaModal({ type, onClose, onCreate }: {
                 value={formData.label}
                 onChange={(e) => setFormData({ ...formData, label: e.target.value })}
                 placeholder="ex: Enfant, Adulte, Senior"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
                 autoFocus
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description
-              </label>
+              <label className="block text-sm font-medium text-black mb-2">Description</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Description du critère..."
                 rows={3}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all resize-none"
               />
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-black mb-2">
                 <ImageIcon className="h-4 w-4" />
-                Image du Critère <span className="text-gray-400 text-xs">(optionnel)</span>
+                Image du Critère <span className="text-neutral-400 text-xs">(optionnel)</span>
               </label>
               
-              {/* Aperçu de l'image */}
-              {formData.image_link && (
+              {formData.image_link && formData.image_link !== '/placeholder.svg' && (
                 <div className="mt-2 mb-3">
                   <img 
                     src={getUploadUrl(formData.image_link)} 
                     alt={formData.label || 'Aperçu'}
-                    className="w-full h-48 object-cover rounded-lg border border-gray-200"
+                    className="w-full h-48 object-cover rounded-xl border border-neutral-200"
                   />
-                  {formData.image_link !== '/placeholder.svg' && (
-                    <div className="mt-2 flex gap-2">
-                      <label
-                        htmlFor="criteria-image-create"
-                        className="px-3 py-1 text-xs font-medium text-orange-700 bg-orange-50 rounded hover:bg-orange-100 transition-colors cursor-pointer"
-                      >
-                        Modifier l'image
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleImageChange(null)}
-                        className="px-3 py-1 text-xs font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 transition-colors"
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  )}
+                  <div className="mt-2 flex gap-2">
+                    <label
+                      htmlFor="criteria-image-create"
+                      className="px-3 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors cursor-pointer"
+                    >
+                      Modifier
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleImageChange(null)}
+                      className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                    >
+                      Supprimer
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -889,68 +848,52 @@ function CreateCriteriaModal({ type, onClose, onCreate }: {
                 accept="image/*"
                 onChange={(e) => handleImageChange(e.target.files?.[0] || null)}
                 disabled={uploading}
-                className={`${formData.image_link && formData.image_link !== '/placeholder.svg' ? 'hidden' : 'mt-1 block w-full'} text-sm text-gray-500
-                  file:mr-4 file:py-2 file:px-4
-                  file:rounded file:border-0
-                  file:text-sm file:font-semibold
-                  file:bg-purple-50 file:text-purple-700
-                  hover:file:bg-purple-100
-                  disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={cn(
+                  formData.image_link && formData.image_link !== '/placeholder.svg' ? 'hidden' : 'mt-1 block w-full',
+                  "text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-neutral-100 file:text-black hover:file:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                )}
               />
               
               {uploading && (
-                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span className="text-sm text-blue-700 font-medium">Upload en cours...</span>
+                <div className="mt-2 p-3 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm text-neutral-600">Upload en cours...</span>
                 </div>
-              )}
-              
-              {(!formData.image_link || formData.image_link === '/placeholder.svg') && !uploading && (
-                <p className="mt-2 text-xs text-gray-500">
-                  Image affichée dans l'application client. Sans image, un placeholder sera affiché.
-                </p>
               )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Indication pour l'IA (optionnel)
+              <label className="block text-sm font-medium text-black mb-2">
+                Indication pour l'IA <span className="text-neutral-400 text-xs">(optionnel)</span>
               </label>
               <textarea
                 value={formData.ai_indication}
                 onChange={(e) => setFormData({ ...formData, ai_indication: e.target.value })}
                 placeholder="Instructions pour guider la génération de contenu..."
                 rows={3}
-                className="w-full p-3 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none bg-purple-50"
+                className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all resize-none bg-neutral-50"
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Laissez vide si le nom et la description suffisent pour le prompt IA
-              </p>
             </div>
 
-            <div className="flex gap-3 pt-4">
-              <Button
+            <div className="flex gap-3 pt-2">
+              <button
                 type="button"
                 onClick={onClose}
-                variant="outline"
-                className="flex-1"
+                className="flex-1 py-3 px-4 rounded-xl border border-neutral-200 font-medium text-sm hover:bg-neutral-50 transition-colors"
               >
                 Annuler
-              </Button>
-              <Button
+              </button>
+              <button
                 type="submit"
-                className="flex-1"
+                className="flex-1 py-3 px-4 rounded-xl bg-black text-white font-medium text-sm hover:bg-neutral-800 transition-colors flex items-center justify-center gap-2"
               >
-                <Save className="h-4 w-4 mr-2" />
+                <Save className="h-4 w-4" />
                 Créer
-              </Button>
+              </button>
             </div>
-          </CardContent>
+          </div>
         </form>
-      </Card>
+      </div>
     </div>
   )
 }
@@ -970,7 +913,6 @@ function EditCriteriaModal({ criteria, onClose, onSave }: {
 
   const handleImageChange = async (file: File | null) => {
     if (!file) {
-      // Suppression de l'image
       setFormData(prev => ({ ...prev, image_link: '/placeholder.svg' }))
       return
     }
@@ -1017,79 +959,72 @@ function EditCriteriaModal({ criteria, onClose, onSave }: {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <Card className="max-w-2xl w-full my-8">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle>Modifier le Critère</CardTitle>
-            <Button onClick={onClose} variant="ghost" size="icon" className="h-8 w-8">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardHeader>
+      <div className="bg-white rounded-2xl max-w-2xl w-full my-8 shadow-xl">
+        <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-black">Modifier le Critère</h2>
+          <button onClick={onClose} className="p-2 hover:bg-neutral-100 rounded-lg transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
         <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded p-3">
-              <p className="text-sm text-blue-900">
-                Type : <strong>{criteria.type.charAt(0).toUpperCase() + criteria.type.slice(1).replace(/_/g, ' ')}</strong>
+          <div className="p-6 space-y-4">
+            <div className="bg-neutral-50 rounded-xl px-4 py-3">
+              <p className="text-sm text-neutral-600">
+                Type : <span className="font-medium text-black">{criteria.type.charAt(0).toUpperCase() + criteria.type.slice(1).replace(/_/g, ' ')}</span>
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-black mb-2">
                 Nom <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={formData.label}
                 onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
                 autoFocus
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description
-              </label>
+              <label className="block text-sm font-medium text-black mb-2">Description</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all resize-none"
               />
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-black mb-2">
                 <ImageIcon className="h-4 w-4" />
-                Image du Critère <span className="text-gray-400 text-xs">(optionnel)</span>
+                Image du Critère <span className="text-neutral-400 text-xs">(optionnel)</span>
               </label>
               
-              {/* Aperçu de l'image */}
-              {formData.image_link && (
+              {formData.image_link && formData.image_link !== '/placeholder.svg' && (
                 <div className="mt-2 mb-3">
                   <img 
                     src={getUploadUrl(formData.image_link)} 
                     alt={formData.label || 'Aperçu'}
-                    className="w-full h-48 object-cover rounded-lg border border-gray-200"
+                    className="w-full h-48 object-cover rounded-xl border border-neutral-200"
                   />
-                  {formData.image_link !== '/placeholder.svg' && (
-                    <div className="mt-2 flex gap-2">
-                      <label
-                        htmlFor="criteria-image-edit"
-                        className="px-3 py-1 text-xs font-medium text-orange-700 bg-orange-50 rounded hover:bg-orange-100 transition-colors cursor-pointer"
-                      >
-                        Modifier l'image
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleImageChange(null)}
-                        className="px-3 py-1 text-xs font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 transition-colors"
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  )}
+                  <div className="mt-2 flex gap-2">
+                    <label
+                      htmlFor="criteria-image-edit"
+                      className="px-3 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors cursor-pointer"
+                    >
+                      Modifier
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleImageChange(null)}
+                      className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                    >
+                      Supprimer
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1099,64 +1034,51 @@ function EditCriteriaModal({ criteria, onClose, onSave }: {
                 accept="image/*"
                 onChange={(e) => handleImageChange(e.target.files?.[0] || null)}
                 disabled={uploading}
-                className={`${formData.image_link && formData.image_link !== '/placeholder.svg' ? 'hidden' : 'mt-1 block w-full'} text-sm text-gray-500
-                  file:mr-4 file:py-2 file:px-4
-                  file:rounded file:border-0
-                  file:text-sm file:font-semibold
-                  file:bg-purple-50 file:text-purple-700
-                  hover:file:bg-purple-100
-                  disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={cn(
+                  formData.image_link && formData.image_link !== '/placeholder.svg' ? 'hidden' : 'mt-1 block w-full',
+                  "text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-neutral-100 file:text-black hover:file:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                )}
               />
               
               {uploading && (
-                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span className="text-sm text-blue-700 font-medium">Upload en cours...</span>
+                <div className="mt-2 p-3 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm text-neutral-600">Upload en cours...</span>
                 </div>
-              )}
-              
-              {(!formData.image_link || formData.image_link === '/placeholder.svg') && !uploading && (
-                <p className="mt-2 text-xs text-gray-500">
-                  Image affichée dans l'application client. Sans image, un placeholder sera affiché.
-                </p>
               )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Instruction pour l'IA <span className="text-gray-400 text-xs">(optionnel)</span>
+              <label className="block text-sm font-medium text-black mb-2">
+                Instruction pour l'IA <span className="text-neutral-400 text-xs">(optionnel)</span>
               </label>
               <textarea
                 value={formData.ai_indication}
                 onChange={(e) => setFormData({ ...formData, ai_indication: e.target.value })}
                 rows={3}
-                className="w-full p-3 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none bg-purple-50"
+                className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all resize-none bg-neutral-50"
               />
             </div>
 
-            <div className="flex gap-3 pt-4">
-              <Button
+            <div className="flex gap-3 pt-2">
+              <button
                 type="button"
                 onClick={onClose}
-                variant="outline"
-                className="flex-1"
+                className="flex-1 py-3 px-4 rounded-xl border border-neutral-200 font-medium text-sm hover:bg-neutral-50 transition-colors"
               >
                 Annuler
-              </Button>
-              <Button
+              </button>
+              <button
                 type="submit"
-                className="flex-1"
+                className="flex-1 py-3 px-4 rounded-xl bg-black text-white font-medium text-sm hover:bg-neutral-800 transition-colors flex items-center justify-center gap-2"
               >
-                <Save className="h-4 w-4 mr-2" />
+                <Save className="h-4 w-4" />
                 Enregistrer
-              </Button>
+              </button>
             </div>
-          </CardContent>
+          </div>
         </form>
-      </Card>
+      </div>
     </div>
   )
 }
@@ -1179,25 +1101,23 @@ function DeleteConfirmModal({ data, onClose, onConfirm }: {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="max-w-md w-full">
-        <CardHeader className="pb-3 bg-red-50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-600" />
-              <CardTitle className="text-red-700">Confirmer la suppression</CardTitle>
-            </div>
-            <Button onClick={onClose} variant="ghost" size="icon" className="h-8 w-8" disabled={isDeleting}>
-              <X className="h-4 w-4" />
-            </Button>
+      <div className="bg-white rounded-2xl max-w-md w-full shadow-xl">
+        <div className="p-6 border-b border-red-100 bg-red-50 rounded-t-2xl flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <h2 className="text-lg font-semibold text-red-700">Confirmer la suppression</h2>
           </div>
-        </CardHeader>
-        <CardContent className="pt-4 space-y-4">
-          <p className="text-gray-700">
+          <button onClick={onClose} disabled={isDeleting} className="p-2 hover:bg-red-100 rounded-lg transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-neutral-700">
             Êtes-vous sûr de vouloir supprimer <strong>"{data.label}"</strong> ?
           </p>
 
           {hasImpact && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-2">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
               <p className="text-amber-800 font-medium flex items-center gap-2">
                 <AlertCircle className="h-4 w-4" />
                 Impact de la suppression :
@@ -1218,38 +1138,33 @@ function DeleteConfirmModal({ data, onClose, onConfirm }: {
           </p>
 
           <div className="flex gap-3 pt-2">
-            <Button
+            <button
               onClick={onClose}
-              variant="outline"
-              className="flex-1"
               disabled={isDeleting}
+              className="flex-1 py-3 px-4 rounded-xl border border-neutral-200 font-medium text-sm hover:bg-neutral-50 transition-colors disabled:opacity-50"
             >
               Annuler
-            </Button>
-            <Button
+            </button>
+            <button
               onClick={handleConfirm}
-              variant="destructive"
-              className="flex-1"
               disabled={isDeleting}
+              className="flex-1 py-3 px-4 rounded-xl bg-red-600 text-white font-medium text-sm hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isDeleting ? (
                 <>
-                  <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Suppression...
                 </>
               ) : (
                 <>
-                  <Trash2 className="h-4 w-4 mr-2" />
+                  <Trash2 className="h-4 w-4" />
                   Supprimer
                 </>
               )}
-            </Button>
+            </button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

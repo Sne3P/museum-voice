@@ -2,12 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { AdminLayout } from '../components'
+import { cn } from '@/lib/utils'
 import { getUploadUrl } from '@/lib/uploads'
 import { 
-  ArrowLeft, 
   RefreshCw, 
   Eye, 
   Zap, 
@@ -20,9 +18,11 @@ import {
   X,
   Play,
   Pause,
-  Loader2,
   Clock,
-  XCircle
+  XCircle,
+  Image as ImageIcon,
+  BarChart3,
+  Layers
 } from 'lucide-react'
 
 // ==========================================
@@ -610,7 +610,7 @@ export default function NarrationsDashboard() {
   // ==========================================
 
   function getCompletionColor(count: number, expected: number): string {
-    if (count === 0) return 'bg-gray-100 text-gray-600'
+    if (count === 0) return 'bg-neutral-100 text-neutral-600'
     if (count === expected) return 'bg-green-100 text-green-700'
     return 'bg-yellow-100 text-yellow-700'
   }
@@ -620,85 +620,74 @@ export default function NarrationsDashboard() {
   // ==========================================
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push('/admin')}
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Accueil Admin
-            </Button>
-            <h1 className="text-3xl font-bold">Dashboard Narrations</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Indicateur de jobs actifs */}
+    <AdminLayout 
+      title="Dashboard Narrations" 
+      description="Gérer les narrations générées par l'IA"
+      showBackButton
+    >
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Top Actions */}
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex gap-2">
+            {/* Job indicator */}
             {jobsState && (jobsState.stats.active_jobs > 0 || jobsState.stats.pending_jobs > 0) && (
-              <Button
-                variant={showJobsPanel ? "default" : "outline"}
-                size="sm"
+              <button
                 onClick={() => setShowJobsPanel(!showJobsPanel)}
-                className="relative"
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors",
+                  showJobsPanel ? "bg-black text-white" : "bg-neutral-100 text-black hover:bg-neutral-200"
+                )}
               >
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {jobsState.stats.active_jobs + jobsState.stats.pending_jobs} job(s) actif(s)
-              </Button>
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                {jobsState.stats.active_jobs + jobsState.stats.pending_jobs} job(s)
+              </button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={loadInitialData}
-              disabled={loading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Actualiser
-            </Button>
           </div>
+          <button
+            onClick={loadInitialData}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-neutral-200 text-sm font-medium hover:bg-neutral-50 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            Actualiser
+          </button>
         </div>
 
-        {/* Panel des Jobs en cours - Affiché quand des jobs sont actifs */}
+        {/* Jobs Panel */}
         {showJobsPanel && jobsState && (
-          <Card className="mb-6 border-blue-200 bg-blue-50/50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                  Générations en cours
-                </CardTitle>
-                <div className="flex items-center gap-2">
-                  {(jobsState.stats.active_jobs > 0 || jobsState.stats.pending_jobs > 0) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={cancelAllJobs}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
-                    >
-                      <XCircle className="h-4 w-4 mr-1" />
-                      Tout arrêter
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowJobsPanel(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+          <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 </div>
+                <h2 className="font-semibold text-black">Générations en cours</h2>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Jobs actifs */}
+              <div className="flex items-center gap-2">
+                {(jobsState.stats.active_jobs > 0 || jobsState.stats.pending_jobs > 0) && (
+                  <button
+                    onClick={cancelAllJobs}
+                    className="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <XCircle className="h-4 w-4 inline mr-1" />
+                    Tout arrêter
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowJobsPanel(false)}
+                  className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 space-y-3">
               {jobsState.active_jobs.map(job => (
-                <div key={job.job_id} className="bg-white rounded-lg p-4 border">
-                  <div className="flex items-center justify-between mb-2">
+                <div key={job.job_id} className="bg-neutral-50 rounded-xl p-4 border border-neutral-200">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       {job.status === 'running' ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                        <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
                       ) : job.status === 'pending' ? (
                         <Clock className="h-4 w-4 text-yellow-600" />
                       ) : job.status === 'completed' ? (
@@ -706,240 +695,200 @@ export default function NarrationsDashboard() {
                       ) : (
                         <XCircle className="h-4 w-4 text-red-600" />
                       )}
-                      <span className="font-medium capitalize">
+                      <span className="font-medium text-black">
                         {job.job_type.includes('all') ? 'Toutes les œuvres' :
                          job.job_type.includes('artwork') ? `Œuvre #${job.params.oeuvre_id}` :
                          job.job_type.includes('profile') ? 'Par profil' : job.job_type}
                       </span>
-                      <Badge variant={
-                        job.status === 'running' ? 'default' :
-                        job.status === 'pending' ? 'secondary' :
-                        job.status === 'completed' ? 'outline' : 'destructive'
-                      }>
+                      <span className={cn(
+                        "px-2 py-0.5 text-xs rounded-full font-medium",
+                        job.status === 'running' ? 'bg-black text-white' :
+                        job.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                        job.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      )}>
                         {job.status}
-                      </Badge>
+                      </span>
                     </div>
                     {(job.status === 'running' || job.status === 'pending') && job.job_id && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <button
                         onClick={() => cancelJob(job.job_id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        className="text-sm text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors"
                       >
-                        <XCircle className="h-4 w-4 mr-1" />
                         Annuler
-                      </Button>
+                      </button>
                     )}
                   </div>
 
-                  {/* Barre de progression */}
                   {job.status === 'running' && (
                     <>
                       <div className="mb-2">
-                        <div className="flex justify-between text-sm text-gray-600 mb-1">
-                          <span>
-                            {job.progress.completed} / {job.progress.total} 
-                            {job.progress.current && ` • ${job.progress.current}`}
-                          </span>
+                        <div className="flex justify-between text-sm text-neutral-500 mb-1">
+                          <span>{job.progress.completed} / {job.progress.total}</span>
                           <span>{job.progress.percentage.toFixed(1)}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div className="w-full bg-neutral-200 rounded-full h-2">
                           <div
-                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                            className="bg-black h-2 rounded-full transition-all duration-300"
                             style={{ width: `${job.progress.percentage}%` }}
                           />
                         </div>
                       </div>
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          Écoulé: {formatDuration(job.elapsed_seconds)}
-                        </span>
-                        <span>
-                          Restant estimé: {formatDuration(job.estimated_remaining_seconds)}
-                        </span>
+                      <div className="flex justify-between text-xs text-neutral-400">
+                        <span>Écoulé: {formatDuration(job.elapsed_seconds)}</span>
+                        <span>Restant: ~{formatDuration(job.estimated_remaining_seconds)}</span>
                       </div>
                     </>
                   )}
 
-                  {/* Stats si terminé */}
                   {job.status === 'completed' && (
                     <div className="flex gap-4 text-sm">
                       <span className="text-green-600">✓ {job.stats.generated} générées</span>
-                      <span className="text-gray-500">⊘ {job.stats.skipped} ignorées</span>
+                      <span className="text-neutral-500">⊘ {job.stats.skipped} ignorées</span>
                       {job.stats.errors > 0 && (
                         <span className="text-red-600">✗ {job.stats.errors} erreurs</span>
                       )}
                     </div>
                   )}
 
-                  {/* Erreur si échec */}
                   {job.status === 'failed' && job.error && (
-                    <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+                    <div className="text-sm text-red-600 bg-red-50 p-2 rounded-lg">
                       {job.error}
                     </div>
                   )}
                 </div>
               ))}
 
-              {/* Résumé des jobs récents terminés */}
-              {jobsState.recent_jobs.filter(j => j.status === 'completed').length > 0 && (
-                <div className="border-t pt-3 mt-3">
-                  <p className="text-sm text-gray-600 mb-2">Récemment terminés:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {jobsState.recent_jobs
-                      .filter(j => j.status === 'completed')
-                      .slice(0, 3)
-                      .map(job => (
-                        <Badge key={job.job_id} variant="outline" className="text-green-600">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          {job.stats.generated} générées
-                        </Badge>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Si aucun job actif */}
               {jobsState.active_jobs.length === 0 && (
-                <div className="text-center text-gray-500 py-4">
+                <div className="text-center text-neutral-400 py-6">
                   <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
                   Aucune génération en cours
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
         {/* Stats Cards */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Œuvres totales</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.total_oeuvres}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  dans la base de données
-                </p>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl border border-neutral-200 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-neutral-500">Œuvres</span>
+                <ImageIcon className="h-5 w-5 text-neutral-400" />
+              </div>
+              <p className="text-3xl font-bold text-black">{stats.total_oeuvres}</p>
+              <p className="text-xs text-neutral-400 mt-1">dans la base</p>
+            </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Narrations générées</CardTitle>
-                <Database className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.total_pregenerations}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  sur {stats.expected_pregenerations} attendues
-                </p>
-              </CardContent>
-            </Card>
+            <div className="bg-white rounded-2xl border border-neutral-200 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-neutral-500">Narrations</span>
+                <Database className="h-5 w-5 text-neutral-400" />
+              </div>
+              <p className="text-3xl font-bold text-black">{stats.total_pregenerations}</p>
+              <p className="text-xs text-neutral-400 mt-1">sur {stats.expected_pregenerations} attendues</p>
+            </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Taux de complétion</CardTitle>
+            <div className="bg-white rounded-2xl border border-neutral-200 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-neutral-500">Complétion</span>
                 {stats.completion_rate === 100 ? (
-                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <CheckCircle className="h-5 w-5 text-green-500" />
                 ) : (
-                  <AlertCircle className="h-4 w-4 text-yellow-600" />
+                  <AlertCircle className="h-5 w-5 text-yellow-500" />
                 )}
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.completion_rate.toFixed(1)}%</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stats.expected_pregenerations - stats.total_pregenerations} manquantes
-                </p>
-              </CardContent>
-            </Card>
+              </div>
+              <p className="text-3xl font-bold text-black">{stats.completion_rate.toFixed(1)}%</p>
+              <p className="text-xs text-neutral-400 mt-1">{stats.expected_pregenerations - stats.total_pregenerations} manquantes</p>
+            </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Combinaisons</CardTitle>
-                <Sparkles className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{criteriaTypes.length} types</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {allCriterias.length} critères au total
-                </p>
-              </CardContent>
-            </Card>
+            <div className="bg-white rounded-2xl border border-neutral-200 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-neutral-500">Critères</span>
+                <Layers className="h-5 w-5 text-neutral-400" />
+              </div>
+              <p className="text-3xl font-bold text-black">{criteriaTypes.length}</p>
+              <p className="text-xs text-neutral-400 mt-1">{allCriterias.length} options au total</p>
+            </div>
           </div>
         )}
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-4">
-          <Button
-            variant={activeTab === 'oeuvres' ? 'default' : 'outline'}
+        <div className="flex gap-2">
+          <button
             onClick={() => setActiveTab('oeuvres')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'oeuvres' ? "bg-black text-white" : "bg-white border border-neutral-200 hover:bg-neutral-50"
+            )}
           >
-            <FileText className="h-4 w-4 mr-2" />
+            <ImageIcon className="h-4 w-4" />
             Œuvres
-          </Button>
-          <Button
-            variant={activeTab === 'narrations' ? 'default' : 'outline'}
+          </button>
+          <button
             onClick={() => setActiveTab('narrations')}
             disabled={!selectedOeuvre}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50",
+              activeTab === 'narrations' ? "bg-black text-white" : "bg-white border border-neutral-200 hover:bg-neutral-50"
+            )}
           >
-            <Database className="h-4 w-4 mr-2" />
-            Narrations {selectedOeuvre && `(${selectedOeuvre.title})`}
-          </Button>
-          <Button
-            variant={activeTab === 'actions' ? 'default' : 'outline'}
+            <Database className="h-4 w-4" />
+            Narrations {selectedOeuvre && `(${selectedOeuvre.title.slice(0, 20)}...)`}
+          </button>
+          <button
             onClick={() => setActiveTab('actions')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'actions' ? "bg-black text-white" : "bg-white border border-neutral-200 hover:bg-neutral-50"
+            )}
           >
-            <Zap className="h-4 w-4 mr-2" />
+            <Zap className="h-4 w-4" />
             Actions
-          </Button>
+          </button>
         </div>
 
         {/* Content */}
-        <Card>
-          <CardContent className="p-6">
+        <div className="bg-white rounded-2xl border border-neutral-200 p-6">
             {/* TAB: OEUVRES */}
             {activeTab === 'oeuvres' && (
               <div>
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-semibold">Liste des œuvres</h2>
+                  <h2 className="text-lg font-semibold text-black">Liste des œuvres</h2>
                 </div>
 
                 {loading ? (
                   <div className="text-center py-12">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto text-gray-400" />
-                    <p className="mt-2 text-gray-500">Chargement...</p>
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto text-neutral-400" />
+                    <p className="mt-2 text-neutral-500">Chargement...</p>
                   </div>
                 ) : oeuvres.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <FileText className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <div className="text-center py-12 text-neutral-500">
+                    <ImageIcon className="h-12 w-12 mx-auto mb-2 text-neutral-300" />
                     <p>Aucune œuvre trouvée</p>
                     <p className="text-sm">Créez des œuvres dans l'éditeur</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
-                      <thead className="border-b bg-gray-50">
+                      <thead className="border-b border-neutral-200 bg-neutral-50">
                         <tr>
-                          <th className="text-left p-3 font-medium text-sm">ID</th>
-                          <th className="text-left p-3 font-medium text-sm">Titre</th>
-                          <th className="text-left p-3 font-medium text-sm">Artiste</th>
-                          <th className="text-left p-3 font-medium text-sm">Date</th>
-                          <th className="text-left p-3 font-medium text-sm">Salle</th>
-                          <th className="text-left p-3 font-medium text-sm">Narrations</th>
-                          <th className="text-left p-3 font-medium text-sm">Actions</th>
+                          <th className="text-left p-3 font-medium text-sm text-neutral-600">ID</th>
+                          <th className="text-left p-3 font-medium text-sm text-neutral-600">Titre</th>
+                          <th className="text-left p-3 font-medium text-sm text-neutral-600">Artiste</th>
+                          <th className="text-left p-3 font-medium text-sm text-neutral-600">Date</th>
+                          <th className="text-left p-3 font-medium text-sm text-neutral-600">Salle</th>
+                          <th className="text-left p-3 font-medium text-sm text-neutral-600">Narrations</th>
+                          <th className="text-left p-3 font-medium text-sm text-neutral-600">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {oeuvres.map((oeuvre) => (
-                          <tr key={oeuvre.oeuvre_id} className="border-b hover:bg-gray-50">
-                            <td className="p-3 text-sm">{oeuvre.oeuvre_id}</td>
-                            <td className="p-3 font-medium">{oeuvre.title}</td>
-                            <td className="p-3 text-sm text-gray-600">{oeuvre.artist}</td>
-                            <td className="p-3 text-sm text-gray-600">{oeuvre.date_oeuvre}</td>
+                          <tr key={oeuvre.oeuvre_id} className="border-b border-neutral-100 hover:bg-neutral-50">
+                            <td className="p-3 text-sm text-neutral-500">{oeuvre.oeuvre_id}</td>
+                            <td className="p-3 font-medium text-black">{oeuvre.title}</td>
+                            <td className="p-3 text-sm text-neutral-600">{oeuvre.artist}</td>
+                            <td className="p-3 text-sm text-neutral-600">{oeuvre.date_oeuvre}</td>
                             <td className="p-3 text-sm">{oeuvre.room || '-'}</td>
                             <td className="p-3">
                               <span className={`px-2 py-1 rounded text-xs font-medium ${getCompletionColor(oeuvre.pregeneration_count || 0, expectedNarrationsPerOeuvre)}`}>
@@ -947,36 +896,30 @@ export default function NarrationsDashboard() {
                               </span>
                             </td>
                             <td className="p-3 space-x-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
+                              <button
                                 onClick={() => viewOeuvreDetails(oeuvre)}
+                                className="px-3 py-1.5 rounded-lg border border-neutral-200 text-sm hover:bg-neutral-50 transition-colors"
                               >
-                                <Eye className="h-3 w-3 mr-1" />
+                                <Eye className="h-3 w-3 inline mr-1" />
                                 Voir
-                              </Button>
+                              </button>
                               {oeuvre.pdf_link && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
+                                <button
                                   onClick={() => window.open(getUploadUrl(oeuvre.pdf_link!), '_blank')}
+                                  className="px-3 py-1.5 rounded-lg border border-neutral-200 text-sm hover:bg-neutral-50 transition-colors"
                                 >
-                                  <FileText className="h-3 w-3 mr-1" />
+                                  <FileText className="h-3 w-3 inline mr-1" />
                                   PDF
-                                </Button>
+                                </button>
                               )}
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  console.log('🔍 Oeuvre cliquée:', oeuvre)
-                                  console.log('🔍 oeuvre_id:', oeuvre.oeuvre_id)
-                                  startAsyncGenerateArtwork(oeuvre.oeuvre_id)
-                                }}
+                              <button
+                                onClick={() => startAsyncGenerateArtwork(oeuvre.oeuvre_id)}
                                 title="Lance la génération en arrière-plan"
+                                className="px-3 py-1.5 rounded-lg bg-black text-white text-sm hover:bg-neutral-800 transition-colors"
                               >
-                                <Play className="h-3 w-3 mr-1" />
+                                <Play className="h-3 w-3 inline mr-1" />
                                 Générer
-                              </Button>
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -991,90 +934,86 @@ export default function NarrationsDashboard() {
             {activeTab === 'narrations' && selectedOeuvre && (
               <div>
                 <div className="mb-4">
-                  <h2 className="text-xl font-semibold mb-1">
+                  <h2 className="text-lg font-semibold text-black mb-1">
                     {selectedOeuvre.title}
                   </h2>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-neutral-600">
                     {selectedOeuvre.artist} • {selectedOeuvre.date_oeuvre}
                   </p>
-                  <p className="text-sm text-gray-500 mt-2">
+                  <p className="text-sm text-neutral-500 mt-2">
                     {pregenerations.length}/{expectedNarrationsPerOeuvre} narrations générées
                   </p>
                 </div>
 
                 {pregenerations.length === 0 ? (
                   <div className="text-center py-12">
-                    <Database className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                    <p className="text-gray-500 mb-4">Aucune narration pour cette œuvre</p>
+                    <Database className="h-12 w-12 mx-auto mb-2 text-neutral-300" />
+                    <p className="text-neutral-500 mb-4">Aucune narration pour cette œuvre</p>
                     <div className="flex gap-2 justify-center">
-                      <Button
+                      <button
                         onClick={() => generateNarrationsForOeuvre(selectedOeuvre.oeuvre_id)}
                         disabled={loading}
+                        className="px-4 py-2 rounded-xl bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50 flex items-center gap-2"
                       >
-                        <Zap className="h-4 w-4 mr-2" />
+                        <Zap className="h-4 w-4" />
                         Générer toutes les narrations
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setShowGeneratePreciseModal(true)
-                        }}
+                      </button>
+                      <button
+                        onClick={() => setShowGeneratePreciseModal(true)}
                         disabled={loading}
+                        className="px-4 py-2 rounded-xl border border-neutral-200 text-sm font-medium hover:bg-neutral-50 transition-colors disabled:opacity-50 flex items-center gap-2"
                       >
-                        <Sparkles className="h-4 w-4 mr-2" />
+                        <Sparkles className="h-4 w-4" />
                         Générer 1 narration précise
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 ) : (
                   <div>
                     <div className="flex justify-between items-center mb-4">
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-neutral-600">
                         Cliquez sur une narration pour la voir ou la régénérer
                       </p>
-                      <Button
-                        size="sm"
-                        variant="outline"
+                      <button
                         onClick={() => setShowGeneratePreciseModal(true)}
                         disabled={loading}
+                        className="px-3 py-1.5 rounded-lg border border-neutral-200 text-sm font-medium hover:bg-neutral-50 transition-colors disabled:opacity-50 flex items-center gap-2"
                       >
-                        <Sparkles className="h-4 w-4 mr-2" />
+                        <Sparkles className="h-4 w-4" />
                         Générer 1 narration
-                      </Button>
+                      </button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
                       {pregenerations.map((pregen) => (
-                        <Card 
+                        <div 
                           key={pregen.pregeneration_id}
-                          className="cursor-pointer hover:shadow-md transition-shadow group relative"
+                          className="cursor-pointer hover:shadow-md transition-shadow group relative border border-neutral-200 rounded-xl overflow-hidden"
                         >
                           <div onClick={() => setModalPregen(pregen)}>
-                            <CardHeader className="pb-2">
+                            <div className="px-4 py-3 border-b border-neutral-100">
                               <div className="flex flex-wrap gap-1">
                                 {Object.entries(pregen.criteria_labels || {}).map(([type, label]) => (
                                   <span
                                     key={type}
-                                    className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium"
+                                    className="px-2 py-0.5 bg-neutral-100 text-black rounded text-xs font-medium"
                                   >
                                     {label}
                                   </span>
                                 ))}
                               </div>
-                            </CardHeader>
-                            <CardContent>
-                              <p className="text-sm text-gray-700 line-clamp-3">
+                            </div>
+                            <div className="p-4">
+                              <p className="text-sm text-neutral-700 line-clamp-3">
                                 {pregen.pregeneration_text.substring(0, 150)}...
                               </p>
-                              <p className="text-xs text-gray-400 mt-2">
+                              <p className="text-xs text-neutral-400 mt-2">
                                 Cliquer pour voir en entier
                               </p>
-                            </CardContent>
+                            </div>
                           </div>
                           <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="bg-white"
+                            <button
+                              className="p-1.5 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors disabled:opacity-50"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 regenerateSingleNarration(pregen)
@@ -1082,9 +1021,9 @@ export default function NarrationsDashboard() {
                               disabled={loading}
                             >
                               <RefreshCw className="h-3 w-3" />
-                            </Button>
+                            </button>
                           </div>
-                        </Card>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -1095,193 +1034,187 @@ export default function NarrationsDashboard() {
             {/* TAB: ACTIONS */}
             {activeTab === 'actions' && (
               <div className="space-y-6">
-                <h2 className="text-xl font-semibold">Actions globales</h2>
+                <h2 className="text-xl font-semibold text-black">Actions globales</h2>
 
                 {/* Génération avec suivi en temps réel - Section principale */}
-                <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-blue-700">
+                <div className="bg-neutral-50 rounded-2xl border border-neutral-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-neutral-100">
+                    <h3 className="font-semibold text-black flex items-center gap-2">
                       <Play className="h-5 w-5" />
                       Générer les narrations
-                    </CardTitle>
-                    <CardDescription>
+                    </h3>
+                    <p className="text-sm text-neutral-500 mt-1">
                       Lance les générations en arrière-plan. Vous pouvez naviguer ou rafraîchir la page, 
                       la génération continue et vous pouvez suivre sa progression en temps réel.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    </p>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Générer manquantes */}
-                      <div className="p-4 bg-white rounded-lg border">
-                        <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <div className="p-4 bg-white rounded-xl border border-neutral-200">
+                        <h4 className="font-medium mb-2 flex items-center gap-2 text-black">
                           <Play className="h-4 w-4 text-green-600" />
                           Toutes les œuvres (manquantes)
                         </h4>
-                        <p className="text-sm text-gray-600 mb-3">
+                        <p className="text-sm text-neutral-600 mb-3">
                           Génère uniquement les narrations qui n'existent pas encore
                         </p>
-                        <Button 
+                        <button 
                           onClick={() => startAsyncGenerateAll(false)}
-                          size="sm"
-                          className="w-full bg-blue-600 hover:bg-blue-700"
+                          className="w-full px-4 py-2 rounded-xl bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors flex items-center justify-center gap-2"
                         >
-                          <Play className="h-4 w-4 mr-2" />
+                          <Play className="h-4 w-4" />
                           Lancer la génération
-                        </Button>
+                        </button>
                       </div>
 
                       {/* Régénérer tout */}
-                      <div className="p-4 bg-white rounded-lg border">
-                        <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <div className="p-4 bg-white rounded-xl border border-neutral-200">
+                        <h4 className="font-medium mb-2 flex items-center gap-2 text-black">
                           <RefreshCw className="h-4 w-4 text-orange-600" />
                           Tout régénérer (forcer)
                         </h4>
-                        <p className="text-sm text-gray-600 mb-3">
+                        <p className="text-sm text-neutral-600 mb-3">
                           Remplace toutes les narrations existantes par de nouvelles
                         </p>
-                        <Button 
+                        <button 
                           onClick={() => startAsyncGenerateAll(true)}
-                          size="sm"
-                          variant="outline"
-                          className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
+                          className="w-full px-4 py-2 rounded-xl border border-neutral-200 text-sm font-medium hover:bg-neutral-50 transition-colors flex items-center justify-center gap-2"
                         >
-                          <RefreshCw className="h-4 w-4 mr-2" />
+                          <RefreshCw className="h-4 w-4" />
                           Forcer régénération
-                        </Button>
+                        </button>
                       </div>
                     </div>
 
                     {/* Indicateur d'état des jobs */}
                     {jobsState && (
-                      <div className="flex items-center justify-between p-3 bg-white rounded-lg border">
+                      <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-neutral-200">
                         <div className="flex items-center gap-3">
                           <div className={`w-3 h-3 rounded-full ${
-                            jobsState.stats.active_jobs > 0 ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+                            jobsState.stats.active_jobs > 0 ? 'bg-green-500 animate-pulse' : 'bg-neutral-300'
                           }`} />
-                          <span className="text-sm">
+                          <span className="text-sm text-neutral-700">
                             {jobsState.stats.active_jobs > 0 
                               ? `${jobsState.stats.active_jobs} génération(s) en cours`
                               : 'Aucune génération active'}
                           </span>
                         </div>
                         {!showJobsPanel && jobsState.stats.active_jobs > 0 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
+                          <button
                             onClick={() => setShowJobsPanel(true)}
+                            className="px-3 py-1.5 rounded-lg border border-neutral-200 text-sm font-medium hover:bg-neutral-50 transition-colors"
                           >
                             Voir progression
-                          </Button>
+                          </button>
                         )}
                       </div>
                     )}
 
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <p className="text-xs text-neutral-400 flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       La progression s'affiche automatiquement en haut de la page quand une génération est active
                     </p>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
 
                 {/* Génération par profil */}
-                <Card className="border-purple-200 bg-purple-50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-purple-700">
+                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-neutral-100">
+                    <h3 className="font-semibold text-black flex items-center gap-2">
                       <Sparkles className="h-5 w-5" />
                       Génération par profil
-                    </CardTitle>
-                    <CardDescription>
+                    </h3>
+                    <p className="text-sm text-neutral-500 mt-1">
                       Générez toutes les narrations pour un profil spécifique dans toutes les œuvres.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button 
+                    </p>
+                  </div>
+                  <div className="p-6">
+                    <button 
                       onClick={() => setShowGenerateByProfileModal(true)} 
-                      className="bg-purple-600 hover:bg-purple-700"
+                      className="px-4 py-2 rounded-xl bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2"
                     >
-                      <Sparkles className="h-4 w-4 mr-2" />
+                      <Sparkles className="h-4 w-4" />
                       Générer par profil
-                    </Button>
-                    <p className="text-xs text-gray-600 mt-2">
+                    </button>
+                    <p className="text-xs text-neutral-500 mt-3">
                       Choisissez un profil et générez cette combinaison pour toutes les œuvres
                     </p>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
 
                 {/* Suppression */}
-                <Card className="border-red-200 bg-red-50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-red-700">
+                <div className="bg-white rounded-2xl border border-red-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-red-100 bg-red-50">
+                    <h3 className="font-semibold text-red-700 flex items-center gap-2">
                       <Trash2 className="h-5 w-5" />
                       Zone dangereuse
-                    </CardTitle>
-                    <CardDescription>
+                    </h3>
+                    <p className="text-sm text-red-600 mt-1">
                       Actions irréversibles. Utilisez avec précaution.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button 
+                    </p>
+                  </div>
+                  <div className="p-6">
+                    <button 
                       onClick={deleteAllNarrations} 
                       disabled={loading}
-                      variant="destructive"
+                      className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
                     >
-                      <Trash2 className="h-4 w-4 mr-2" />
+                      <Trash2 className="h-4 w-4" />
                       Supprimer toutes les narrations
-                    </Button>
-                  </CardContent>
-                </Card>
+                    </button>
+                  </div>
+                </div>
 
                 {/* Info critères */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
+                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-neutral-100">
+                    <h3 className="font-semibold text-black flex items-center gap-2">
                       <Sparkles className="h-5 w-5" />
                       Informations sur les critères
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 text-sm">
-                      <p className="font-medium">Types de critères actifs :</p>
-                      <ul className="space-y-1">
+                    </h3>
+                  </div>
+                  <div className="p-6">
+                    <div className="space-y-3 text-sm">
+                      <p className="font-medium text-black">Types de critères actifs :</p>
+                      <ul className="space-y-2">
                         {criteriaTypes.map(type => {
                           const count = allCriterias.filter(c => c.type === type.type).length
                           return (
                             <li key={type.type} className="flex items-center gap-2">
-                              <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-medium">
+                              <span className="px-2 py-0.5 bg-neutral-100 rounded text-xs font-medium">
                                 {type.label}
                               </span>
-                              <span className="text-gray-600">
+                              <span className="text-neutral-600">
                                 {count} options
                               </span>
                             </li>
                           )
                         })}
                       </ul>
-                      <p className="text-gray-600 mt-4">
-                        Combinaisons totales par œuvre : <strong>{expectedNarrationsPerOeuvre}</strong>
+                      <p className="text-neutral-600 mt-4">
+                        Combinaisons totales par œuvre : <strong className="text-black">{expectedNarrationsPerOeuvre}</strong>
                       </p>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               </div>
             )}
-          </CardContent>
-        </Card>
-      </div>
+        </div>
 
       {/* Modal Prévisualisation */}
       {modalPregen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="p-6 border-b flex justify-between items-start">
+            <div className="p-6 border-b border-neutral-100 flex justify-between items-start">
               <div>
-                <h3 className="text-xl font-bold mb-3">Prévisualisation Narration</h3>
+                <h3 className="text-xl font-bold text-black mb-3">Prévisualisation Narration</h3>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(modalPregen.criteria_labels || {}).map(([type, label]) => (
                     <span
                       key={type}
-                      className="px-3 py-1 bg-blue-50 text-blue-700 rounded-md text-sm font-medium"
+                      className="px-3 py-1 bg-neutral-100 text-black rounded-lg text-sm font-medium"
                     >
                       {label}
                     </span>
@@ -1290,7 +1223,7 @@ export default function NarrationsDashboard() {
               </div>
               <button
                 onClick={() => setModalPregen(null)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                className="p-2 hover:bg-neutral-100 rounded-xl transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1298,11 +1231,11 @@ export default function NarrationsDashboard() {
 
             {/* Content scrollable */}
             <div className="p-6 overflow-y-auto flex-1">
-              <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+              <p className="text-neutral-800 leading-relaxed whitespace-pre-wrap">
                 {modalPregen.pregeneration_text}
               </p>
               
-              <div className="mt-6 pt-4 border-t space-y-1 text-sm text-gray-500">
+              <div className="mt-6 pt-4 border-t border-neutral-100 space-y-1 text-sm text-neutral-500">
                 <p>Longueur : {modalPregen.pregeneration_text.length} caractères</p>
                 <p>Mots : ~{Math.round(modalPregen.pregeneration_text.split(/\s+/).length)}</p>
                 <p>Créé le : {new Date(modalPregen.created_at).toLocaleString('fr-FR')}</p>
@@ -1313,9 +1246,8 @@ export default function NarrationsDashboard() {
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
-              <Button 
-                variant="outline"
+            <div className="p-4 border-t border-neutral-100 bg-neutral-50 flex justify-end gap-2">
+              <button 
                 onClick={() => {
                   if (selectedOeuvre && confirm('Régénérer cette narration ?')) {
                     regenerateSingleNarration(modalPregen)
@@ -1323,13 +1255,17 @@ export default function NarrationsDashboard() {
                   }
                 }}
                 disabled={loading || !selectedOeuvre}
+                className="px-4 py-2 rounded-xl border border-neutral-200 text-sm font-medium hover:bg-neutral-100 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
-                <RefreshCw className="h-4 w-4 mr-2" />
+                <RefreshCw className="h-4 w-4" />
                 Régénérer
-              </Button>
-              <Button onClick={() => setModalPregen(null)}>
+              </button>
+              <button 
+                onClick={() => setModalPregen(null)}
+                className="px-4 py-2 rounded-xl bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors"
+              >
                 Fermer
-              </Button>
+              </button>
             </div>
           </div>
         </div>
@@ -1367,7 +1303,8 @@ export default function NarrationsDashboard() {
           loading={loading}
         />
       )}
-    </div>
+      </div>
+    </AdminLayout>
   )
 }
 
@@ -1415,18 +1352,18 @@ function ProfileSelectorModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b">
+        <div className="p-6 border-b border-neutral-100">
           <div className="flex justify-between items-start">
             <div>
-              <h3 className="text-xl font-bold mb-2">{title}</h3>
-              <p className="text-sm text-gray-600">{description}</p>
+              <h3 className="text-xl font-bold text-black mb-2">{title}</h3>
+              <p className="text-sm text-neutral-600">{description}</p>
             </div>
             <button
               onClick={onCancel}
               disabled={loading}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50"
+              className="p-2 hover:bg-neutral-100 rounded-xl transition-colors disabled:opacity-50"
             >
               <X className="h-5 w-5" />
             </button>
@@ -1442,7 +1379,7 @@ function ProfileSelectorModal({
 
               return (
                 <div key={type.type}>
-                  <label className="block text-sm font-medium mb-2">
+                  <label className="block text-sm font-medium text-black mb-2">
                     {type.label}
                     <span className="text-red-500 ml-1">*</span>
                   </label>
@@ -1456,15 +1393,16 @@ function ProfileSelectorModal({
                             [type.type]: criteria.criteria_id
                           }))
                         }}
-                        className={`p-3 border rounded-lg text-left transition-all ${
+                        className={cn(
+                          "p-3 border rounded-xl text-left transition-all",
                           selected === criteria.criteria_id
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
+                            ? 'border-black bg-neutral-100'
+                            : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                        )}
                       >
-                        <div className="font-medium">{criteria.label}</div>
+                        <div className="font-medium text-black">{criteria.label}</div>
                         {criteria.description && (
-                          <div className="text-xs text-gray-500 mt-1">
+                          <div className="text-xs text-neutral-500 mt-1">
                             {criteria.description}
                           </div>
                         )}
@@ -1478,8 +1416,8 @@ function ProfileSelectorModal({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
-          <p className="text-sm text-gray-600">
+        <div className="p-4 border-t border-neutral-100 bg-neutral-50 flex justify-between items-center">
+          <p className="text-sm">
             {isComplete ? (
               <span className="text-green-600 flex items-center gap-1">
                 <CheckCircle className="h-4 w-4" />
@@ -1493,10 +1431,14 @@ function ProfileSelectorModal({
             )}
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onCancel} disabled={loading}>
+            <button 
+              onClick={onCancel} 
+              disabled={loading}
+              className="px-4 py-2 rounded-xl border border-neutral-200 text-sm font-medium hover:bg-neutral-100 transition-colors disabled:opacity-50"
+            >
               Annuler
-            </Button>
-            <Button 
+            </button>
+            <button 
               onClick={() => {
                 if (isComplete) {
                   // Préférer async si disponible
@@ -1508,19 +1450,20 @@ function ProfileSelectorModal({
                 }
               }}
               disabled={!isComplete || loading}
+              className="px-4 py-2 rounded-xl bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {loading ? (
                 <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  <RefreshCw className="h-4 w-4 animate-spin" />
                   Génération...
                 </>
               ) : (
                 <>
-                  <Play className="h-4 w-4 mr-2" />
+                  <Play className="h-4 w-4" />
                   Lancer la génération
                 </>
               )}
-            </Button>
+            </button>
           </div>
         </div>
       </div>

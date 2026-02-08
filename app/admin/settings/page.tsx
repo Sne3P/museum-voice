@@ -3,11 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth-context'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { ArrowLeft, Save, Clock, Building2, Timer } from 'lucide-react'
+import { AdminLayout } from '../components'
+import { cn } from '@/lib/utils'
+import { Save, Clock, Building2, Timer, Image as ImageIcon } from 'lucide-react'
 import type { OpeningHours, MuseumSetting } from '@/core/entities/museum-settings.types'
 import { getUploadUrl } from '@/lib/uploads'
 
@@ -337,337 +335,266 @@ export default function SystemSettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">Chargement...</div>
-      </div>
+      <AdminLayout title="Paramètres Système" description="Chargement..." showBackButton>
+        <div className="flex items-center justify-center py-20">
+          <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin" />
+        </div>
+      </AdminLayout>
     )
   }
 
   return (
-    <div className="h-screen bg-gray-50 overflow-y-auto">
-      <div className="container mx-auto p-6 max-w-4xl pb-20">
-        {/* Header */}
-        <div className="relative flex justify-center mb-8">
-          <Button 
-            variant="outline" 
-            onClick={() => router.push('/admin')}
-            className="absolute left-0 top-0 flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Retour
-          </Button>
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-gray-900">Paramètres Système</h1>
-            <p className="text-gray-600 mt-1">Configurer les paramètres globaux du musée</p>
+    <AdminLayout 
+      title="Paramètres Système" 
+      description="Configurer les paramètres globaux du musée"
+      showBackButton
+    >
+      <div className="max-w-3xl mx-auto space-y-6">
+        {/* Nom du musée */}
+        <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-neutral-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-black">Informations générales</h2>
+              <p className="text-sm text-neutral-500">Nom et identité du musée</p>
+            </div>
           </div>
-        </div>
-
-        <div className="space-y-6">
-          {/* Nom du musée */}
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-2">
-              <Building2 className="h-5 w-5 text-blue-600" />
-              <div>
-                <CardTitle>Informations générales</CardTitle>
-                <CardDescription>Nom et identité du musée</CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="museum_name">Nom du musée</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="museum_name"
-                    value={museumName}
-                    onChange={(e) => setMuseumName(e.target.value)}
-                    placeholder="Nom du musée"
-                    className="flex-1"
-                  />
-                  <Button 
-                    onClick={handleSaveMuseumName} 
-                    disabled={isSaving}
-                    className="flex items-center gap-2"
-                  >
-                    <Save className="h-4 w-4" />
-                    Sauvegarder
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="museum_title">Titre d'accueil</Label>
-                <div className="flex gap-2">
-                  <textarea
-                    id="museum_title"
-                    value={museumTitle}
-                    onChange={(e) => setMuseumTitle(e.target.value)}
-                    placeholder="Bienvenue au musée..."
-                    className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                    rows={3}
-                  />
-                  <Button 
-                    onClick={handleSaveMuseumTitle} 
-                    disabled={isSaving}
-                    className="flex items-center gap-2 h-fit"
-                  >
-                    <Save className="h-4 w-4" />
-                    Sauvegarder
-                  </Button>
-                </div>
-                <p className="text-sm text-gray-500">Ce texte sera affiché sur la page d'accueil des visiteurs</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="museum_image">Image d'accueil</Label>
-                {museumImageUrl && museumImageUrl !== '/placeholder.svg' && (
-                  <div className="mb-2">
-                    <img 
-                      src={getUploadUrl(museumImageUrl)} 
-                      alt="Aperçu" 
-                      className="max-w-xs rounded-lg border border-gray-300"
-                    />
-                  </div>
-                )}
-                <Input
-                  id="museum_image"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  disabled={isSaving}
+          <div className="p-6 space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-black mb-2">Nom du musée</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={museumName}
+                  onChange={(e) => setMuseumName(e.target.value)}
+                  placeholder="Nom du musée"
+                  className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
                 />
-                <p className="text-sm text-gray-500">Image affichée sur la page d'accueil des visiteurs</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Horaires d'ouverture */}
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-2">
-              <Clock className="h-5 w-5 text-green-600" />
-              <div>
-                <CardTitle>Horaires d'ouverture</CardTitle>
-                <CardDescription>Configurez les horaires d'ouverture et de fermeture</CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {daysOfWeek.map(({ key, label }) => (
-                <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-3 border rounded-lg">
-                  <div className="w-full sm:w-20 font-medium">{label}</div>
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={openingHours[key]?.closed || false}
-                        onChange={(e) => updateOpeningHours(key, 'closed', e.target.checked)}
-                        className="mr-2"
-                      />
-                      <Label className="text-sm text-gray-600">Fermé</Label>
-                    </div>
-                    
-                    {!openingHours[key]?.closed && (
-                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full sm:w-auto">
-                        <div className="flex items-center gap-2">
-                          <Label className="text-sm">Ouverture:</Label>
-                          <Input
-                            type="time"
-                            value={openingHours[key]?.open || '09:00'}
-                            onChange={(e) => updateOpeningHours(key, 'open', e.target.value)}
-                            className="w-32"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Label className="text-sm">Fermeture:</Label>
-                          <Input
-                            type="time"
-                            value={openingHours[key]?.close || '18:00'}
-                            onChange={(e) => updateOpeningHours(key, 'close', e.target.value)}
-                            className="w-32"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <div className="flex justify-end pt-4">
-                <Button 
-                  onClick={handleSaveOpeningHours} 
+                <button 
+                  onClick={handleSaveMuseumName} 
                   disabled={isSaving}
-                  className="flex items-center gap-2"
+                  className="px-4 py-3 rounded-xl bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
                   <Save className="h-4 w-4" />
-                  Sauvegarder les horaires
-                </Button>
+                  Sauvegarder
+                </button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Paramètres de temps de parcours */}
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-2">
-              <Timer className="h-5 w-5 text-purple-600" />
-              <div>
-                <CardTitle>Temps de parcours</CardTitle>
-                <CardDescription>Configurer les options de durée des visites guidées</CardDescription>
+            <div>
+              <label className="block text-sm font-medium text-black mb-2">Titre d'accueil</label>
+              <div className="flex gap-2">
+                <textarea
+                  value={museumTitle}
+                  onChange={(e) => setMuseumTitle(e.target.value)}
+                  placeholder="Bienvenue au musée..."
+                  className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all resize-none"
+                  rows={3}
+                />
+                <button 
+                  onClick={handleSaveMuseumTitle} 
+                  disabled={isSaving}
+                  className="px-4 py-3 rounded-xl bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50 h-fit flex items-center gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  Sauvegarder
+                </button>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Durée maximum */}
-                <div className="space-y-2">
-                  <Label htmlFor="max-duration" className="text-sm font-medium">
-                    Durée maximum (heures)
-                  </Label>
-                  <Input
-                    id="max-duration"
-                    type="number"
-                    min="1"
-                    max="24"
-                    step="0.5"
-                    value={parcoursMaxDuration}
-                    onChange={(e) => setParcoursMaxDuration(parseFloat(e.target.value) || 5)}
-                    className="w-full"
+              <p className="text-xs text-neutral-400 mt-2">Texte affiché sur la page d'accueil des visiteurs</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-black mb-2">Image d'accueil</label>
+              {museumImageUrl && museumImageUrl !== '/placeholder.svg' && (
+                <div className="mb-3">
+                  <img 
+                    src={getUploadUrl(museumImageUrl)} 
+                    alt="Aperçu" 
+                    className="max-w-xs rounded-xl border border-neutral-200"
                   />
-                  <p className="text-xs text-gray-500">
-                    Limite maximale que les visiteurs peuvent sélectionner
-                  </p>
                 </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                disabled={isSaving}
+                className="text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-neutral-100 file:text-black hover:file:bg-neutral-200 disabled:opacity-50"
+              />
+            </div>
+          </div>
+        </div>
 
-                {/* Intervalle */}
-                <div className="space-y-2">
-                  <Label htmlFor="time-step" className="text-sm font-medium">
-                    Intervalle (heures)
-                  </Label>
-                  <select
-                    id="time-step"
-                    value={parcoursTimeStep}
-                    onChange={(e) => setParcoursTimeStep(parseFloat(e.target.value))}
-                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
-                  >
-                    <option value={0.25}>15 minutes (0.25h)</option>
-                    <option value={0.5}>30 minutes (0.5h)</option>
-                    <option value={1}>1 heure</option>
-                  </select>
-                  <p className="text-xs text-gray-500">
-                    Pas entre chaque option du curseur
-                  </p>
-                </div>
-
-                {/* Valeur par défaut */}
-                <div className="space-y-2">
-                  <Label htmlFor="default-duration" className="text-sm font-medium">
-                    Durée par défaut (heures)
-                  </Label>
-                  <Input
-                    id="default-duration"
-                    type="number"
-                    min="0.5"
-                    max={parcoursMaxDuration}
-                    step={parcoursTimeStep}
-                    value={parcoursDefaultDuration}
-                    onChange={(e) => setParcoursDefaultDuration(parseFloat(e.target.value) || 1)}
-                    className="w-full"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Valeur initiale du curseur pour les visiteurs
-                  </p>
-                </div>
-              </div>
-
-              {/* Prévisualisation */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-sm mb-2">Prévisualisation du curseur</h4>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <span>0h</span>
-                  <div className="flex-1 h-2 bg-gray-200 rounded-full relative">
-                    <div 
-                      className="absolute h-2 bg-purple-500 rounded-full"
-                      style={{ width: `${(parcoursDefaultDuration / parcoursMaxDuration) * 100}%` }}
+        {/* Horaires d'ouverture */}
+        <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-neutral-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center">
+              <Clock className="h-5 w-5 text-neutral-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-black">Horaires d'ouverture</h2>
+              <p className="text-sm text-neutral-500">Configurez les horaires d'ouverture et de fermeture</p>
+            </div>
+          </div>
+          <div className="p-6 space-y-3">
+            {daysOfWeek.map(({ key, label }) => (
+              <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-4 rounded-xl bg-neutral-50 border border-neutral-100">
+                <div className="w-full sm:w-24 font-medium text-black">{label}</div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={openingHours[key]?.closed || false}
+                      onChange={(e) => updateOpeningHours(key, 'closed', e.target.checked)}
+                      className="w-4 h-4 rounded border-neutral-300"
                     />
-                  </div>
-                  <span>{parcoursMaxDuration}h</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Options disponibles: {Array.from({ length: Math.floor(parcoursMaxDuration / parcoursTimeStep) + 1 }, (_, i) => 
-                    `${(i * parcoursTimeStep).toFixed(1)}h`
-                  ).join(', ')}
-                </p>
-              </div>
-
-              <div className="flex justify-end pt-4">
-                <Button 
-                  onClick={handleSaveParcoursSettings} 
-                  disabled={isSaving}
-                  className="flex items-center gap-2"
-                >
-                  <Save className="h-4 w-4" />
-                  Sauvegarder les paramètres de temps
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Résumé des paramètres */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Résumé des paramètres</CardTitle>
-              <CardDescription>Vue d'ensemble de la configuration actuelle</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-4 text-sm">
-                <div>
-                  <span className="font-medium">Nom du musée:</span> {museumName || 'Non défini'}
-                </div>
-                <div>
-                  <span className="font-medium">Titre d'accueil:</span> {museumTitle || 'Non défini'}
-                </div>
-                <div>
-                  <span className="font-medium">Image d'accueil:</span> {museumImageUrl ? 'Configurée' : 'Non définie'}
-                </div>
-              </div>
-              <div className="mt-4">
-                <span className="font-medium">Horaires d'ouverture:</span>
-                <div className="mt-2 text-sm space-y-1">
-                  {daysOfWeek.map(({ key, label }) => {
-                    const hours = openingHours[key]
-                    return (
-                      <div key={key} className="flex justify-between">
-                        <span>{label}:</span>
-                        <span>
-                          {hours?.closed ? 'Fermé' : `${hours?.open || '09:00'} - ${hours?.close || '18:00'}`}
-                        </span>
+                    <span className="text-sm text-neutral-600">Fermé</span>
+                  </label>
+                  
+                  {!openingHours[key]?.closed && (
+                    <div className="flex flex-wrap gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-neutral-500">De</span>
+                        <input
+                          type="time"
+                          value={openingHours[key]?.open || '09:00'}
+                          onChange={(e) => updateOpeningHours(key, 'open', e.target.value)}
+                          className="px-3 py-2 rounded-lg border border-neutral-200 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none"
+                        />
                       </div>
-                    )
-                  })}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-neutral-500">à</span>
+                        <input
+                          type="time"
+                          value={openingHours[key]?.close || '18:00'}
+                          onChange={(e) => updateOpeningHours(key, 'close', e.target.value)}
+                          className="px-3 py-2 rounded-lg border border-neutral-200 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-
-
-      {/* Section Résumé */}
-      <div className="bg-gray-50 rounded-lg p-6 mt-6">
-        <h2 className="text-xl font-semibold text-center mb-6">Résumé de la Configuration</h2>
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg p-4">
-            <h3 className="font-medium text-gray-900 mb-2">Informations générales</h3>
-            <div className="text-sm text-gray-700 space-y-1">
-              <div><strong>Nom du musée:</strong> {museumName || 'Non défini'}</div>
-              <div><strong>Horaires configurés:</strong> {Object.keys(openingHours).length} jour(s)</div>
-            </div>
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <h3 className="font-medium text-gray-900 mb-2">Statut du système</h3>
-            <div className="text-sm text-gray-700 space-y-1">
-              <div><strong>Paramètres chargés:</strong> {settings.length} éléments</div>
-              <div><strong>Dernière mise à jour:</strong> En temps réel</div>
+            ))}
+            <div className="flex justify-end pt-4">
+              <button 
+                onClick={handleSaveOpeningHours} 
+                disabled={isSaving}
+                className="px-4 py-3 rounded-xl bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                Sauvegarder les horaires
+              </button>
             </div>
           </div>
         </div>
+
+        {/* Paramètres de temps de parcours */}
+        <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-neutral-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center">
+              <Timer className="h-5 w-5 text-neutral-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-black">Temps de parcours</h2>
+              <p className="text-sm text-neutral-500">Options de durée des visites guidées</p>
+            </div>
+          </div>
+          <div className="p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">Durée maximum (heures)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="24"
+                  step="0.5"
+                  value={parcoursMaxDuration}
+                  onChange={(e) => setParcoursMaxDuration(parseFloat(e.target.value) || 5)}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">Intervalle (heures)</label>
+                <select
+                  value={parcoursTimeStep}
+                  onChange={(e) => setParcoursTimeStep(parseFloat(e.target.value))}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
+                >
+                  <option value={0.25}>15 minutes</option>
+                  <option value={0.5}>30 minutes</option>
+                  <option value={1}>1 heure</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">Durée par défaut (heures)</label>
+                <input
+                  type="number"
+                  min="0.5"
+                  max={parcoursMaxDuration}
+                  step={parcoursTimeStep}
+                  value={parcoursDefaultDuration}
+                  onChange={(e) => setParcoursDefaultDuration(parseFloat(e.target.value) || 1)}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Prévisualisation */}
+            <div className="bg-neutral-50 rounded-xl p-4">
+              <p className="text-sm font-medium text-black mb-3">Prévisualisation du curseur</p>
+              <div className="flex items-center gap-2 text-sm text-neutral-500">
+                <span>0h</span>
+                <div className="flex-1 h-2 bg-neutral-200 rounded-full relative">
+                  <div 
+                    className="absolute h-2 bg-black rounded-full"
+                    style={{ width: `${(parcoursDefaultDuration / parcoursMaxDuration) * 100}%` }}
+                  />
+                </div>
+                <span>{parcoursMaxDuration}h</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button 
+                onClick={handleSaveParcoursSettings} 
+                disabled={isSaving}
+                className="px-4 py-3 rounded-xl bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                Sauvegarder
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Résumé */}
+        <div className="bg-neutral-50 rounded-2xl border border-neutral-200 p-6">
+          <h3 className="font-semibold text-black mb-4">Résumé de la configuration</h3>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-neutral-500">Nom du musée:</span>
+              <span className="ml-2 font-medium text-black">{museumName || 'Non défini'}</span>
+            </div>
+            <div>
+              <span className="text-neutral-500">Image:</span>
+              <span className="ml-2 font-medium text-black">{museumImageUrl ? 'Configurée' : 'Non définie'}</span>
+            </div>
+            <div>
+              <span className="text-neutral-500">Horaires:</span>
+              <span className="ml-2 font-medium text-black">{Object.keys(openingHours).length} jour(s)</span>
+            </div>
+            <div>
+              <span className="text-neutral-500">Paramètres:</span>
+              <span className="ml-2 font-medium text-black">{settings.length} éléments</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </AdminLayout>
   )
 }

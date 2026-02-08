@@ -3,11 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth-context'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { ArrowLeft, Users, Plus, UserCheck, ShoppingCart, Trash2, RefreshCw } from 'lucide-react'
+import { AdminLayout } from '../components'
+import { cn } from '@/lib/utils'
+import { Users, Plus, UserCheck, ShoppingCart, Trash2, RefreshCw, X, ArrowRight } from 'lucide-react'
 
 interface UserData {
   id: string
@@ -21,14 +19,10 @@ interface UserData {
 }
 
 export default function UsersManagementPage() {
-  const { isAuthenticated, hasPermission, currentUser, isLoading } = useAuth()
+  const { hasPermission, currentUser } = useAuth()
   const router = useRouter()
   const [selectedUserType, setSelectedUserType] = useState<'admin_musee' | 'accueil' | null>(null)
-  const [formData, setFormData] = useState({
-    name: '',
-    username: '',
-    password: ''
-  })
+  const [formData, setFormData] = useState({ name: '', username: '', password: '' })
   const [isCreating, setIsCreating] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [allUsers, setAllUsers] = useState<UserData[]>([])
@@ -36,16 +30,12 @@ export default function UsersManagementPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  // Charger tous les utilisateurs au montage et après création
   const loadUsers = async () => {
     try {
       setIsLoadingUsers(true)
       const response = await fetch('/api/auth/users')
       const data = await response.json()
-      
-      if (data.success) {
-        setAllUsers(data.users)
-      }
+      if (data.success) setAllUsers(data.users)
     } catch (error) {
       console.error('Erreur chargement users:', error)
     } finally {
@@ -54,30 +44,19 @@ export default function UsersManagementPage() {
   }
 
   useEffect(() => {
-    if (isLoading) return
-    
-    if (!isAuthenticated || !hasPermission('manage_admin_musee')) {
-      router.push('/admin')
-      return
-    }
-
-    loadUsers()
-  }, [isLoading, isAuthenticated, hasPermission, router])
+    if (hasPermission('manage_admin_musee')) loadUsers()
+  }, [hasPermission])
 
   const generatePassword = () => {
     const adjectives = ['Rouge', 'Bleu', 'Vert', 'Jaune', 'Rose']
     const nouns = ['Chat', 'Chien', 'Lion', 'Ours', 'Loup']
     const numbers = Math.floor(Math.random() * 99) + 1
-    const adj = adjectives[Math.floor(Math.random() * adjectives.length)]
-    const noun = nouns[Math.floor(Math.random() * nouns.length)]
-    return `${adj}${noun}${numbers}`
+    return `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${numbers}`
   }
 
   const generateUsername = (name: string, type: string) => {
     const cleanName = name.toLowerCase().replace(/\s+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').slice(0, 6)
-    const typePrefix = type === 'admin_musee' ? 'admin' : 'acc'
-    const randomNum = Math.floor(Math.random() * 999) + 1
-    return `${typePrefix}${cleanName}${randomNum}`
+    return `${type === 'admin_musee' ? 'admin' : 'acc'}${cleanName}${Math.floor(Math.random() * 999) + 1}`
   }
 
   const handleCreateUser = async () => {
@@ -99,52 +78,43 @@ export default function UsersManagementPage() {
           password: formData.password,
           role: selectedUserType,
           name: formData.name,
-          museeId: null // TODO: récupérer l'ID du musée si besoin
+          museeId: null
         })
       })
 
       const data = await response.json()
 
       if (data.success) {
-        setSuccess(`✅ Utilisateur ${formData.username} créé avec succès !`)
+        setSuccess(`Utilisateur ${formData.username} créé avec succès`)
         setFormData({ name: '', username: '', password: '' })
         setSelectedUserType(null)
         setIsCreating(false)
-        
-        // Recharger la liste
         await loadUsers()
       } else {
         setError(data.error || 'Erreur lors de la création')
       }
     } catch (error) {
       setError('Erreur réseau lors de la création')
-      console.error('Erreur création user:', error)
     } finally {
       setIsSaving(false)
     }
   }
 
   const handleDeleteUser = async (userId: string, username: string) => {
-    if (!confirm(`Supprimer l'utilisateur "${username}" ?\n\nCette action est irréversible.`)) {
-      return
-    }
+    if (!confirm(`Supprimer l'utilisateur "${username}" ?`)) return
 
     try {
-      const response = await fetch(`/api/auth/users?id=${userId}`, {
-        method: 'DELETE'
-      })
-
+      const response = await fetch(`/api/auth/users?id=${userId}`, { method: 'DELETE' })
       const data = await response.json()
 
       if (data.success) {
-        setSuccess(`✅ Utilisateur ${username} supprimé`)
+        setSuccess(`Utilisateur ${username} supprimé`)
         await loadUsers()
       } else {
         setError(data.error || 'Erreur lors de la suppression')
       }
     } catch (error) {
       setError('Erreur réseau lors de la suppression')
-      console.error('Erreur suppression user:', error)
     }
   }
 
@@ -153,199 +123,160 @@ export default function UsersManagementPage() {
     setIsCreating(true)
     setError('')
     setSuccess('')
-    
-    // Pré-générer les credentials
-    setFormData({
-      name: '',
-      username: '',
-      password: generatePassword()
-    })
+    setFormData({ name: '', username: '', password: generatePassword() })
   }
 
-  if (!isAuthenticated || !hasPermission('manage_admin_musee')) {
-    return null
-  }
-
-  const getRoleBadgeColor = (role: string) => {
-    switch(role) {
-      case 'super_admin': return 'bg-red-100 text-red-700'
-      case 'admin_musee': return 'bg-blue-100 text-blue-700'
-      case 'accueil': return 'bg-green-100 text-green-700'
-      default: return 'bg-gray-100 text-gray-700'
+  const getRoleBadge = (role: string) => {
+    const styles: Record<string, string> = {
+      'super_admin': 'bg-black text-white',
+      'admin_musee': 'bg-neutral-200 text-black',
+      'accueil': 'bg-neutral-100 text-neutral-700'
     }
-  }
-
-  const getRoleLabel = (role: string) => {
-    switch(role) {
-      case 'super_admin': return 'Super Admin'
-      case 'admin_musee': return 'Admin Musée'
-      case 'accueil': return 'Agent Accueil'
-      default: return role
+    const labels: Record<string, string> = {
+      'super_admin': 'Super Admin',
+      'admin_musee': 'Admin',
+      'accueil': 'Accueil'
     }
+    return { style: styles[role] || 'bg-neutral-100 text-neutral-600', label: labels[role] || role }
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50">
-      <div className="container mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Button 
-            variant="outline" 
-            onClick={() => router.push('/admin')}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Retour
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Gestion des Utilisateurs</h1>
-            <p className="text-gray-600 mt-1">Créer et gérer les comptes utilisateurs du musée</p>
+    <AdminLayout 
+      title="Gestion des Utilisateurs" 
+      description="Créer et gérer les comptes du musée"
+      showBackButton
+    >
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* Messages */}
+        {success && (
+          <div className="bg-neutral-900 text-white rounded-xl p-4 flex items-center justify-between">
+            <span className="text-sm">{success}</span>
+            <button onClick={() => setSuccess('')} className="p-1 hover:bg-white/10 rounded">
+              <X className="h-4 w-4" />
+            </button>
           </div>
-        </div>
+        )}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center justify-between">
+            <span className="text-sm">{error}</span>
+            <button onClick={() => setError('')} className="p-1 hover:bg-red-100 rounded">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {!isCreating ? (
           <>
-            {/* Sélection du type d'utilisateur */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => startCreation('admin_musee')}>
-                <CardHeader className="text-center pb-4">
-                  <div className="flex justify-center mb-3">
-                    <div className="p-3 bg-blue-100 rounded-full">
-                      <UserCheck className="h-8 w-8 text-blue-600" />
-                    </div>
-                  </div>
-                  <CardTitle className="text-xl">Administrateur Musée</CardTitle>
-                  <CardDescription>
-                    Peut éditer les plans, gérer les agents d'accueil et les thématiques
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button className="w-full">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Créer un Admin Musée
-                  </Button>
-                </CardContent>
-              </Card>
+            {/* Creation Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button
+                onClick={() => startCreation('admin_musee')}
+                className="group bg-white rounded-2xl border border-neutral-200 p-6 text-left hover:shadow-lg hover:-translate-y-0.5 transition-all"
+              >
+                <div className="w-12 h-12 rounded-xl bg-black flex items-center justify-center mb-4">
+                  <UserCheck className="h-6 w-6 text-white" />
+                </div>
+                <h3 className="text-lg font-semibold text-black mb-1">Administrateur Musée</h3>
+                <p className="text-sm text-neutral-500 mb-4">Peut éditer les plans, gérer les agents et les thématiques</p>
+                <div className="flex items-center gap-2 text-sm font-medium text-black">
+                  <Plus className="h-4 w-4" />
+                  Créer un Admin
+                  <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              </button>
 
-              <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => startCreation('accueil')}>
-                <CardHeader className="text-center pb-4">
-                  <div className="flex justify-center mb-3">
-                    <div className="p-3 bg-green-100 rounded-full">
-                      <ShoppingCart className="h-8 w-8 text-green-600" />
-                    </div>
-                  </div>
-                  <CardTitle className="text-xl">Agent Accueil/Vente</CardTitle>
-                  <CardDescription>
-                    Accès en consultation pour aider les visiteurs et la vente
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="outline" className="w-full">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Créer un Agent
-                  </Button>
-                </CardContent>
-              </Card>
+              <button
+                onClick={() => startCreation('accueil')}
+                className="group bg-white rounded-2xl border border-neutral-200 p-6 text-left hover:shadow-lg hover:-translate-y-0.5 transition-all"
+              >
+                <div className="w-12 h-12 rounded-xl bg-neutral-100 flex items-center justify-center mb-4">
+                  <ShoppingCart className="h-6 w-6 text-neutral-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-black mb-1">Agent Accueil/Vente</h3>
+                <p className="text-sm text-neutral-500 mb-4">Accès en consultation pour aider les visiteurs</p>
+                <div className="flex items-center gap-2 text-sm font-medium text-neutral-600">
+                  <Plus className="h-4 w-4" />
+                  Créer un Agent
+                  <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              </button>
             </div>
 
-            {/* Messages de succès/erreur */}
-            {success && (
-              <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-                {success}
-              </div>
-            )}
-            {error && (
-              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-                {error}
-              </div>
-            )}
-
-            {/* Liste de TOUS les utilisateurs en DB */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Tous les Utilisateurs ({allUsers.length})
-                  </CardTitle>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadUsers}
-                    disabled={isLoadingUsers}
-                  >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingUsers ? 'animate-spin' : ''}`} />
-                    Actualiser
-                  </Button>
+            {/* Users List */}
+            <div className="bg-white rounded-2xl border border-neutral-200">
+              <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center">
+                    <Users className="h-5 w-5 text-neutral-600" />
+                  </div>
+                  <div>
+                    <h2 className="font-semibold text-black">Tous les Utilisateurs</h2>
+                    <p className="text-sm text-neutral-500">{allUsers.length} comptes</p>
+                  </div>
                 </div>
-              </CardHeader>
-              <CardContent>
+                <button
+                  onClick={loadUsers}
+                  disabled={isLoadingUsers}
+                  className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
+                >
+                  <RefreshCw className={cn("h-5 w-5 text-neutral-600", isLoadingUsers && "animate-spin")} />
+                </button>
+              </div>
+
+              <div className="divide-y divide-neutral-100">
                 {isLoadingUsers ? (
-                  <div className="text-center py-8 text-gray-500">
-                    Chargement des utilisateurs...
-                  </div>
+                  <div className="p-8 text-center text-neutral-400 text-sm">Chargement...</div>
                 ) : allUsers.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    Aucun utilisateur trouvé
-                  </div>
+                  <div className="p-8 text-center text-neutral-400 text-sm">Aucun utilisateur</div>
                 ) : (
-                  <div className="space-y-3">
-                    {allUsers.map((user) => (
-                      <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <div className="font-medium">{user.name}</div>
-                            <span className={`px-2 py-1 text-xs rounded-full ${getRoleBadgeColor(user.role)}`}>
-                              {getRoleLabel(user.role)}
+                  allUsers.map((user) => {
+                    const badge = getRoleBadge(user.role)
+                    return (
+                      <div key={user.id} className="p-4 flex items-center justify-between hover:bg-neutral-50">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-black truncate">{user.name}</span>
+                            <span className={cn("px-2 py-0.5 text-xs rounded-full font-medium", badge.style)}>
+                              {badge.label}
                             </span>
                           </div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            @{user.username} {user.museeId && `• ${user.museeId}`}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Créé le {new Date(user.createdAt).toLocaleDateString('fr-FR')}
-                            {user.lastLogin && ` • Dernière connexion: ${new Date(user.lastLogin).toLocaleDateString('fr-FR')}`}
-                          </div>
+                          <p className="text-sm text-neutral-500">@{user.username}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {user.role !== 'super_admin' && (
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDeleteUser(user.id, user.username)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
+                        {user.role !== 'super_admin' && (
+                          <button
+                            onClick={() => handleDeleteUser(user.id, user.username)}
+                            className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                    )
+                  })
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </>
         ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {selectedUserType === 'admin_musee' ? 'Nouvel Administrateur Musée' : 'Nouvel Agent Accueil'}
-              </CardTitle>
-              <CardDescription>
-                Remplissez les informations pour créer le compte utilisateur
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-                  {error}
-                </div>
-              )}
+          /* Creation Form */
+          <div className="bg-white rounded-2xl border border-neutral-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-black">
+                {selectedUserType === 'admin_musee' ? 'Nouvel Administrateur' : 'Nouvel Agent Accueil'}
+              </h2>
+              <button
+                onClick={() => { setIsCreating(false); setSelectedUserType(null) }}
+                className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="name">Nom complet *</Label>
-                <Input
-                  id="name"
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">Nom complet</label>
+                <input
+                  type="text"
                   placeholder="Ex: Jean Dupont"
                   value={formData.name}
                   onChange={(e) => {
@@ -356,79 +287,67 @@ export default function UsersManagementPage() {
                       username: name ? generateUsername(name, selectedUserType!) : ''
                     })
                   }}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="username">Nom d'utilisateur *</Label>
-                <Input
-                  id="username"
-                  placeholder="Généré automatiquement"
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">Nom d'utilisateur</label>
+                <input
+                  type="text"
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all font-mono text-sm"
                 />
-                <p className="text-xs text-gray-500">
-                  Sera utilisé pour se connecter. Auto-généré à partir du nom.
-                </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="password">Mot de passe *</Label>
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">Mot de passe</label>
                 <div className="flex gap-2">
-                  <Input
-                    id="password"
+                  <input
                     type="text"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all font-mono text-sm"
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
+                  <button
                     onClick={() => setFormData({ ...formData, password: generatePassword() })}
+                    className="px-4 py-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 transition-colors"
                   >
                     <RefreshCw className="h-4 w-4" />
-                  </Button>
+                  </button>
                 </div>
-                <p className="text-xs text-gray-500">
-                  Mot de passe généré aléatoirement. Peut être modifié.
-                </p>
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm font-medium text-yellow-800 mb-2">📋 Informations à communiquer :</p>
-                <div className="text-sm text-yellow-700 space-y-1">
-                  <p><strong>Identifiant:</strong> {formData.username || '(sera généré)'}</p>
-                  <p><strong>Mot de passe:</strong> {formData.password}</p>
-                  <p className="text-xs mt-2">⚠️ Notez bien ces informations avant de valider</p>
+              {/* Credentials Box */}
+              <div className="bg-neutral-50 rounded-xl p-4">
+                <p className="text-sm font-medium text-black mb-2">Informations à communiquer</p>
+                <div className="text-sm text-neutral-600 space-y-1 font-mono">
+                  <p>Identifiant: {formData.username || '...'}</p>
+                  <p>Mot de passe: {formData.password}</p>
                 </div>
               </div>
 
               <div className="flex gap-3 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsCreating(false)
-                    setSelectedUserType(null)
-                    setFormData({ name: '', username: '', password: '' })
-                    setError('')
-                  }}
-                  className="flex-1"
+                <button
+                  onClick={() => { setIsCreating(false); setSelectedUserType(null) }}
                   disabled={isSaving}
+                  className="flex-1 py-3 px-4 rounded-xl border border-neutral-200 font-medium text-sm hover:bg-neutral-50 transition-colors disabled:opacity-50"
                 >
                   Annuler
-                </Button>
-                <Button
+                </button>
+                <button
                   onClick={handleCreateUser}
-                  className="flex-1"
                   disabled={isSaving || !formData.name || !formData.username || !formData.password}
+                  className="flex-1 py-3 px-4 rounded-xl bg-black text-white font-medium text-sm hover:bg-neutral-800 transition-colors disabled:opacity-50"
                 >
-                  {isSaving ? 'Création en cours...' : '✓ Créer le compte'}
-                </Button>
+                  {isSaving ? 'Création...' : 'Créer le compte'}
+                </button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
       </div>
-    </div>
+    </AdminLayout>
   )
 }

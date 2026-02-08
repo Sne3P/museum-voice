@@ -1,18 +1,14 @@
 "use client"
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef } from 'react'
 import { useAuth } from '@/components/auth-context'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { ArrowLeft, QrCode, Maximize2, X, Copy, ExternalLink, Check } from 'lucide-react'
+import { AdminLayout } from '../components'
+import { cn } from '@/lib/utils'
+import { QrCode, Maximize2, X, Copy, ExternalLink, Check, Trash2, AlertTriangle } from 'lucide-react'
 import QRCodeLib from 'qrcode'
 
 export default function QRCodePage() {
-  const { isAuthenticated, currentUser, hasPermission, isLoading } = useAuth()
-  const router = useRouter()
+  const { currentUser, hasPermission } = useAuth()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const modalCanvasRef = useRef<HTMLCanvasElement>(null)
   const [qrCodeData, setQrCodeData] = useState('')
@@ -23,25 +19,14 @@ export default function QRCodePage() {
   const [copied, setCopied] = useState(false)
   const [isCleaningAll, setIsCleaningAll] = useState(false)
 
-  useEffect(() => {
-    if (isLoading) return
-    
-    if (!isAuthenticated || (!hasPermission('edit_maps') && !hasPermission('manage_accueil') && !hasPermission('view_only'))) {
-      router.push('/admin')
-    }
-  }, [isLoading, isAuthenticated, hasPermission, router])
-
   const generateQRCode = async () => {
     setIsGenerating(true)
     setError('')
     
     try {
-      // Appeler l'API pour créer un nouveau token
       const response = await fetch('/api/qrcode', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: currentUser?.id,
           userName: currentUser?.username
@@ -56,22 +41,17 @@ export default function QRCodePage() {
 
       setTokenData(data)
       
-      // Générer le QR code avec l'URL retournée
       if (canvasRef.current && data.url) {
-        const qrSize = window.innerWidth < 640 ? 300 : 350;
         await QRCodeLib.toCanvas(canvasRef.current, data.url, {
-          width: qrSize,
+          width: 280,
           margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          }
+          color: { dark: '#000000', light: '#FFFFFF' }
         })
         setQrCodeData(data.url)
       }
       
     } catch (error) {
-      console.error('Erreur lors de la génération du QR code:', error)
+      console.error('Erreur génération QR:', error)
       setError(error instanceof Error ? error.message : 'Erreur inconnue')
     } finally {
       setIsGenerating(false)
@@ -80,23 +60,15 @@ export default function QRCodePage() {
 
   const showLargeQRCode = async () => {
     setShowModal(true)
-    // Attendre que le modal soit rendu
     setTimeout(async () => {
       if (modalCanvasRef.current && qrCodeData) {
         await QRCodeLib.toCanvas(modalCanvasRef.current, qrCodeData, {
-          width: 500,
+          width: 400,
           margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          }
+          color: { dark: '#000000', light: '#FFFFFF' }
         })
       }
     }, 100)
-  }
-
-  const closeModal = () => {
-    setShowModal(false)
   }
 
   const copyToClipboard = async () => {
@@ -111,14 +83,8 @@ export default function QRCodePage() {
     }
   }
 
-  const openInNewTab = () => {
-    if (qrCodeData) {
-      window.open(qrCodeData, '_blank')
-    }
-  }
-
   const cleanupAllSessions = async () => {
-    if (!confirm('⚠️ ATTENTION : Cette action va supprimer TOUTES les sessions actives et leurs fichiers audio associés.\n\nCette action est irréversible.\n\nVoulez-vous continuer ?')) {
+    if (!confirm('⚠️ Cette action supprime TOUTES les sessions actives.\n\nVoulez-vous continuer ?')) {
       return
     }
 
@@ -128,9 +94,7 @@ export default function QRCodePage() {
     try {
       const response = await fetch('/api/admin/cleanup-all-sessions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        headers: { 'Content-Type': 'application/json' }
       })
 
       const data = await response.json()
@@ -139,7 +103,7 @@ export default function QRCodePage() {
         throw new Error(data.error || 'Erreur lors du nettoyage')
       }
 
-      alert(`✅ Nettoyage terminé avec succès!\n\n${data.deleted_sessions} sessions supprimées\n${data.deleted_audio_folders} dossiers audio supprimés`)
+      alert(`✅ Nettoyage terminé!\n\n${data.deleted_sessions} sessions supprimées\n${data.deleted_audio_folders} dossiers audio supprimés`)
       
     } catch (error) {
       console.error('Erreur nettoyage:', error)
@@ -149,196 +113,165 @@ export default function QRCodePage() {
     }
   }
 
-  if (!isAuthenticated) {
-    return null
-  }
-
   return (
-    <div className="h-full overflow-y-auto bg-gray-50">
-      <div className="container mx-auto px-4 py-6 max-w-7xl">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-center justify-between mb-6 sm:mb-8 gap-4">
-          <Button 
-            variant="outline" 
-            onClick={() => router.back()}
-            className="flex items-center gap-2 self-start sm:self-center"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Retour
-          </Button>
-          <div className="text-center flex-1 order-first sm:order-none">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Génération de QR Code</h1>
-            <p className="text-sm sm:text-base text-gray-600 mt-1">Créer des QR codes pour l'audioguide du musée</p>
-          </div>
-          <div className="hidden sm:block w-20"></div>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
-          {/* Paramètres */}
-          <Card className="w-full">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <QrCode className="h-5 w-5" />
-                Paramètres du QR Cod
-              </CardTitle>
-              <CardDescription className="text-sm">
-                Configurez l'URL et les paramètres pour générer le QR code
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pb-6">
-              <div className="p-4 bg-green-50 rounded-lg">
-                <h4 className="font-medium text-green-900 mb-2">Fonctionnement</h4>
-                <div className="text-sm text-green-800 space-y-1">
-                  <p>• Chaque QR code génère un token unique</p>
-                  <p>• Le visiteur accède à l'audioguide via le token</p>
-                  <p>• Une fois utilisé, le token devient invalide</p>
-                  <p>• Traçabilité complète des accès</p>
-                </div>
+    <AdminLayout 
+      title="Générateur QR Code" 
+      description="Créer des QR codes pour l'audioguide visiteurs"
+      showBackButton
+    >
+      <div className="max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          {/* Génération */}
+          <div className="bg-white rounded-2xl border border-neutral-200 p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center">
+                <QrCode className="h-5 w-5 text-white" />
               </div>
+              <div>
+                <h2 className="font-semibold text-black">Générer un QR Code</h2>
+                <p className="text-sm text-neutral-500">Token unique pour l'audioguide</p>
+              </div>
+            </div>
 
-              {error && (
-                <div className="p-4 bg-red-50 rounded-lg">
-                  <p className="text-sm text-red-800">
-                    <strong>Erreur:</strong> {error}
-                  </p>
-                </div>
+            {/* Info box */}
+            <div className="bg-neutral-50 rounded-xl p-4 mb-6">
+              <h4 className="font-medium text-black text-sm mb-2">Comment ça fonctionne</h4>
+              <ul className="text-sm text-neutral-600 space-y-1">
+                <li>• Chaque QR code génère un token unique</li>
+                <li>• Le visiteur scanne pour accéder à l'audioguide</li>
+                <li>• Token à usage unique, traçabilité complète</li>
+              </ul>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+
+            <button 
+              onClick={generateQRCode} 
+              disabled={isGenerating}
+              className={cn(
+                "w-full py-3 px-4 rounded-xl font-medium text-sm transition-all",
+                "bg-black text-white hover:bg-neutral-800",
+                "disabled:opacity-50 disabled:cursor-not-allowed"
               )}
+            >
+              {isGenerating ? 'Génération en cours...' : 'Générer un Nouveau QR Code'}
+            </button>
 
-              <Button 
-                onClick={generateQRCode} 
-                disabled={isGenerating}
-                className="w-full"
-              >
-                {isGenerating ? 'Génération du token...' : 'Générer un Nouveau QR Code'}
-              </Button>
-
-              {hasPermission('manage_admin_musee') && (
-                <div className="pt-4 border-t border-gray-200">
-                  <div className="p-4 bg-red-50 rounded-lg mb-3">
-                    <h4 className="font-medium text-red-900 mb-2">⚠️ Zone Administration</h4>
-                    <p className="text-sm text-red-800">
-                      Cette action supprime toutes les sessions actives et leurs fichiers audio. 
-                      À utiliser uniquement en cas de besoin (maintenance, tests, etc.)
+            {/* Admin cleanup section */}
+            {hasPermission('manage_admin_musee') && (
+              <div className="mt-6 pt-6 border-t border-neutral-200">
+                <div className="flex items-start gap-3 p-4 bg-red-50 rounded-xl mb-4">
+                  <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-red-900 text-sm">Zone Administration</h4>
+                    <p className="text-xs text-red-700 mt-1">
+                      Supprime toutes les sessions actives et fichiers audio associés.
                     </p>
                   </div>
-                  <Button 
-                    onClick={cleanupAllSessions} 
-                    disabled={isCleaningAll}
-                    variant="destructive"
-                    className="w-full"
-                  >
-                    {isCleaningAll ? 'Nettoyage en cours...' : '🗑️ Supprimer Toutes les Sessions'}
-                  </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Aperçu et téléchargement */}
-          <Card className="w-full">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg">QR Code Généré</CardTitle>
-              <CardDescription className="text-sm">
-                Aperçu et options de téléchargement
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pb-6">
-              <div className="flex justify-center w-full overflow-hidden">
-                <div className="p-4 bg-white border-2 border-dashed border-gray-300 rounded-lg w-full max-w-md">
-                  <div className="flex justify-center">
-                    <canvas
-                      ref={canvasRef}
-                      className={qrCodeData ? 'block w-full h-auto max-w-[300px] sm:max-w-[350px]' : 'hidden'}
-                    />
-                  </div>
-                  {!qrCodeData && (
-                    <div className="w-full aspect-square max-w-[300px] sm:max-w-[350px] mx-auto flex items-center justify-center text-gray-400">
-                      <QrCode className="h-16 w-16 sm:h-20 sm:w-20" />
-                    </div>
+                <button 
+                  onClick={cleanupAllSessions} 
+                  disabled={isCleaningAll}
+                  className={cn(
+                    "w-full py-3 px-4 rounded-xl font-medium text-sm transition-all",
+                    "bg-white text-red-600 border border-red-200 hover:bg-red-50",
+                    "disabled:opacity-50 disabled:cursor-not-allowed"
                   )}
-                </div>
+                >
+                  <Trash2 className="h-4 w-4 inline mr-2" />
+                  {isCleaningAll ? 'Nettoyage en cours...' : 'Supprimer Toutes les Sessions'}
+                </button>
               </div>
+            )}
+          </div>
 
-              {qrCodeData && (
-                <div className="flex justify-center">
-                  <Button onClick={showLargeQRCode} className="px-4 sm:px-8 text-sm sm:text-base">
-                    <Maximize2 className="h-4 w-4 mr-2" />
-                    <span className="hidden sm:inline">Afficher en Plus Grand</span>
-                    <span className="sm:hidden">Agrandir</span>
-                  </Button>
-                </div>
-              )}
-
-              {qrCodeData && (
-                <div className="space-y-3 p-4 bg-blue-50 rounded-lg">
-                  <Label className="text-sm font-medium text-blue-900">Lien d'accès</Label>
-                  <div className="flex gap-2">
-                    <Input 
-                      value={qrCodeData} 
-                      readOnly 
-                      className="font-mono text-xs bg-white"
-                    />
-                    <Button 
-                      onClick={copyToClipboard} 
-                      variant="outline" 
-                      size="sm"
-                      className="shrink-0"
-                    >
-                      {copied ? (
-                        <>
-                          <Check className="h-4 w-4 mr-1" />
-                          Copié
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-4 w-4 mr-1" />
-                          Copier
-                        </>
-                      )}
-                    </Button>
-                    <Button 
-                      onClick={openInNewTab} 
-                      variant="outline" 
-                      size="sm"
-                      className="shrink-0"
-                    >
-                      <ExternalLink className="h-4 w-4 mr-1" />
-                      Ouvrir
-                    </Button>
-                  </div>
-                  <p className="text-xs text-blue-700">
-                    💡 Copiez ce lien ou ouvrez-le dans un nouvel onglet pour tester sans scanner le QR code
-                  </p>
-                </div>
-              )}
-
-              <div className="text-xs text-gray-500 space-y-1 p-3 bg-gray-50 rounded">
-                <p><strong>Utilisation:</strong></p>
-                <p>• Imprimez le QR code sur des supports physiques</p>
-                <p>• Les visiteurs scannent pour accéder à l'audioguide</p>
-                <p>• Le token permet de tracer l'utilisation</p>
+          {/* Aperçu QR Code */}
+          <div className="bg-white rounded-2xl border border-neutral-200 p-6">
+            <h2 className="font-semibold text-black mb-6">Aperçu du QR Code</h2>
+            
+            <div className="flex justify-center mb-6">
+              <div className={cn(
+                "w-72 h-72 rounded-xl border-2 border-dashed flex items-center justify-center",
+                qrCodeData ? "border-neutral-300 bg-white p-4" : "border-neutral-200 bg-neutral-50"
+              )}>
+                <canvas
+                  ref={canvasRef}
+                  className={qrCodeData ? 'block' : 'hidden'}
+                />
+                {!qrCodeData && (
+                  <QrCode className="h-16 w-16 text-neutral-300" />
+                )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+
+            {qrCodeData && (
+              <>
+                {/* Actions */}
+                <div className="flex gap-2 justify-center mb-6">
+                  <button 
+                    onClick={showLargeQRCode}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-100 text-neutral-700 hover:bg-neutral-200 text-sm font-medium transition-all"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                    Agrandir
+                  </button>
+                  <button 
+                    onClick={copyToClipboard}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-100 text-neutral-700 hover:bg-neutral-200 text-sm font-medium transition-all"
+                  >
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {copied ? 'Copié!' : 'Copier'}
+                  </button>
+                  <button 
+                    onClick={() => window.open(qrCodeData, '_blank')}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-100 text-neutral-700 hover:bg-neutral-200 text-sm font-medium transition-all"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Ouvrir
+                  </button>
+                </div>
+
+                {/* URL */}
+                <div className="bg-neutral-50 rounded-xl p-4">
+                  <p className="text-xs text-neutral-500 mb-2">Lien d'accès</p>
+                  <p className="font-mono text-xs text-black break-all">{qrCodeData}</p>
+                </div>
+              </>
+            )}
+
+            {!qrCodeData && (
+              <p className="text-center text-sm text-neutral-400">
+                Générez un QR code pour voir l'aperçu
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Modal pour afficher le QR code en grand */}
+        {/* Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-auto">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-lg w-full">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold">QR Code - Affichage Grand Format</h3>
-                <Button variant="outline" size="sm" onClick={closeModal}>
-                  <X className="h-4 w-4" />
-                </Button>
+                <h3 className="text-lg font-semibold text-black">QR Code - Grand Format</h3>
+                <button 
+                  onClick={() => setShowModal(false)}
+                  className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
               <div className="flex justify-center">
-                <canvas ref={modalCanvasRef} className="max-w-full h-auto" />
+                <canvas ref={modalCanvasRef} />
               </div>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </AdminLayout>
   )
 }

@@ -3,53 +3,48 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth-context'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { ArrowLeft, Users, Plus, ShoppingCart } from 'lucide-react'
+import { AdminLayout } from '../components'
+import { cn } from '@/lib/utils'
+import { Users, Plus, ShoppingCart, RefreshCw, X, Copy, Check } from 'lucide-react'
+
+interface AgentUser {
+  id: string
+  name: string
+  museeId: string
+  username: string
+  password: string
+  role: string
+  createdAt: string
+  createdBy?: string
+}
 
 export default function AccueilUsersManagementPage() {
-  const { isAuthenticated, hasPermission, currentUser, isLoading } = useAuth()
+  const { hasPermission, currentUser } = useAuth()
   const router = useRouter()
   const [isCreating, setIsCreating] = useState(false)
-  const [formData, setFormData] = useState({
-    name: '',
-    username: '',
-    password: ''
-  })
-  const [createdUsers, setCreatedUsers] = useState<any[]>([])
-
-  useEffect(() => {
-    if (isLoading) return
-    
-    if (!isAuthenticated || !hasPermission('manage_accueil')) {
-      router.push('/admin')
-    }
-  }, [isLoading, isAuthenticated, hasPermission, router])
+  const [formData, setFormData] = useState({ name: '', username: '', password: '' })
+  const [createdUsers, setCreatedUsers] = useState<AgentUser[]>([])
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const generatePassword = () => {
     const adjectives = ['Rouge', 'Bleu', 'Vert', 'Jaune', 'Rose']
     const nouns = ['Chat', 'Chien', 'Lion', 'Ours', 'Loup']
     const numbers = Math.floor(Math.random() * 99) + 1
-    const adj = adjectives[Math.floor(Math.random() * adjectives.length)]
-    const noun = nouns[Math.floor(Math.random() * nouns.length)]
-    return `${adj}${noun}${numbers}`
+    return `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${numbers}`
   }
 
   const generateUsername = (name: string) => {
-    const cleanName = name.toLowerCase().replace(/\s+/g, '').slice(0, 6)
-    const randomNum = Math.floor(Math.random() * 999) + 1
-    return `acc${cleanName}${randomNum}`
+    const cleanName = name.toLowerCase().replace(/\s+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').slice(0, 6)
+    return `acc${cleanName}${Math.floor(Math.random() * 999) + 1}`
   }
 
   const handleCreateUser = () => {
     if (!formData.name) return
-    
-    const newUser = {
+
+    const newUser: AgentUser = {
       id: Date.now().toString(),
       name: formData.name,
-      museeId: 'musee-principal', // Musée unique
+      museeId: 'musee-principal',
       username: formData.username || generateUsername(formData.name),
       password: formData.password || generatePassword(),
       role: 'accueil',
@@ -64,185 +59,187 @@ export default function AccueilUsersManagementPage() {
 
   const startCreation = () => {
     setIsCreating(true)
-    setFormData({
-      name: '',
-      username: '',
-      password: generatePassword()
-    })
+    setFormData({ name: '', username: '', password: generatePassword() })
   }
 
-  if (!isAuthenticated || !hasPermission('manage_accueil')) {
-    return null
+  const copyCredentials = (user: AgentUser) => {
+    const text = `Identifiant: ${user.username}\nMot de passe: ${user.password}`
+    navigator.clipboard.writeText(text)
+    setCopiedId(user.id)
+    setTimeout(() => setCopiedId(null), 2000)
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50">
-      <div className="container mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Button 
-            variant="outline" 
-            onClick={() => router.push('/admin')}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Retour
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Gestion des Agents d'Accueil</h1>
-            <p className="text-gray-600 mt-1">Créer et gérer les comptes agents d'accueil/vente du musée</p>
-          </div>
-        </div>
-
+    <AdminLayout 
+      title="Agents Accueil / Vente" 
+      description="Créer des comptes pour le personnel d'accueil"
+      showBackButton
+    >
+      <div className="max-w-4xl mx-auto space-y-6">
         {!isCreating ? (
           <>
-            {/* Bouton de création */}
-            <Card className="mb-8">
-              <CardHeader className="text-center">
-                <div className="flex justify-center mb-3">
-                  <div className="p-4 bg-green-100 rounded-full">
-                    <ShoppingCart className="h-12 w-12 text-green-600" />
+            {/* Hero Card */}
+            <div 
+              className="bg-white rounded-2xl border border-neutral-200 p-8 text-center cursor-pointer hover:shadow-lg transition-all group"
+              onClick={startCreation}
+            >
+              <div className="w-16 h-16 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto mb-4 group-hover:bg-black group-hover:text-white transition-colors">
+                <ShoppingCart className="h-8 w-8" />
+              </div>
+              <h2 className="text-xl font-semibold text-black mb-2">Créer un Agent d'Accueil</h2>
+              <p className="text-neutral-500 text-sm mb-6 max-w-md mx-auto">
+                Les agents d'accueil ont un accès en consultation pour aider les visiteurs et gérer les ventes
+              </p>
+              <button className="inline-flex items-center gap-2 px-6 py-3 bg-black text-white rounded-xl text-sm font-medium hover:bg-neutral-800 transition-colors">
+                <Plus className="h-4 w-4" />
+                Créer un nouvel agent
+              </button>
+            </div>
+
+            {/* Created Users List */}
+            {createdUsers.length > 0 && (
+              <div className="bg-white rounded-2xl border border-neutral-200">
+                <div className="p-6 border-b border-neutral-100 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center">
+                    <Users className="h-5 w-5 text-neutral-600" />
+                  </div>
+                  <div>
+                    <h2 className="font-semibold text-black">Agents Créés</h2>
+                    <p className="text-sm text-neutral-500">{createdUsers.length} compte{createdUsers.length > 1 ? 's' : ''}</p>
                   </div>
                 </div>
-                <CardTitle className="text-2xl">Créer un Agent d'Accueil/Vente</CardTitle>
-                <CardDescription>
-                  Les agents d'accueil ont un accès en consultation pour aider les visiteurs et gérer les ventes
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button onClick={startCreation} className="w-full" size="lg">
-                  <Plus className="h-5 w-5 mr-2" />
-                  Créer un nouvel agent
-                </Button>
-              </CardContent>
-            </Card>
 
-            {/* Liste des agents créés */}
-            {createdUsers.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Agents d'Accueil Créés ({createdUsers.length})
-                  </CardTitle>
-                  <CardDescription>
-                    Comptes créés pour le musée principal
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {createdUsers.map((user) => (
-                      <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
-                        <div className="flex-1">
-                          <div className="font-medium">{user.name}</div>
-                          <div className="text-sm text-gray-600">
-                            Agent d'Accueil/Vente - {user.museeId}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            Créé le {user.createdAt} par {user.createdBy}
-                          </div>
+                <div className="divide-y divide-neutral-100">
+                  {createdUsers.map((user) => (
+                    <div key={user.id} className="p-4 flex items-center justify-between hover:bg-neutral-50">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-black truncate">{user.name}</span>
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-neutral-100 text-neutral-600 font-medium">
+                            Accueil
+                          </span>
                         </div>
-                        <div className="text-right">
-                          <div className="text-sm font-mono bg-white px-3 py-2 rounded border">
-                            <div><strong>Login:</strong> {user.username}</div>
-                            <div><strong>MDP:</strong> {user.password}</div>
-                          </div>
-                        </div>
+                        <p className="text-sm text-neutral-500">Créé le {user.createdAt}</p>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                      <div className="flex items-center gap-2">
+                        <div className="text-right text-sm font-mono bg-neutral-50 px-3 py-2 rounded-lg">
+                          <div className="text-neutral-500">@{user.username}</div>
+                          <div className="text-black">{user.password}</div>
+                        </div>
+                        <button
+                          onClick={() => copyCredentials(user)}
+                          className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
+                        >
+                          {copiedId === user.id ? (
+                            <Check className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Copy className="h-4 w-4 text-neutral-400" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {createdUsers.length === 0 && (
+              <div className="text-center py-8 text-neutral-400 text-sm">
+                Aucun agent créé dans cette session
+              </div>
             )}
           </>
         ) : (
-          /* Formulaire de création */
-          <Card className="max-w-2xl mx-auto">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShoppingCart className="h-5 w-5 text-green-600" />
-                Créer un Agent d'Accueil/Vente
-              </CardTitle>
-              <CardDescription>
-                Remplissez les informations pour créer le nouveau compte agent d'accueil
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nom complet *</Label>
-                <Input
-                  id="name"
+          /* Creation Form */
+          <div className="bg-white rounded-2xl border border-neutral-200 p-6 max-w-xl mx-auto">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center">
+                  <ShoppingCart className="h-5 w-5 text-neutral-600" />
+                </div>
+                <h2 className="text-lg font-semibold text-black">Nouvel Agent d'Accueil</h2>
+              </div>
+              <button
+                onClick={() => { setIsCreating(false); setFormData({ name: '', username: '', password: '' }) }}
+                className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">Nom complet</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Marie Martin"
                   value={formData.name}
                   onChange={(e) => {
                     const name = e.target.value
                     setFormData({
-                      ...formData, 
+                      ...formData,
                       name,
                       username: name ? generateUsername(name) : ''
                     })
                   }}
-                  placeholder="Marie Martin"
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username">Identifiant (généré automatiquement)</Label>
-                  <Input
-                    id="username"
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Identifiant</label>
+                  <input
+                    type="text"
                     value={formData.username}
-                    onChange={(e) => setFormData({...formData, username: e.target.value})}
-                    placeholder="Généré automatiquement"
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all font-mono text-sm"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Mot de passe temporaire</Label>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Mot de passe</label>
                   <div className="flex gap-2">
-                    <Input
-                      id="password"
+                    <input
+                      type="text"
                       value={formData.password}
-                      onChange={(e) => setFormData({...formData, password: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all font-mono text-sm"
                     />
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={() => setFormData({...formData, password: generatePassword()})}
+                    <button
+                      onClick={() => setFormData({ ...formData, password: generatePassword() })}
+                      className="px-3 py-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 transition-colors"
                     >
-                      Nouveau
-                    </Button>
+                      <RefreshCw className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  <strong>Musée :</strong> Musée Principal<br />
-                  <strong>Permissions :</strong> Consultation uniquement, aide aux visiteurs et ventes
-                </p>
+              <div className="bg-neutral-50 rounded-xl p-4">
+                <p className="text-sm font-medium text-black mb-1">Permissions</p>
+                <p className="text-sm text-neutral-500">Consultation uniquement • Aide visiteurs • Ventes</p>
               </div>
 
               <div className="flex gap-3 pt-4">
-                <Button 
-                  onClick={handleCreateUser}
-                  disabled={!formData.name}
-                  className="flex-1"
-                >
-                  Créer l'agent d'accueil
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setIsCreating(false)
-                    setFormData({ name: '', username: '', password: '' })
-                  }}
+                <button
+                  onClick={() => { setIsCreating(false); setFormData({ name: '', username: '', password: '' }) }}
+                  className="flex-1 py-3 px-4 rounded-xl border border-neutral-200 font-medium text-sm hover:bg-neutral-50 transition-colors"
                 >
                   Annuler
-                </Button>
+                </button>
+                <button
+                  onClick={handleCreateUser}
+                  disabled={!formData.name}
+                  className="flex-1 py-3 px-4 rounded-xl bg-black text-white font-medium text-sm hover:bg-neutral-800 transition-colors disabled:opacity-50"
+                >
+                  Créer l'agent
+                </button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
       </div>
-    </div>
+    </AdminLayout>
   )
 }
