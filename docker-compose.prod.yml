@@ -62,19 +62,32 @@ services:
     container_name: museum-ollama-prod
     restart: always
     environment:
-      # IMPORTANT: Permet à Ollama de traiter plusieurs requêtes en parallèle
-      # Sans cette variable, Ollama traite les requêtes une par une même avec plusieurs workers
-      # Valeur recommandée pour modèle 3B: CPU_COUNT / 2 (ex: 24 cœurs → 12)
-      # Chaque requête utilise ~2 cœurs avec un modèle 3B
-      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-12}
-      # Nombre de threads CPU par requête (0 = auto, sinon fixer pour mieux répartir)
-      # Avec 24 cœurs et 12 requêtes parallèles: 24/12 = 2 threads par requête
-      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-2}
+      # ===== PARALLÉLISATION MAXIMALE (24 CPU) =====
+      # CRITIQUE: Ces valeurs DOIVENT être hardcodées, pas en variable
+      # OLLAMA_NUM_PARALLEL: nombre de requêtes simultanées (défaut Ollama = 1 !)
+      # Pour 24 CPU avec modèle 3B (~2 threads/requête): 24/2 = 12 parallèles
+      OLLAMA_NUM_PARALLEL: "12"
+      # OLLAMA_NUM_THREAD: threads CPU par requête
+      OLLAMA_NUM_THREAD: "2"
+      # ===== OPTIMISATIONS PERFORMANCE =====
+      # Garder le modèle en mémoire 24h (évite rechargement lent)
+      OLLAMA_KEEP_ALIVE: "24h"
+      # Flash attention pour CPU (réduit mémoire, améliore perf)
+      OLLAMA_FLASH_ATTENTION: "1"
+      # Permettre charger plusieurs modèles si besoin
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      # Queue de requêtes (évite 503)
+      OLLAMA_MAX_QUEUE: "512"
+      # Host pour accepter connexions réseau
+      OLLAMA_HOST: "0.0.0.0:11434"
+      # Go runtime threads
+      GOMAXPROCS: "24"
     ports:
       - "11434:11434"
     volumes:
       - ollama_data_prod:/root/.ollama
       - ./scripts/ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
+      - ./scripts/diagnose-ollama.sh:/diagnose.sh:ro
     networks:
       - museum-network
     entrypoint: ["/bin/bash", "/usr/local/bin/ollama-entrypoint.sh"]
@@ -88,6 +101,8 @@ services:
       resources:
         reservations:
           memory: 8G
+        limits:
+          cpus: "24"
     logging:
       driver: "json-file"
       options:
