@@ -56,9 +56,9 @@ export function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen flex bg-neutral-100">
+    <div className="h-screen flex bg-neutral-100 overflow-hidden">
       {/* Desktop Sidebar */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:block shrink-0">
         <AdminSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
       </div>
 
@@ -79,9 +79,9 @@ export function AdminLayout({
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Top Header Bar */}
-        <header className="h-16 bg-white border-b border-neutral-200 flex items-center justify-between px-4 lg:px-6 shrink-0 sticky top-0 z-10">
+        <header className="h-16 bg-white border-b border-neutral-200 flex items-center justify-between px-4 lg:px-6 shrink-0">
           <div className="flex items-center gap-4">
             {/* Mobile menu button */}
             <button
