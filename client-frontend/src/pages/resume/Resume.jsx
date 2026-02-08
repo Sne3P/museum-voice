@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import MapModal from "../../components/map_modal/MapModal";
 import ThemeToggle from "../../components/theme_toggle/ThemeToggle";
 import { checkSession } from "../../utils/session";
+import { getParcours, isOnline, onOnlineStatusChange, isParcoursOfflineReady } from "../../utils/offlineStorage";
 import "./Resume.css";
 
 // Icons
@@ -41,6 +42,18 @@ const MapIcon = () => (
   </svg>
 );
 
+const OfflineIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="1" y1="1" x2="23" y2="23"/>
+    <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+    <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+    <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
+    <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+    <line x1="12" y1="20" x2="12.01" y2="20"/>
+  </svg>
+);
+
 const Resume = () => {
   const navigate = useNavigate();
   const [parcours, setParcours] = useState(null);
@@ -48,6 +61,8 @@ const Resume = () => {
   const [loading, setLoading] = useState(true);
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [viewMode, setViewMode] = useState('image'); // 'image' or 'text'
+  const [isOffline, setIsOffline] = useState(!isOnline());
+  const [offlineReady, setOfflineReady] = useState(false);
   const [showTutorial, setShowTutorial] = useState(true);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -66,9 +81,14 @@ const Resume = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState(null); // 'horizontal' or 'vertical'
   const [isInScrollableArea, setIsInScrollableArea] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false); // Pour l'animation de transition
+  const [transitionTarget, setTransitionTarget] = useState(0); // -100, 0, ou 100
   
   const containerRef = useRef(null);
   const textScrollRef = useRef(null);
+  const velocityRef = useRef(0); // Pour tracker la vélocité du swipe
+  const lastTouchTimeRef = useRef(0);
+  const lastTouchYRef = useRef(0);
 
   // Check session
   useEffect(() => {
@@ -79,28 +99,71 @@ const Resume = () => {
     });
   }, [navigate]);
 
-  // Load parcours
+  // Surveiller l'état de connexion
   useEffect(() => {
-    const storedParcours = localStorage.getItem('generatedParcours');
-    if (!storedParcours) {
-      navigate('/mes-choix');
-      return;
-    }
-    try {
-      const parsedParcours = JSON.parse(storedParcours);
-      setParcours(parsedParcours);
-      setLoading(false);
-      
-      // Check if tutorial was already seen
-      const tutorialSeen = localStorage.getItem('resumeTutorialSeen');
-      if (tutorialSeen) {
-        setShowTutorial(false);
+    const cleanup = onOnlineStatusChange((online) => {
+      setIsOffline(!online);
+      console.log(`[Resume] Connexion: ${online ? 'En ligne' : 'Hors ligne'}`);
+    });
+    
+    // Vérifier si le parcours est prêt pour le mode offline
+    isParcoursOfflineReady().then(ready => {
+      setOfflineReady(ready);
+      if (ready) {
+        console.log('[Resume] Parcours disponible hors ligne ✓');
       }
-    } catch (error) {
-      console.error("Erreur parsing parcours:", error);
-      navigate('/mes-choix');
-    }
+    });
+    
+    return cleanup;
+  }, []);
+
+  // Load parcours depuis IndexedDB (avec fallback localStorage)
+  useEffect(() => {
+    const loadParcours = async () => {
+      try {
+        // Essayer d'abord IndexedDB, puis localStorage
+        const storedParcours = await getParcours();
+        
+        if (!storedParcours) {
+          console.log('[Resume] Aucun parcours trouvé, redirection...');
+          navigate('/mes-choix');
+          return;
+        }
+        
+        console.log('[Resume] Parcours chargé:', storedParcours.artworks?.length, 'œuvres');
+        setParcours(storedParcours);
+        setLoading(false);
+        
+        // Restaurer l'index de progression si existant
+        const savedIndex = localStorage.getItem('parcours-current-index');
+        if (savedIndex) {
+          const idx = parseInt(savedIndex, 10);
+          if (!isNaN(idx) && idx >= 0 && idx < storedParcours.artworks.length) {
+            setCurrentIndex(idx);
+            console.log('[Resume] Progression restaurée:', idx + 1, '/', storedParcours.artworks.length);
+          }
+        }
+        
+        // Check if tutorial was already seen
+        const tutorialSeen = localStorage.getItem('resumeTutorialSeen');
+        if (tutorialSeen) {
+          setShowTutorial(false);
+        }
+      } catch (error) {
+        console.error("[Resume] Erreur chargement parcours:", error);
+        navigate('/mes-choix');
+      }
+    };
+    
+    loadParcours();
   }, [navigate]);
+
+  // Sauvegarder la progression (pour reprise après refresh/offline)
+  useEffect(() => {
+    if (parcours && parcours.artworks) {
+      localStorage.setItem('parcours-current-index', currentIndex.toString());
+    }
+  }, [currentIndex, parcours]);
 
   // Audio handling
   const currentArtwork = parcours?.artworks?.[currentIndex];
@@ -191,7 +254,7 @@ const Resume = () => {
   }, [showTutorial, viewMode]);
 
   const handleTouchMove = useCallback((e) => {
-    if (!isDragging || showTutorial) return;
+    if (!isDragging || showTutorial || isTransitioning) return;
     
     const touch = e.touches[0];
     const deltaX = touch.clientX - startX;
@@ -214,14 +277,24 @@ const Resume = () => {
     if (swipeDirection === 'horizontal') {
       setSwipeX(deltaX);
     } else if (swipeDirection === 'vertical') {
+      // Calculer la vélocité pour l'animation fluide
+      const now = Date.now();
+      const timeDelta = now - lastTouchTimeRef.current;
+      if (timeDelta > 0) {
+        velocityRef.current = (touch.clientY - lastTouchYRef.current) / timeDelta;
+      }
+      lastTouchTimeRef.current = now;
+      lastTouchYRef.current = touch.clientY;
+      
       setSwipeY(deltaY);
     }
-  }, [isDragging, startX, startY, swipeDirection, showTutorial, isInScrollableArea]);
+  }, [isDragging, startX, startY, swipeDirection, showTutorial, isInScrollableArea, isTransitioning]);
 
   const handleTouchEnd = useCallback(() => {
-    if (!isDragging || showTutorial) return;
+    if (!isDragging || showTutorial || isTransitioning) return;
     
-    const threshold = 100;
+    const threshold = 80; // Seuil réduit pour plus de réactivité
+    const velocityThreshold = 0.3; // Seuil de vélocité pour déclencher le changement
     
     // Horizontal swipe - toggle view
     if (swipeDirection === 'horizontal' && Math.abs(swipeX) > threshold) {
@@ -236,25 +309,98 @@ const Resume = () => {
       setTimeout(() => setIsAnimating(false), 400);
     }
     
-    // Vertical swipe - change artwork
+    // Vertical swipe - change artwork avec animation fluide style Instagram Reels
     if (swipeDirection === 'vertical' && parcours) {
-      if (swipeY > threshold && currentIndex > 0) {
+      const velocity = velocityRef.current;
+      const shouldChangeByVelocity = Math.abs(velocity) > velocityThreshold;
+      const shouldChangeByDistance = Math.abs(swipeY) > threshold;
+      
+      // Déterminer si on change d'œuvre (par distance ou vélocité)
+      const goToPrev = (swipeY > threshold || (swipeY > 30 && velocity > velocityThreshold)) && currentIndex > 0;
+      const goToNext = (swipeY < -threshold || (swipeY < -30 && velocity < -velocityThreshold)) && currentIndex < parcours.artworks.length - 1;
+      
+      if (goToPrev || goToNext) {
+        // Démarrer la transition fluide
+        setIsTransitioning(true);
+        setIsDragging(false);
+        
+        // Calculer où on en est (en %) et vers où on va
+        const containerHeight = window.innerHeight * 0.5;
+        const currentPercent = (swipeY / containerHeight) * 100;
+        
+        // Animation fluide: on garde swipeY et on l'anime vers la cible
+        const targetPercent = goToPrev ? 100 : -100;
+        
+        // Utiliser requestAnimationFrame pour une animation fluide
+        const startTime = performance.now();
+        const startPercent = currentPercent;
+        const duration = 300; // ms
+        
+        const animate = (currentTime) => {
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          
+          // Easing cubic-bezier pour un effet naturel
+          const easeOut = 1 - Math.pow(1 - progress, 3);
+          const newPercent = startPercent + (targetPercent - startPercent) * easeOut;
+          
+          setSwipeY((newPercent / 100) * containerHeight);
+          
+          if (progress < 1) {
+            requestAnimationFrame(animate);
+          } else {
+            // Animation terminée: changer l'index et reset
+            setCurrentIndex(prev => goToPrev ? prev - 1 : prev + 1);
+            setSwipeY(0);
+            setSwipeDirection(null);
+            setIsTransitioning(false);
+            setIsAnimating(false);
+          }
+        };
+        
         setIsAnimating(true);
-        setCurrentIndex(prev => prev - 1);
-        setTimeout(() => setIsAnimating(false), 400);
-      } else if (swipeY < -threshold && currentIndex < parcours.artworks.length - 1) {
-        setIsAnimating(true);
-        setCurrentIndex(prev => prev + 1);
-        setTimeout(() => setIsAnimating(false), 400);
+        requestAnimationFrame(animate);
+      } else {
+        // Snap back vers la position initiale avec animation
+        setIsTransitioning(true);
+        setIsDragging(false);
+        
+        const containerHeight = window.innerHeight * 0.5;
+        const startPercent = (swipeY / containerHeight) * 100;
+        const startTime = performance.now();
+        const duration = 250;
+        
+        const animateBack = (currentTime) => {
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          const easeOut = 1 - Math.pow(1 - progress, 3);
+          const newPercent = startPercent * (1 - easeOut);
+          
+          setSwipeY((newPercent / 100) * containerHeight);
+          
+          if (progress < 1) {
+            requestAnimationFrame(animateBack);
+          } else {
+            setSwipeY(0);
+            setSwipeDirection(null);
+            setIsTransitioning(false);
+          }
+        };
+        
+        requestAnimationFrame(animateBack);
       }
+      
+      // Reset velocity
+      velocityRef.current = 0;
+      return; // On sort car l'animation gère le reste
     }
     
-    // Reset
+    // Reset pour les autres cas
     setIsDragging(false);
     setSwipeDirection(null);
     setSwipeX(0);
     setSwipeY(0);
-  }, [isDragging, swipeDirection, swipeX, swipeY, currentIndex, parcours, showTutorial]);
+  }, [isDragging, swipeDirection, swipeX, swipeY, currentIndex, parcours, showTutorial, isTransitioning]);
 
   // Tutorial handlers
   const handleTutorialNext = () => {
@@ -324,10 +470,10 @@ const Resume = () => {
 
   // Calcul du déplacement en pourcentage pour l'animation Reels
   const getSlideOffset = () => {
-    if (swipeDirection === 'vertical' && isDragging) {
-      // Convertir le swipe en pourcentage de la hauteur visible (environ 60vh pour le main)
-      const maxOffset = window.innerHeight * 0.6;
-      return (swipeY / maxOffset) * 100;
+    if (swipeDirection === 'vertical' || isTransitioning) {
+      // Convertir le swipe en pourcentage de la hauteur visible
+      const containerHeight = window.innerHeight * 0.5;
+      return (swipeY / containerHeight) * 100;
     }
     return 0;
   };
@@ -341,6 +487,9 @@ const Resume = () => {
     }
     return 'none';
   };
+
+  // Déterminer si on utilise la transition CSS ou non
+  const useTransition = !isDragging || isTransitioning;
 
   return (
     <div 
@@ -412,7 +561,16 @@ const Resume = () => {
             <span className="progress-count">{currentIndex + 1}/{totalArtworks}</span>
             <span className="progress-time">{calculateRemainingTime()} restantes</span>
           </div>
-          <ThemeToggle className="small" />
+          <div className="header-right">
+            {/* Indicateur mode offline */}
+            {isOffline && (
+              <div className="offline-indicator" title={offlineReady ? "Mode hors ligne (données en cache)" : "Hors ligne - Certains contenus peuvent être indisponibles"}>
+                <OfflineIcon />
+                <span>{offlineReady ? 'Hors ligne ✓' : 'Hors ligne'}</span>
+              </div>
+            )}
+            <ThemeToggle className="small" />
+          </div>
         </div>
         <div className="progress-track">
           <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
@@ -420,7 +578,7 @@ const Resume = () => {
       </header>
 
       {/* Vertical Swipe Indicators - FIXED position */}
-      {swipeDirection === 'vertical' && isDragging && (
+      {swipeDirection === 'vertical' && isDragging && !isTransitioning && (
         <>
           {currentIndex > 0 && swipeY > 30 && (
             <div className="swipe-indicator-fixed top">
@@ -440,10 +598,10 @@ const Resume = () => {
         {/* Previous Artwork Slide */}
         {prevArtwork && (
           <div 
-            className={`artwork-slide prev ${swipeDirection === 'vertical' && swipeY > 0 ? 'visible' : ''}`}
+            className={`artwork-slide prev ${(swipeDirection === 'vertical' || isTransitioning) && swipeY > 0 ? 'visible' : ''}`}
             style={{
               transform: `translateY(${-100 + slideOffset}%)`,
-              transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+              transition: 'none' // Animation gérée par JS
             }}
           >
             <div className="slide-content">
@@ -464,8 +622,8 @@ const Resume = () => {
         <div 
           className="artwork-slide current"
           style={{
-            transform: swipeDirection === 'vertical' ? `translateY(${slideOffset}%)` : getHorizontalTransform(),
-            transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+            transform: (swipeDirection === 'vertical' || isTransitioning) ? `translateY(${slideOffset}%)` : getHorizontalTransform(),
+            transition: swipeDirection === 'horizontal' && !isDragging ? 'transform 0.3s ease' : 'none'
           }}
         >
           <main className={`resume-main ${viewMode}`}>
@@ -531,10 +689,10 @@ const Resume = () => {
         {/* Next Artwork Slide */}
         {nextArtwork && (
           <div 
-            className={`artwork-slide next ${swipeDirection === 'vertical' && swipeY < 0 ? 'visible' : ''}`}
+            className={`artwork-slide next ${(swipeDirection === 'vertical' || isTransitioning) && swipeY < 0 ? 'visible' : ''}`}
             style={{
               transform: `translateY(${100 + slideOffset}%)`,
-              transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+              transition: 'none' // Animation gérée par JS
             }}
           >
             <div className="slide-content">

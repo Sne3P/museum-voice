@@ -1,9 +1,10 @@
 // MesChoix.jsx - Modern Apple Music Style
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import TimeRegulator from '../../components/time_regulator/TimeRegulator';
 import CriteriaSelector from '../../components/criteria_selector/CriteriaSelector';
 import { useNavigate } from 'react-router-dom';
 import { checkSession } from '../../utils/session';
+import { saveParcours, cacheParcoursMedia } from '../../utils/offlineStorage';
 import './MesChoix.css';
 
 // Icons
@@ -36,6 +37,107 @@ const InfoIcon = () => (
     <path d="M12 8h.01"/>
   </svg>
 );
+
+// Composant de barre de progression avec effet psychologique
+const ProgressLoader = ({ isActive, onComplete }) => {
+  const [progress, setProgress] = useState(0);
+  const [statusText, setStatusText] = useState('Préparation...');
+  const animationRef = useRef(null);
+  const startTimeRef = useRef(null);
+  
+  // Temps estimé total (en secondes) - basé sur génération audio Piper
+  const estimatedTime = 15; // 15 secondes estimation moyenne
+  
+  useEffect(() => {
+    if (!isActive) {
+      setProgress(0);
+      setStatusText('Préparation...');
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      return;
+    }
+    
+    startTimeRef.current = performance.now();
+    
+    const animate = (currentTime) => {
+      const elapsed = (currentTime - startTimeRef.current) / 1000; // en secondes
+      
+      // Fonction d'easing: rapide au début, lent à la fin (asymptotique vers 95%)
+      // Formule: 1 - e^(-t/τ) où τ contrôle la vitesse
+      const tau = estimatedTime / 3; // Constante de temps
+      let newProgress = (1 - Math.exp(-elapsed / tau)) * 95;
+      
+      // Plafonner à 95% (les 5% restants quand la réponse arrive)
+      newProgress = Math.min(newProgress, 95);
+      
+      setProgress(newProgress);
+      
+      // Mettre à jour le texte de statut selon la progression
+      if (newProgress < 20) {
+        setStatusText('Préparation du parcours...');
+      } else if (newProgress < 40) {
+        setStatusText('Sélection des œuvres...');
+      } else if (newProgress < 60) {
+        setStatusText('Optimisation du trajet...');
+      } else if (newProgress < 80) {
+        setStatusText('Génération des narrations audio...');
+      } else {
+        setStatusText('Finalisation...');
+      }
+      
+      animationRef.current = requestAnimationFrame(animate);
+    };
+    
+    animationRef.current = requestAnimationFrame(animate);
+    
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [isActive]);
+  
+  // Quand la génération est terminée, animer rapidement vers 100%
+  useEffect(() => {
+    if (!isActive && progress > 0 && progress < 100) {
+      // Animation rapide vers 100%
+      const finalAnimation = () => {
+        setProgress(prev => {
+          const newVal = prev + (100 - prev) * 0.3;
+          if (newVal >= 99.5) {
+            setStatusText('Terminé !');
+            return 100;
+          }
+          requestAnimationFrame(finalAnimation);
+          return newVal;
+        });
+      };
+      requestAnimationFrame(finalAnimation);
+    }
+  }, [isActive, progress]);
+  
+  if (!isActive && progress === 0) return null;
+  
+  return (
+    <div className="progress-loader-overlay">
+      <div className="progress-loader-card">
+        <div className="progress-loader-icon">
+          <SparklesIcon />
+        </div>
+        <h3 className="progress-loader-title">Création de votre parcours</h3>
+        <p className="progress-loader-status">{statusText}</p>
+        <div className="progress-loader-bar-container">
+          <div 
+            className="progress-loader-bar" 
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="progress-loader-percent">{Math.round(progress)}%</p>
+      </div>
+    </div>
+  );
+};
 
 const MesChoix = () => {
   const navigate = useNavigate();
@@ -161,7 +263,18 @@ const MesChoix = () => {
       console.log("✅ Parcours generated:", data);
       
       if (data.success && data.parcours) {
-        localStorage.setItem('generatedParcours', JSON.stringify(data.parcours));
+        // Sauvegarder dans IndexedDB + localStorage (système offline)
+        await saveParcours(data.parcours);
+        console.log('💾 Parcours sauvegardé pour mode offline');
+        
+        // Pré-cacher les médias (audios + images) via Service Worker
+        cacheParcoursMedia(data.parcours).then(cached => {
+          if (cached) {
+            console.log('📦 Médias mis en cache pour mode offline');
+          }
+        }).catch(err => {
+          console.warn('⚠️ Erreur cache médias:', err);
+        });
         
         // Lier le parcours à la session active (si QR code)
         const sessionToken = localStorage.getItem('museum-session-token');
@@ -180,11 +293,6 @@ const MesChoix = () => {
             console.warn('⚠️ Erreur liaison session:', linkError);
           }
         }
-        
-        // TODO: Désactivé temporairement pour debug - réactiver en prod
-        // Déclencher un nettoyage des anciens fichiers (async, non-bloquant)
-        // fetch('/api/cleanup/audio', { method: 'POST' })
-        //   .catch(err => console.warn('⚠️ Cleanup error:', err));
         
         window.location.href = '/resume';
       } else {
@@ -217,13 +325,8 @@ const MesChoix = () => {
 
   return (
     <div className="mes-choix-page">
-      {/* Loading Overlay */}
-      {generating && (
-        <div className="loading-overlay">
-          <div className="loading-spinner" />
-          <p>Creation de votre parcours personnalise...</p>
-        </div>
-      )}
+      {/* Progress Loader avec animation */}
+      <ProgressLoader isActive={generating} />
 
       {/* Header */}
       <header className="page-header">

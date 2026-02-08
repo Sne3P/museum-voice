@@ -150,32 +150,10 @@ class ArtworkSelector:
         """Charge les œuvres avec narrations selon profil"""
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Debug: vérifier le profil recherché
+        # Profil JSON pour la requête
         profile_json = json.dumps(profile, sort_keys=True)
-        print(f"🔍 [PARCOURS] Recherche pregenerations avec profil: {profile_json}")
         
-        # Debug: compter les pregenerations totales vs matchées
-        cur.execute("SELECT COUNT(*) as total FROM pregenerations")
-        total_pregen = cur.fetchone()['total']
-        
-        cur.execute("""
-            SELECT COUNT(*) as matched 
-            FROM pregenerations p 
-            WHERE p.criteria_combination @> %s::jsonb
-        """, (profile_json,))
-        matched_pregen = cur.fetchone()['matched']
-        
-        print(f"   📊 Pregenerations: {matched_pregen}/{total_pregen} matchent le profil")
-        
-        # Debug: voir un échantillon de ce qui est stocké
-        if matched_pregen == 0 and total_pregen > 0:
-            cur.execute("SELECT DISTINCT criteria_combination FROM pregenerations LIMIT 3")
-            samples = cur.fetchall()
-            print(f"   🔎 Exemple de combinaisons stockées:")
-            for s in samples:
-                print(f"      → {s['criteria_combination']}")
-        
-        # Query avec narrations pregenerées
+        # Query avec narrations pregenerées (optimisée, une seule requête)
         cur.execute("""
             SELECT DISTINCT
                 o.oeuvre_id,
@@ -222,9 +200,11 @@ class ArtworkSelector:
             
             artwork_type = self._classify_artwork_type(row['materiaux_technique'])
             
-            # Calculer durée narration : nb_mots / 100 WPM * 60 = secondes
+            # Calculer durée narration estimée
+            # Piper TTS parle à environ 140-150 WPM en français pour un ton calme/musée
+            # On utilise 140 WPM (plus lent = plus sûr pour l'estimation)
             word_count = len(row['narration'].split())
-            narration_seconds = (word_count / 100) * 60
+            narration_seconds = (word_count / 140) * 60  # 140 WPM → secondes
             
             artworks.append(Artwork(
                 oeuvre_id=row['oeuvre_id'],
@@ -255,24 +235,41 @@ class ArtworkSelector:
             return 0
     
     def _calculate_target_count(self, candidates: List[Artwork], target_duration_min: int) -> int:
-        """Calcule nombre optimal d'œuvres selon durée cible"""
-        # Temps moyen par œuvre
-        avg_narration = 30  # 30s
-        avg_observation = 120  # 2 min
-        avg_per_artwork = avg_narration + avg_observation
+        """Calcule nombre optimal d'œuvres selon durée cible
         
-        # Formule : 90% du temps disponible / temps par œuvre
-        target_count = min(
-            len(candidates),
-            int((target_duration_min * 60 * 0.90) / avg_per_artwork)
-        )
+        Temps par œuvre:
+        - Narration audio: ~1.5-2.5 min (variable selon le texte, Piper ~140 WPM)
+        - Observation: ~2 min (temps pour regarder l'œuvre en écoutant)
+        - Déplacement: ~0.5-1 min (marche entre œuvres)
+        Total moyen: ~4-5 min par œuvre
         
-        # Minimum 3 œuvres
-        target_count = max(3, target_count)
+        On vise légèrement en-dessous de la cible car:
+        - L'audio réel peut être plus long que l'estimation WPM
+        - Le réajustement après génération audio retirera des œuvres si nécessaire
+        """
+        if not candidates:
+            return 0
         
-        # Limiter au nombre disponible
-        if target_count > len(candidates):
-            target_count = len(candidates)
+        # Utiliser la durée moyenne estimée des narrations (basée sur WPM)
+        avg_narration_sec = sum(c.narration_duration for c in candidates) / len(candidates)
+        avg_narration_min = avg_narration_sec / 60
+        
+        # Temps moyen par œuvre (narration + observation + déplacement)
+        avg_observation_min = 2.0  # 2 min d'observation (réaliste)
+        avg_walk_min = 0.5  # 30s de marche entre œuvres
+        avg_per_artwork_min = avg_narration_min + avg_observation_min + avg_walk_min
+        
+        # Calculer le nombre cible
+        # On utilise 85% du temps pour avoir une marge de sécurité
+        # Le réajustement post-audio affinera si nécessaire
+        target_count = int((target_duration_min * 0.85) / avg_per_artwork_min)
+        
+        # Minimum 3, maximum nombre de candidats
+        target_count = max(3, min(target_count, len(candidates)))
+        
+        print(f"   📊 [DURATION] Durée cible: {target_duration_min}min")
+        print(f"      Narration moyenne: {avg_narration_min:.1f}min, Temps/œuvre: {avg_per_artwork_min:.1f}min")
+        print(f"      → {target_count} œuvres sélectionnées (sur {len(candidates)} disponibles)")
         
         return target_count
     

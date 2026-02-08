@@ -254,3 +254,52 @@
         display: none;
     }
 }
+
+/* ==========================================
+   MESSAGE INSTRUCTION ENTRÉE
+   ========================================== */
+.entrance-instruction {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #2e7d32 0%, #4caf50 100%);
+    color: white;
+    font-size: 14px;
+    border-radius: 8px;
+    margin: 8px 12px;
+    box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
+    animation: slideIn 0.3s ease-out;
+}
+
+.entrance-instruction .entrance-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.entrance-instruction strong {
+    color: #c8e6c9;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 480px) {
+    .entrance-instruction {
+        font-size: 13px;
+        padding: 10px 12px;
+        margin: 6px 8px;
+    }
+    
+    .entrance-instruction .entrance-icon {
+        font-size: 18px;
+    }
+}

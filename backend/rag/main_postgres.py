@@ -1191,37 +1191,86 @@ def generate_intelligent_parcours():
         if generate_audio:
             try:
                 parcours_id = parcours_json.get('metadata', {}).get('unique_parcours_id', variation_seed or int(time.time() * 1000))
-                narrations = [{'oeuvre_id': a['oeuvre_id'], 'narration_text': a['narration']} for a in parcours_json.get('artworks', [])]
-                
-                print(f"🎵 [PARCOURS] Génération audio pour {len(narrations)} narrations...")
                 
                 piper = get_piper_service('fr_FR')
-                audio_results = piper.generate_parcours_audio(
-                    parcours_id=parcours_id,
-                    narrations=narrations,
-                    language='fr_FR'
-                )
                 
-                for artwork in parcours_json.get('artworks', []):
-                    oeuvre_id = artwork['oeuvre_id']
-                    if oeuvre_id in audio_results:
-                        audio_data = audio_results[oeuvre_id]
-                        artwork['audio_path'] = audio_data['path']
-                        artwork['narration_duration'] = audio_data['duration_seconds']
+                # === BOUCLE D'AJUSTEMENT : Générer audio et ajuster si temps dépasse la cible ===
+                MAX_ADJUSTMENT_ITERATIONS = 5  # Éviter boucle infinie
+                TOLERANCE_PERCENT = 0.15  # 15% de marge au-dessus de la cible
                 
+                for iteration in range(MAX_ADJUSTMENT_ITERATIONS):
+                    artworks = parcours_json.get('artworks', [])
+                    narrations = [{'oeuvre_id': a['oeuvre_id'], 'narration_text': a['narration']} for a in artworks]
+                    
+                    print(f"🎵 [PARCOURS] Génération audio pour {len(narrations)} narrations (itération {iteration + 1})...")
+                    
+                    audio_results = piper.generate_parcours_audio(
+                        parcours_id=parcours_id,
+                        narrations=narrations,
+                        language='fr_FR'
+                    )
+                    
+                    # Mettre à jour les durées réelles
+                    for artwork in artworks:
+                        oeuvre_id = artwork['oeuvre_id']
+                        if oeuvre_id in audio_results:
+                            audio_data = audio_results[oeuvre_id]
+                            artwork['audio_path'] = audio_data['path']
+                            artwork['narration_duration'] = audio_data['duration_seconds']
+                    
+                    # Calculer temps total réel
+                    total_narration_min = sum(a.get('narration_duration', 0) for a in artworks) / 60
+                    observation_min = len(artworks) * 2.0  # 2 min par œuvre
+                    walk_min = parcours_json.get('walk_time', len(artworks) * 0.5)  # ou estimation
+                    total_duration_min = total_narration_min + observation_min + walk_min
+                    
+                    max_allowed = target_duration * (1 + TOLERANCE_PERCENT)
+                    
+                    print(f"   ⏱️ Durée réelle: {total_duration_min:.1f}min (cible: {target_duration}min, max: {max_allowed:.1f}min)")
+                    
+                    # Vérifier si on est dans les limites
+                    if total_duration_min <= max_allowed:
+                        print(f"   ✅ Durée OK - dans les limites")
+                        break
+                    
+                    # Si on dépasse ET qu'on peut retirer une œuvre (min 3)
+                    if len(artworks) <= 3:
+                        print(f"   ⚠️ Durée dépassée mais minimum 3 œuvres atteint")
+                        break
+                    
+                    # Retirer la dernière œuvre (la moins prioritaire dans le tri)
+                    removed_artwork = artworks.pop()
+                    print(f"   🔄 Durée {total_duration_min:.1f}min > {max_allowed:.1f}min → Retrait de '{removed_artwork['title']}'")
+                    
+                    # Mettre à jour les métadonnées
+                    parcours_json['artworks'] = artworks
+                    parcours_json['metadata']['total_artworks'] = len(artworks)
+                    
+                    # Supprimer l'audio de l'œuvre retirée (optionnel, nettoyage)
+                    if removed_artwork['oeuvre_id'] in audio_results:
+                        del audio_results[removed_artwork['oeuvre_id']]
+                    
+                    # Recalculer l'ordre des œuvres
+                    for idx, artwork in enumerate(artworks):
+                        artwork['order'] = idx + 1
+                
+                # Mise à jour finale des durées
                 total_narration = sum(a.get('narration_duration', 0) for a in parcours_json['artworks']) / 60
                 breakdown = parcours_json['metadata']['duration_breakdown']
                 breakdown['narration_minutes'] = total_narration
+                breakdown['observation_minutes'] = len(parcours_json['artworks']) * 2.0
                 breakdown['total_minutes'] = total_narration + breakdown['walking_minutes'] + breakdown['observation_minutes']
                 parcours_json['estimated_duration_min'] = breakdown['total_minutes']
+                parcours_json['duration_estimated'] = breakdown['total_minutes']
                 
                 audio_result = {
                     'generated': True,
                     'count': len(audio_results),
                     'paths': {k: v['path'] for k, v in audio_results.items()},
-                    'durations': {k: v['duration_seconds'] for k, v in audio_results.items()}
+                    'durations': {k: v['duration_seconds'] for k, v in audio_results.items()},
+                    'adjustments_made': iteration  # Nombre de réajustements effectués
                 }
-                print(f"✅ [PARCOURS] Audio généré: {len(audio_results)} fichiers")
+                print(f"✅ [PARCOURS] Audio généré: {len(audio_results)} fichiers, durée finale: {breakdown['total_minutes']:.1f}min")
             except Exception as audio_error:
                 print(f"⚠️ [PARCOURS] Erreur audio (parcours retourné sans audio): {audio_error}")
                 audio_result['error'] = str(audio_error)

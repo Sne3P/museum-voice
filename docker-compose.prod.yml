@@ -64,10 +64,12 @@ services:
     environment:
       # IMPORTANT: Permet à Ollama de traiter plusieurs requêtes en parallèle
       # Sans cette variable, Ollama traite les requêtes une par une même avec plusieurs workers
-      # Valeur recommandée: ~CPU_COUNT / 6 (ex: 24 cœurs → 4, 96 cœurs → 6)
-      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-6}
-      # Nombre de threads CPU pour le modèle (0 = auto = tous les cœurs disponibles)
-      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-0}
+      # Valeur recommandée pour modèle 3B: CPU_COUNT / 2 (ex: 24 cœurs → 12)
+      # Chaque requête utilise ~2 cœurs avec un modèle 3B
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-12}
+      # Nombre de threads CPU par requête (0 = auto, sinon fixer pour mieux répartir)
+      # Avec 24 cœurs et 12 requêtes parallèles: 24/12 = 2 threads par requête
+      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-2}
     ports:
       - "11434:11434"
     volumes:
@@ -136,7 +138,8 @@ services:
       GUNICORN_WORKER_CONNECTIONS: ${GUNICORN_WORKER_CONNECTIONS:-1000}
       
       # Ollama Parallelization (doit matcher OLLAMA_NUM_PARALLEL du service ollama)
-      OLLAMA_PARALLEL_REQUESTS: ${OLLAMA_NUM_PARALLEL:-6}
+      # 12 workers = 12 requêtes Ollama simultanées = ~24 cœurs utilisés (2 threads/requête)
+      OLLAMA_PARALLEL_REQUESTS: ${OLLAMA_NUM_PARALLEL:-12}
       
       # LLM API Keys (fallback)
       GROQ_API_KEY: ${GROQ_API_KEY:-}

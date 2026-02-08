@@ -245,6 +245,36 @@
   gap: 12px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.offline-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 152, 0, 0.15);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #ff9800;
+  animation: pulseOffline 2s infinite;
+}
+
+.offline-indicator svg {
+  width: 14px;
+  height: 14px;
+}
+
+@keyframes pulseOffline {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 .progress-count {
   font-size: 0.9375rem;
   font-weight: 600;
@@ -472,11 +502,14 @@
 /* Artwork Meta */
 .artwork-meta {
   position: fixed;
-  bottom: 150px;
+  bottom: 140px;
   left: 0;
   right: 0;
-  padding: 16px 20px;
-  background: linear-gradient(to top, var(--color-bg-primary) 60%, transparent);
+  padding: 20px 20px 16px 20px;
+  background: linear-gradient(to top, 
+    var(--color-bg-primary) 0%, 
+    var(--color-bg-primary) 70%, 
+    transparent 100%);
   z-index: 50;
   transition: opacity 0.3s ease;
 }
@@ -499,17 +532,24 @@
 
 .meta-title {
   font-size: 1.25rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text-primary);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   letter-spacing: -0.01em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  line-height: 1.3;
+}
+
+[data-theme="dark"] .meta-title {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .meta-details {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 8px 12px;
   align-items: center;
+  margin-top: 4px;
 }
 
 .meta-artist {
@@ -654,7 +694,7 @@
   position: relative;
   flex: 1;
   margin-top: calc(70px + env(safe-area-inset-top, 0px));
-  margin-bottom: 220px;
+  margin-bottom: 250px;
   overflow: hidden;
 }
 
@@ -704,19 +744,20 @@
 
 .artwork-slide .slide-info {
   text-align: center;
-  margin-top: 16px;
-  padding: 0 20px;
+  margin-top: 24px;
+  padding: 0 24px;
 }
 
 .artwork-slide .slide-info h2 {
   font-size: 1.125rem;
   font-weight: 600;
   color: var(--color-text-primary);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  line-height: 1.3;
 }
 
 .artwork-slide .slide-info p {
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   color: var(--color-text-secondary);
 }
 

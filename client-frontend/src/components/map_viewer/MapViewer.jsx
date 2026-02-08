@@ -283,50 +283,78 @@ const MapViewer = ({ parcours, currentIndex }) => {
                 ))}
 
                 {/* Chemin depuis l'entrée vers la première œuvre (segment_index = -1) */}
+                {/* TOUJOURS VISIBLE pour situer l'utilisateur */}
                 {(() => {
-                    // Chercher le segment entrée (segment_index === -1) sur l'étage actuel
-                    const entranceSegment = (parcours.path_segments || []).find(s => 
+                    // Chercher TOUS les segments entrée (segment_index === -1) sur l'étage actuel
+                    const entranceSegments = (parcours.path_segments || []).filter(s => 
                         s.segment_index === -1 && s.floor === currentFloor
                     );
                     
-                    // Afficher quand on est sur la première œuvre OU quand le segment est sur cet étage
-                    const shouldShow = currentIndex === 0 || (entranceSegment && entranceSegment.floor === currentFloor);
-                    
-                    if (entranceSegment && shouldShow) {
+                    if (entranceSegments.length > 0) {
                         return (
-                            <g key="entrance-path">
-                                {/* Ligne pointillée verte depuis l'entrée vers la première œuvre */}
-                                <line
-                                    x1={entranceSegment.from.x}
-                                    y1={entranceSegment.from.y}
-                                    x2={entranceSegment.to.x}
-                                    y2={entranceSegment.to.y}
-                                    stroke="#2e7d32"
-                                    strokeWidth="5"
-                                    strokeLinecap="round"
-                                    strokeDasharray="15,10"
-                                    opacity={currentIndex === 0 ? 1 : 0.4}
-                                />
+                            <g key="entrance-paths">
+                                {entranceSegments.map((segment, idx) => (
+                                    <g key={`entrance-segment-${idx}`}>
+                                        {/* Ligne pointillée verte depuis l'entrée */}
+                                        <line
+                                            x1={segment.from.x}
+                                            y1={segment.from.y}
+                                            x2={segment.to.x}
+                                            y2={segment.to.y}
+                                            stroke="#2e7d32"
+                                            strokeWidth="5"
+                                            strokeLinecap="round"
+                                            strokeDasharray="15,10"
+                                            opacity={currentIndex === 0 ? 1 : 0.5}
+                                        />
+                                        {/* Flèche directionnelle au milieu */}
+                                        {(() => {
+                                            const midX = (segment.from.x + segment.to.x) / 2;
+                                            const midY = (segment.from.y + segment.to.y) / 2;
+                                            const angle = Math.atan2(
+                                                segment.to.y - segment.from.y,
+                                                segment.to.x - segment.from.x
+                                            ) * (180 / Math.PI);
+                                            return (
+                                                <polygon
+                                                    points="0,-6 12,0 0,6"
+                                                    fill="#2e7d32"
+                                                    transform={`translate(${midX}, ${midY}) rotate(${angle})`}
+                                                    opacity={currentIndex === 0 ? 1 : 0.5}
+                                                />
+                                            );
+                                        })()}
+                                    </g>
+                                ))}
                             </g>
                         );
                     }
                     
-                    // Fallback: utiliser l'entrée du parcours si pas de segment
-                    if (currentIndex === 0 && parcours.entrance && parcours.artworks.length > 0) {
+                    // Fallback: utiliser l'entrée du parcours si pas de segment généré
+                    if (parcours.entrance && parcours.artworks.length > 0) {
                         const firstArtwork = parcours.artworks[0];
-                        if (parcours.entrance.floor === currentFloor && firstArtwork.position.floor === currentFloor) {
+                        // Afficher si l'entrée est sur cet étage
+                        if (parcours.entrance.floor === currentFloor) {
+                            // Calculer la destination (première œuvre si même étage, sinon juste montrer la direction)
+                            const targetX = firstArtwork.position.floor === currentFloor 
+                                ? firstArtwork.position.x 
+                                : parcours.entrance.x + 100; // Direction générale
+                            const targetY = firstArtwork.position.floor === currentFloor 
+                                ? firstArtwork.position.y 
+                                : parcours.entrance.y;
+                            
                             return (
                                 <g key="entrance-path-fallback">
                                     <line
                                         x1={parcours.entrance.x}
                                         y1={parcours.entrance.y}
-                                        x2={firstArtwork.position.x}
-                                        y2={firstArtwork.position.y}
+                                        x2={targetX}
+                                        y2={targetY}
                                         stroke="#2e7d32"
                                         strokeWidth="5"
                                         strokeLinecap="round"
                                         strokeDasharray="15,10"
-                                        opacity={0.8}
+                                        opacity={currentIndex === 0 ? 0.8 : 0.4}
                                     />
                                 </g>
                             );
@@ -578,6 +606,17 @@ const MapViewer = ({ parcours, currentIndex }) => {
                     );
                 })}
             </svg>
+
+            {/* Message d'instruction pour la première œuvre */}
+            {currentIndex === 0 && parcours.entrance && (
+                <div className="entrance-instruction">
+                    <FaDoorOpen className="entrance-icon" />
+                    <span>
+                        Depuis <strong>{parcours.entrance.name || 'l\'entrée'}</strong>, 
+                        dirigez-vous vers la première œuvre
+                    </span>
+                </div>
+            )}
 
             <div className="map-viewer-legend">
                 <div className="legend-item">

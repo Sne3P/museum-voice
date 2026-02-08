@@ -181,6 +181,8 @@ class SegmentBuilder:
         entrance_floor = entrance.get('floor', 0)
         artwork_floor = first_artwork.position.floor
         
+        print(f"   🚪 Création segment entrée: entrée étage {entrance_floor} → artwork étage {artwork_floor}")
+        
         # Si même étage, segment direct
         if entrance_floor == artwork_floor:
             dist_pixels = math.sqrt(
@@ -209,9 +211,102 @@ class SegmentBuilder:
                 'floor': entrance_floor,
                 'segment_index': -1  # Index spécial pour segment entrée
             })
+            print(f"      ✓ Segment direct créé (même étage {entrance_floor})")
         else:
-            # Différents étages - on ne crée pas de segment direct
-            # Le frontend gérera l'affichage séparément par étage
-            print(f"   ⚠️ Entrée (étage {entrance_floor}) et premier artwork (étage {artwork_floor}) sur étages différents")
+            # Différents étages - créer un segment vers l'escalier/ascenseur le plus proche
+            # Pour l'instant, on crée quand même un segment "visuel" sur l'étage de l'entrée
+            # qui pointe vers le premier escalier/ascenseur
+            
+            # Trouver l'escalier le plus proche de l'entrée
+            nearest_vertical = None
+            min_dist = float('inf')
+            
+            for stairway in self.checker.graph.stairways:
+                # Escalier qui part de l'étage de l'entrée
+                if stairway.floor_from == entrance_floor:
+                    dist = math.sqrt(
+                        (stairway.x_from - entrance['x'])**2 +
+                        (stairway.y_from - entrance['y'])**2
+                    )
+                    if dist < min_dist:
+                        min_dist = dist
+                        nearest_vertical = stairway
+            
+            if nearest_vertical:
+                # Segment entrée → escalier
+                segments.append({
+                    'from': {
+                        'type': 'entrance',
+                        'x': entrance['x'],
+                        'y': entrance['y'],
+                        'floor': entrance_floor,
+                        'room': None,
+                        'name': entrance.get('name', 'Entrée')
+                    },
+                    'to': {
+                        'type': nearest_vertical.vertical_type,  # 'stairs' ou 'elevator'
+                        'x': nearest_vertical.x_from,
+                        'y': nearest_vertical.y_from,
+                        'floor': entrance_floor,
+                        'room': nearest_vertical.room_id_from
+                    },
+                    'distance': min_dist * 0.0125,
+                    'floor': entrance_floor,
+                    'segment_index': -1
+                })
+                print(f"      ✓ Segment entrée → {nearest_vertical.vertical_type} créé (étage {entrance_floor})")
+                
+                # Segment escalier (autre étage) → premier artwork
+                dist_to_artwork = math.sqrt(
+                    (first_artwork.position.x - nearest_vertical.x_to)**2 +
+                    (first_artwork.position.y - nearest_vertical.y_to)**2
+                )
+                segments.append({
+                    'from': {
+                        'type': nearest_vertical.vertical_type,
+                        'x': nearest_vertical.x_to,
+                        'y': nearest_vertical.y_to,
+                        'floor': artwork_floor,
+                        'room': nearest_vertical.room_id_to
+                    },
+                    'to': {
+                        'type': 'artwork',
+                        'x': first_artwork.position.x,
+                        'y': first_artwork.position.y,
+                        'floor': artwork_floor,
+                        'room': first_artwork.position.room
+                    },
+                    'distance': dist_to_artwork * 0.0125,
+                    'floor': artwork_floor,
+                    'segment_index': -1
+                })
+                print(f"      ✓ Segment {nearest_vertical.vertical_type} → artwork créé (étage {artwork_floor})")
+            else:
+                # Fallback: créer segment direct même si étages différents (pour affichage)
+                print(f"      ⚠️ Pas d'escalier trouvé - segment direct créé (affichage seulement sur étage entrée)")
+                dist_pixels = math.sqrt(
+                    (first_artwork.position.x - entrance['x'])**2 +
+                    (first_artwork.position.y - entrance['y'])**2
+                )
+                segments.append({
+                    'from': {
+                        'type': 'entrance',
+                        'x': entrance['x'],
+                        'y': entrance['y'],
+                        'floor': entrance_floor,
+                        'room': None,
+                        'name': entrance.get('name', 'Entrée')
+                    },
+                    'to': {
+                        'type': 'artwork',
+                        'x': first_artwork.position.x,
+                        'y': first_artwork.position.y,
+                        'floor': artwork_floor,
+                        'room': first_artwork.position.room
+                    },
+                    'distance': dist_pixels * 0.0125,
+                    'floor': entrance_floor,  # Afficher sur l'étage de l'entrée
+                    'segment_index': -1
+                })
         
         return segments
