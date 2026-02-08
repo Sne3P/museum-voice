@@ -120,11 +120,9 @@ const ResumeArt = ({ artwork }) => {
 
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  // Préfixer l'image URL si relative
-  let imageUrl = artwork?.image_url;
-  if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('/placeholder')) {
-    imageUrl = `${backendUrl}${imageUrl}`;
-  }
+  // L'image URL est soit une URL complète (http...), soit un chemin relatif
+  // Les chemins relatifs sont servis par nginx directement depuis /uploads/
+  const imageUrl = artwork?.image_url || artwork?.image_link || '/placeholder.svg';
 
   return (
     <div className="resume-art">

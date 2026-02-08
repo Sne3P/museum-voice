@@ -103,6 +103,60 @@ function drawDoorIcon(
 }
 
 /**
+ * Interface pour les segments de mur
+ */
+export interface WallSegmentRender {
+  start: { x: number; y: number }
+  end: { x: number; y: number }
+  roomId: string
+  segmentIndex: number
+}
+
+/**
+ * Dessine les murs extérieurs où l'entrée peut être placée
+ * Surligne le mur sélectionné/le plus proche
+ */
+export function drawExteriorWalls(
+  ctx: CanvasRenderingContext2D,
+  exteriorWalls: WallSegmentRender[],
+  zoom: number,
+  pan: { x: number; y: number },
+  selectedWall: WallSegmentRender | null
+): void {
+  ctx.save()
+
+  // Dessiner tous les murs extérieurs avec un style subtil
+  exteriorWalls.forEach(wall => {
+    const startCanvas = worldToCanvas(wall.start, zoom, pan)
+    const endCanvas = worldToCanvas(wall.end, zoom, pan)
+
+    const isSelected = selectedWall &&
+      wall.roomId === selectedWall.roomId &&
+      wall.segmentIndex === selectedWall.segmentIndex
+
+    ctx.beginPath()
+    ctx.moveTo(startCanvas.x, startCanvas.y)
+    ctx.lineTo(endCanvas.x, endCanvas.y)
+
+    if (isSelected) {
+      // Mur sélectionné - Vert vif
+      ctx.strokeStyle = COLORS.entranceWallSelected || '#22c55e'
+      ctx.lineWidth = 6 * zoom
+      ctx.setLineDash([])
+    } else {
+      // Murs disponibles - Vert pâle pointillé
+      ctx.strokeStyle = COLORS.entranceWallAvailable || 'rgba(34, 197, 94, 0.5)'
+      ctx.lineWidth = 4 * zoom
+      ctx.setLineDash([10, 5])
+    }
+    
+    ctx.stroke()
+  })
+
+  ctx.restore()
+}
+
+/**
  * Dessine une prévisualisation d'entrée pendant la création
  */
 export function drawEntrancePreview(

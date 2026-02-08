@@ -143,6 +143,8 @@ export const COLORS = {
   entrancePreviewInvalid: "rgba(239, 68, 68, 0.5)",
   entrancePreviewStrokeValid: "#16a34a",
   entrancePreviewStrokeInvalid: "#dc2626",
+  entranceWallSelected: "#22c55e",
+  entranceWallAvailable: "rgba(34, 197, 94, 0.5)",
   
   // Feedback visuel
   dragInvalidFill: "rgba(220, 38, 38, 0.15)",

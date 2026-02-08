@@ -192,11 +192,27 @@ export function Canvas({
     }
   })
 
-  // Hook de création de point d'entrée (click simple)
+  // Hook de création de point d'entrée (sur mur extérieur)
   const entranceCreation = useEntranceCreation({
     currentFloor,
-    onComplete: async (position) => {
-      // Sauvegarder directement dans la base de données
+    onComplete: async (position, wallSegment) => {
+      // Si une entrée existe déjà, la supprimer d'abord
+      if (currentFloor.entrances && currentFloor.entrances.length > 0) {
+        const existingEntrance = currentFloor.entrances[0]
+        const entranceIdMatch = existingEntrance.id.match(/^entrance-(\d+)$/)
+        if (entranceIdMatch) {
+          try {
+            await fetch(`/api/museum/entrances?id=${entranceIdMatch[1]}`, {
+              method: 'DELETE'
+            })
+            console.log('🗑️ Ancienne entrée supprimée')
+          } catch (error) {
+            console.error('Erreur suppression ancienne entrée:', error)
+          }
+        }
+      }
+      
+      // Sauvegarder la nouvelle entrée dans la base de données
       try {
         const response = await fetch('/api/museum/entrances', {
           method: 'POST',
@@ -206,7 +222,9 @@ export function Canvas({
             name: 'Entrée principale',
             x: position.x,
             y: position.y,
-            icon: 'door-open'
+            icon: 'door-open',
+            wall_room_id: wallSegment?.roomId || null,
+            wall_segment_index: wallSegment?.segmentIndex ?? null
           })
         })
         
@@ -216,6 +234,7 @@ export function Canvas({
           console.log('✅ Point d\'entrée créé:', data)
           
           // Ajouter l'entrée au state local pour affichage immédiat
+          // IMPORTANT: Une seule entrée par plan, donc on remplace
           const newEntrance = {
             id: data.entrance?.entrance_id ? `entrance-${data.entrance.entrance_id}` : `entrance-${Date.now()}`,
             name: 'Entrée principale',
@@ -227,7 +246,7 @@ export function Canvas({
           
           const updatedFloors = state.floors.map(floor => 
             floor.id === currentFloor.id 
-              ? { ...floor, entrances: [...(floor.entrances || []), newEntrance] }
+              ? { ...floor, entrances: [newEntrance] } // REMPLACER, pas ajouter
               : floor
           )
           
@@ -604,6 +623,7 @@ export function Canvas({
     doorCreation,
     verticalLinkCreation,
     artworkCreation,
+    entranceCreation,
     boxSelection,
     elementDrag,
     vertexEdit,

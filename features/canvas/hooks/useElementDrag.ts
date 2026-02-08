@@ -107,6 +107,141 @@ function constrainDoorToWallAxis(door: any, delta: Point): any {
   }
 }
 
+/**
+ * Calcule les murs extérieurs d'un étage (segments non partagés entre pièces)
+ */
+function getExteriorWalls(floor: Floor): Array<{ start: Point; end: Point; roomId: string }> {
+  const walls: Array<{ start: Point; end: Point; roomId: string }> = []
+  
+  floor.rooms.forEach((room) => {
+    const polygon = room.polygon
+    for (let i = 0; i < polygon.length; i++) {
+      const start = polygon[i]
+      const end = polygon[(i + 1) % polygon.length]
+      
+      // Vérifier si ce segment est partagé avec une autre pièce
+      const isShared = floor.rooms.some(otherRoom => {
+        if (otherRoom.id === room.id) return false
+        return otherRoom.polygon.some((p1, j) => {
+          const p2 = otherRoom.polygon[(j + 1) % otherRoom.polygon.length]
+          const tolerance = 1
+          const isSame = (
+            (Math.abs(start.x - p1.x) < tolerance && Math.abs(start.y - p1.y) < tolerance &&
+             Math.abs(end.x - p2.x) < tolerance && Math.abs(end.y - p2.y) < tolerance) ||
+            (Math.abs(start.x - p2.x) < tolerance && Math.abs(start.y - p2.y) < tolerance &&
+             Math.abs(end.x - p1.x) < tolerance && Math.abs(end.y - p1.y) < tolerance)
+          )
+          return isSame
+        })
+      })
+      
+      if (!isShared) {
+        walls.push({ start, end, roomId: room.id })
+      }
+    }
+  })
+  
+  return walls
+}
+
+/**
+ * Contraindre le déplacement d'une entrée aux murs extérieurs
+ * L'entrée peut glisser uniquement le long des murs extérieurs des pièces
+ */
+function constrainEntranceToExteriorWalls(
+  entrance: { x: number; y: number; id: string; name?: string; planId: number },
+  delta: Point,
+  floor: Floor
+): { x: number; y: number; id: string; name?: string; planId: number } {
+  const exteriorWalls = getExteriorWalls(floor)
+  if (exteriorWalls.length === 0) {
+    // Pas de murs, simple translation
+    return {
+      ...entrance,
+      x: entrance.x + delta.x,
+      y: entrance.y + delta.y
+    }
+  }
+  
+  // Position souhaitée
+  const targetPos = {
+    x: entrance.x + delta.x,
+    y: entrance.y + delta.y
+  }
+  
+  // Trouver le mur extérieur le plus proche de la position cible
+  let nearestWall: { start: Point; end: Point } | null = null
+  let nearestProjection: Point | null = null
+  let minDist = Infinity
+  
+  for (const wall of exteriorWalls) {
+    const projected = projectPointOntoSegment(targetPos, wall.start, wall.end)
+    const dist = distance(targetPos, projected)
+    
+    if (dist < minDist) {
+      minDist = dist
+      nearestWall = wall
+      nearestProjection = projected
+    }
+  }
+  
+  if (!nearestProjection) {
+    return entrance // Pas de changement si pas de mur trouvé
+  }
+  
+  // Snapper à la grille
+  const snappedPos = snapToGrid(nearestProjection, GRID_SIZE)
+  
+  return {
+    ...entrance,
+    x: snappedPos.x,
+    y: snappedPos.y
+  }
+}
+
+/**
+ * Vérifie que l'entrée reste sur un mur extérieur après le déplacement d'une room
+ * Empêche de déplacer une room si ça "décolle" l'entrée du mur
+ */
+function validateEntranceAfterRoomMove(
+  floor: Floor
+): { valid: boolean; message?: string } {
+  if (!floor.entrances || floor.entrances.length === 0) {
+    return { valid: true }
+  }
+  
+  const exteriorWalls = getExteriorWalls(floor)
+  if (exteriorWalls.length === 0) {
+    return { valid: true } // Pas de murs, pas de contrainte
+  }
+  
+  // Vérifier que chaque entrée est encore sur un mur extérieur
+  for (const entrance of floor.entrances) {
+    const entrancePos = { x: entrance.x, y: entrance.y }
+    let isOnWall = false
+    
+    for (const wall of exteriorWalls) {
+      const projected = projectPointOntoSegment(entrancePos, wall.start, wall.end)
+      const dist = distance(entrancePos, projected)
+      
+      // Tolérance de 5 pixels pour considérer l'entrée comme étant sur le mur
+      if (dist <= 5) {
+        isOnWall = true
+        break
+      }
+    }
+    
+    if (!isOnWall) {
+      return {
+        valid: false,
+        message: "L'entrée doit rester sur un mur extérieur"
+      }
+    }
+  }
+  
+  return { valid: true }
+}
+
 export function useElementDrag({
   state,
   currentFloor,
@@ -375,7 +510,8 @@ export function useElementDrag({
           case 'entrance':
             const entranceIndex = newEntrances.findIndex(e => e.id === selected.id)
             if (entranceIndex >= 0) {
-              newEntrances[entranceIndex] = translateEntrance(original, delta)
+              // Contraindre l'entrée aux murs extérieurs
+              newEntrances[entranceIndex] = constrainEntranceToExteriorWalls(original, delta, floor)
             }
             break
         }
@@ -448,6 +584,17 @@ export function useElementDrag({
             }
           }
           if (!isValid) break
+          
+          // NOUVEAU: Validation que les entrées restent sur un mur extérieur
+          // Vérifier si une entrée est attachée à cette room et resterait valide
+          if (updatedFloor.entrances && updatedFloor.entrances.length > 0) {
+            const entranceValidation = validateEntranceAfterRoomMove(updatedFloor)
+            if (!entranceValidation.valid) {
+              isValid = false
+              validationMessage = entranceValidation.message ?? "Déplacement invaliderait l'entrée"
+              break
+            }
+          }
         }
       } else if (selected.type === 'wall') {
         const updatedFloor = updatedFloors.find(f => f.id === currentFloor.id)

@@ -28,7 +28,8 @@ import {
   drawMeasurement,
   drawAreaMeasurement,
   drawEntrance,
-  drawEntrancePreview
+  drawEntrancePreview,
+  drawExteriorWalls
 } from "@/features/canvas/utils"
 import { drawVerticalLinkVertices } from "@/features/canvas/utils/vertical-link-vertex.renderer"
 import { validateWallPlacement } from "@/core/services"
@@ -46,6 +47,7 @@ interface CanvasRenderOptions {
   doorCreation: any
   verticalLinkCreation: any
   artworkCreation: any
+  entranceCreation?: any
   boxSelection: any
   elementDrag: any
   vertexEdit: any
@@ -66,6 +68,7 @@ export function useCanvasRender({
   wallCreation,
   verticalLinkCreation,
   artworkCreation,
+  entranceCreation,
   boxSelection,
   elementDrag,
   vertexEdit,
@@ -114,7 +117,7 @@ export function useCanvasRender({
     }
 
     // 4. Prévisualisations de création
-    renderCreationPreviews(ctx, canvas, state, shapeCreation, freeFormCreation, wallCreation, doorCreation, verticalLinkCreation, artworkCreation)
+    renderCreationPreviews(ctx, canvas, state, shapeCreation, freeFormCreation, wallCreation, doorCreation, verticalLinkCreation, artworkCreation, entranceCreation)
 
     // 5. Box selection
     renderBoxSelection(ctx, boxSelection, state)
@@ -284,7 +287,8 @@ function renderCreationPreviews(
   wallCreation?: any,
   doorCreation?: any,
   verticalLinkCreation?: any,
-  artworkCreation?: any
+  artworkCreation?: any,
+  entranceCreation?: any
 ) {
   // Preview formes géométriques (drag)
   if (shapeCreation.state.previewPolygon) {
@@ -458,6 +462,41 @@ function renderCreationPreviews(
         ctx,
         artworkCreation.state.validationMessage,
         artworkCreation.state.validationSeverity || 'error',
+        { x: canvas.width / 2, y: 50 }
+      )
+    }
+  }
+
+  // Preview entrée du musée - Mode entrance actif
+  if (state.selectedTool === 'entrance' && entranceCreation) {
+    // 1. Afficher les murs extérieurs (où on peut placer l'entrée)
+    if (entranceCreation.exteriorWalls && entranceCreation.exteriorWalls.length > 0) {
+      drawExteriorWalls(
+        ctx,
+        entranceCreation.exteriorWalls,
+        state.zoom,
+        state.pan,
+        entranceCreation.state.selectedWall
+      )
+    }
+
+    // 2. Afficher la preview de l'entrée
+    if (entranceCreation.state.previewPosition) {
+      drawEntrancePreview(
+        ctx,
+        entranceCreation.state.previewPosition,
+        state.zoom,
+        state.pan,
+        entranceCreation.state.isValid
+      )
+    }
+
+    // 3. Message de validation
+    if (entranceCreation.state.validationMessage) {
+      drawValidationMessage(
+        ctx,
+        entranceCreation.state.validationMessage,
+        entranceCreation.state.isValid ? 'info' : 'warning',
         { x: canvas.width / 2, y: 50 }
       )
     }

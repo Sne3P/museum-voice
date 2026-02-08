@@ -282,6 +282,60 @@ const MapViewer = ({ parcours, currentIndex }) => {
                     </g>
                 ))}
 
+                {/* Chemin depuis l'entrée vers la première œuvre (segment_index = -1) */}
+                {(() => {
+                    // Chercher le segment entrée (segment_index === -1) sur l'étage actuel
+                    const entranceSegment = (parcours.path_segments || []).find(s => 
+                        s.segment_index === -1 && s.floor === currentFloor
+                    );
+                    
+                    // Afficher quand on est sur la première œuvre OU quand le segment est sur cet étage
+                    const shouldShow = currentIndex === 0 || (entranceSegment && entranceSegment.floor === currentFloor);
+                    
+                    if (entranceSegment && shouldShow) {
+                        return (
+                            <g key="entrance-path">
+                                {/* Ligne pointillée verte depuis l'entrée vers la première œuvre */}
+                                <line
+                                    x1={entranceSegment.from.x}
+                                    y1={entranceSegment.from.y}
+                                    x2={entranceSegment.to.x}
+                                    y2={entranceSegment.to.y}
+                                    stroke="#2e7d32"
+                                    strokeWidth="5"
+                                    strokeLinecap="round"
+                                    strokeDasharray="15,10"
+                                    opacity={currentIndex === 0 ? 1 : 0.4}
+                                />
+                            </g>
+                        );
+                    }
+                    
+                    // Fallback: utiliser l'entrée du parcours si pas de segment
+                    if (currentIndex === 0 && parcours.entrance && parcours.artworks.length > 0) {
+                        const firstArtwork = parcours.artworks[0];
+                        if (parcours.entrance.floor === currentFloor && firstArtwork.position.floor === currentFloor) {
+                            return (
+                                <g key="entrance-path-fallback">
+                                    <line
+                                        x1={parcours.entrance.x}
+                                        y1={parcours.entrance.y}
+                                        x2={firstArtwork.position.x}
+                                        y2={firstArtwork.position.y}
+                                        stroke="#2e7d32"
+                                        strokeWidth="5"
+                                        strokeLinecap="round"
+                                        strokeDasharray="15,10"
+                                        opacity={0.8}
+                                    />
+                                </g>
+                            );
+                        }
+                    }
+                    
+                    return null;
+                })()}
+
                 {/* Dessiner UNIQUEMENT le segment actuel (prochain chemin en BLEU) */}
                 {segmentsOnFloor.map((segment, idx) => {
                     // Afficher uniquement le segment actuel en bleu
@@ -403,54 +457,64 @@ const MapViewer = ({ parcours, currentIndex }) => {
                 })()}
 
                 {/* Dessiner les points d'entrée du musée (icône porte) */}
-                {floorPlanData?.entrances?.filter(entrance => entrance.floor === currentFloor).map((entrance) => (
-                    <g key={`entrance-${entrance.entrance_id}`}>
-                        {/* Point d'entrée - GRAND cercle vert avec bordure */}
-                        <circle
-                            cx={entrance.x}
-                            cy={entrance.y}
-                            r="20"
-                            fill="#2e7d32"
-                            stroke="#fff"
-                            strokeWidth="4"
-                            opacity="0.9"
-                        />
-                        
-                        {/* Icône entrée (porte SVG) */}
-                        <foreignObject
-                            x={entrance.x - 12}
-                            y={entrance.y - 12}
-                            width="24"
-                            height="24"
-                        >
-                            <div style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                                width: '100%',
-                                height: '100%',
-                                color: '#fff'
-                            }}>
-                                <FaDoorOpen size={20} />
-                            </div>
-                        </foreignObject>
-                        
-                        {/* Label "Entrée" */}
-                        <text
-                            x={entrance.x}
-                            y={entrance.y + 35}
-                            textAnchor="middle"
-                            fontSize="16"
-                            fontWeight="bold"
-                            fill="#2e7d32"
-                            stroke="#fff"
-                            strokeWidth="3"
-                            paintOrder="stroke"
-                        >
-                            {entrance.name}
-                        </text>
-                    </g>
-                ))}
+                {(() => {
+                    // Utiliser les entrées du floor-plan OU l'entrée du parcours
+                    let entrancesToShow = floorPlanData?.entrances?.filter(e => e.floor === currentFloor) || [];
+                    
+                    // Si pas d'entrées dans le floor-plan, utiliser celle du parcours
+                    if (entrancesToShow.length === 0 && parcours.entrance && parcours.entrance.floor === currentFloor) {
+                        entrancesToShow = [parcours.entrance];
+                    }
+                    
+                    return entrancesToShow.map((entrance, idx) => (
+                        <g key={`entrance-${entrance.entrance_id || idx}`}>
+                            {/* Point d'entrée - GRAND cercle vert avec bordure */}
+                            <circle
+                                cx={entrance.x}
+                                cy={entrance.y}
+                                r="20"
+                                fill="#2e7d32"
+                                stroke="#fff"
+                                strokeWidth="4"
+                                opacity="0.9"
+                            />
+                            
+                            {/* Icône entrée (porte SVG) */}
+                            <foreignObject
+                                x={entrance.x - 12}
+                                y={entrance.y - 12}
+                                width="24"
+                                height="24"
+                            >
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center',
+                                    width: '100%',
+                                    height: '100%',
+                                    color: '#fff'
+                                }}>
+                                    <FaDoorOpen size={20} />
+                                </div>
+                            </foreignObject>
+                            
+                            {/* Label "Entrée" */}
+                            <text
+                                x={entrance.x}
+                                y={entrance.y + 35}
+                                textAnchor="middle"
+                                fontSize="16"
+                                fontWeight="bold"
+                                fill="#2e7d32"
+                                stroke="#fff"
+                                strokeWidth="3"
+                                paintOrder="stroke"
+                            >
+                                {entrance.name || 'Entrée'}
+                            </text>
+                        </g>
+                    ));
+                })()}
 
                 {/* Dessiner les œuvres (cercles AGRANDIS) */}
                 {artworksOnFloor.map((artwork, idx) => {
@@ -516,6 +580,10 @@ const MapViewer = ({ parcours, currentIndex }) => {
             </svg>
 
             <div className="map-viewer-legend">
+                <div className="legend-item">
+                    <div className="legend-color" style={{backgroundColor: '#2e7d32'}}></div>
+                    <span>Entrée</span>
+                </div>
                 <div className="legend-item">
                     <div className="legend-color" style={{backgroundColor: '#ff0000'}}></div>
                     <span>Œuvre actuelle</span>

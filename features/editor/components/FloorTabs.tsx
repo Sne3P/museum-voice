@@ -170,7 +170,7 @@ export function FloorTabs({
                     className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
                   >
                     <ArrowUp className="h-4 w-4" />
-                    Monter
+                    Descendre
                   </button>
                 )}
                 
@@ -183,7 +183,7 @@ export function FloorTabs({
                     className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
                   >
                     <ArrowDown className="h-4 w-4" />
-                    Descendre
+                    Monter
                   </button>
                 )}
                 

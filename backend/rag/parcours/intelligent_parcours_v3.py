@@ -114,9 +114,33 @@ def generate_parcours_v3(
         waypoints = waypoint_calculator.calculate_waypoints(optimized_artworks)
         print(f"   ✓ {len(waypoints)} waypoints générés")
         
-        # 7. Construction segments
+        # 6.5 Récupérer l'entrée du musée
+        entrance = None
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT entrance_id, plan_id as floor, name, x, y
+            FROM museum_entrances 
+            WHERE is_active = true 
+            ORDER BY entrance_id 
+            LIMIT 1
+        """)
+        entrance_row = cur.fetchone()
+        if entrance_row:
+            entrance = {
+                'entrance_id': entrance_row['entrance_id'],
+                'floor': entrance_row['floor'],
+                'name': entrance_row['name'],
+                'x': float(entrance_row['x']),
+                'y': float(entrance_row['y'])
+            }
+            print(f"   🚪 Entrée trouvée: {entrance['name']} (étage {entrance['floor']}, pos {entrance['x']:.0f},{entrance['y']:.0f})")
+        else:
+            print("   ⚠️ Aucune entrée définie dans le musée")
+        cur.close()
+        
+        # 7. Construction segments (avec entrée)
         print("📏 Construction segments...")
-        segments = segment_builder.build_segments(optimized_artworks)
+        segments = segment_builder.build_segments(optimized_artworks, entrance=entrance)
         print(f"   ✓ {len(segments)} segments créés")
         
         # 8. Calcul métriques finales
@@ -197,6 +221,7 @@ def generate_parcours_v3(
             'duration_target': target_duration_min,
             'duration_estimated': estimated_duration,
             'artworks': artworks_with_distances,
+            'entrance': entrance,  # Point d'entrée du musée
             'waypoints': waypoints,
             'path_segments': segments,
             'total_distance': total_distance,

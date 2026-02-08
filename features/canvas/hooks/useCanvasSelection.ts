@@ -207,6 +207,22 @@ export function useCanvasSelection(
       }
     }
 
+    // PRIORITÉ 4.6 : ENTRANCES (avant segments de rooms pour sélection prioritaire)
+    if (currentFloor.entrances) {
+      for (const entrance of currentFloor.entrances) {
+        const entranceRadius = 20 // Rayon en pixels monde, légèrement plus grand pour faciliter sélection
+        const dist = distance(point, { x: entrance.x, y: entrance.y })
+        
+        if (dist <= entranceRadius) {
+          return {
+            element: { type: 'entrance', id: entrance.id },
+            selectionInfo: { id: entrance.id, type: 'entrance' },
+            hoverInfo: { type: 'entrance', id: entrance.id }
+          }
+        }
+      }
+    }
+
     // PRIORITÉ 5 : SEGMENTS DE ROOMS
     if (options.enableSegmentSelection) {
       for (const room of currentFloor.rooms) {
@@ -291,22 +307,6 @@ export function useCanvasSelection(
           element: { type: 'artwork', id: artwork.id },
           selectionInfo: { id: artwork.id, type: 'artwork' },
           hoverInfo: { type: 'artwork', id: artwork.id }
-        }
-      }
-    }
-
-    // PRIORITÉ 6.6 : ENTRANCES (points d'entrée)
-    if (currentFloor.entrances) {
-      for (const entrance of currentFloor.entrances) {
-        const entranceRadius = 16 // Rayon en pixels monde (même que dans entrance.renderer.ts)
-        const dist = distance(point, { x: entrance.x, y: entrance.y })
-        
-        if (dist <= entranceRadius) {
-          return {
-            element: { type: 'entrance', id: entrance.id },
-            selectionInfo: { id: entrance.id, type: 'entrance' },
-            hoverInfo: { type: 'entrance', id: entrance.id }
-          }
         }
       }
     }

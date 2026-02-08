@@ -59,6 +59,7 @@ const ACTIONS_MAP: Record<string, ContextMenuAction[]> = {
   verticalLink: ['supprimer', 'modifier_etages'],
   vertex: ['supprimer'],
   segment: ['supprimer', 'diviser', 'ajouter_vertex'],
+  entrance: ['supprimer'],
   background: ['coller', 'zoom_avant', 'zoom_arriere', 'ajuster_vue', 'reinitialiser_zoom', 'actualiser'],
 }
 

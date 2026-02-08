@@ -5,11 +5,13 @@ Responsabilités:
 - Générer path_segments pour l'affichage frontend
 - Segmentation par étage
 - Calcul segment_index pour blue highlight
+- Segment entrée → premier artwork
 """
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 import sys
 import os
+import math
 
 try:
     from ..models import Artwork
@@ -26,9 +28,13 @@ class SegmentBuilder:
     def __init__(self, connectivity_checker: ConnectivityChecker):
         self.checker = connectivity_checker
     
-    def build_segments(self, artworks: List[Artwork]) -> List[Dict]:
+    def build_segments(self, artworks: List[Artwork], entrance: Optional[Dict] = None) -> List[Dict]:
         """
         Génère tous les segments du parcours
+        
+        Args:
+            artworks: Liste des œuvres du parcours
+            entrance: Point d'entrée optionnel {x, y, floor, name}
         
         Returns:
             Liste de segments {from, to, distance, floor, segment_index}
@@ -37,6 +43,13 @@ class SegmentBuilder:
         stairs_count = 0
         elevator_count = 0
         waypoint_count = 0
+        
+        # Segment ENTRÉE → PREMIER ARTWORK (segment_index = -1 pour le distinguer)
+        if entrance and len(artworks) > 0:
+            first_artwork = artworks[0]
+            entrance_segments = self._create_entrance_segment(entrance, first_artwork)
+            all_segments.extend(entrance_segments)
+            print(f"   🚪 Segment entrée → premier artwork ajouté")
         
         for i in range(len(artworks) - 1):
             from_artwork = artworks[i]
@@ -149,5 +162,56 @@ class SegmentBuilder:
                     'floor': from_pt['floor'],
                     'segment_index': segment_index
                 })
+        
+        return segments
+
+    def _create_entrance_segment(self, entrance: Dict, first_artwork: Artwork) -> List[Dict]:
+        """
+        Crée le segment entre l'entrée du musée et le premier artwork
+        
+        Args:
+            entrance: {x, y, floor, name, entrance_id}
+            first_artwork: Premier artwork du parcours
+        
+        Returns:
+            Liste de segments (peut contenir plusieurs si changement d'étage)
+        """
+        segments = []
+        
+        entrance_floor = entrance.get('floor', 0)
+        artwork_floor = first_artwork.position.floor
+        
+        # Si même étage, segment direct
+        if entrance_floor == artwork_floor:
+            dist_pixels = math.sqrt(
+                (first_artwork.position.x - entrance['x'])**2 +
+                (first_artwork.position.y - entrance['y'])**2
+            )
+            dist = dist_pixels * 0.0125  # Conversion pixels → mètres
+            
+            segments.append({
+                'from': {
+                    'type': 'entrance',
+                    'x': entrance['x'],
+                    'y': entrance['y'],
+                    'floor': entrance_floor,
+                    'room': None,
+                    'name': entrance.get('name', 'Entrée')
+                },
+                'to': {
+                    'type': 'artwork',
+                    'x': first_artwork.position.x,
+                    'y': first_artwork.position.y,
+                    'floor': artwork_floor,
+                    'room': first_artwork.position.room
+                },
+                'distance': dist,
+                'floor': entrance_floor,
+                'segment_index': -1  # Index spécial pour segment entrée
+            })
+        else:
+            # Différents étages - on ne crée pas de segment direct
+            # Le frontend gérera l'affichage séparément par étage
+            print(f"   ⚠️ Entrée (étage {entrance_floor}) et premier artwork (étage {artwork_floor}) sur étages différents")
         
         return segments

@@ -453,6 +453,11 @@ export function useCanvasInteraction({
     if (freeFormCreation.state.isCreating) {
       freeFormCreation.updateHover(snapResult.point)
     }
+    
+    // Création entrée: mise à jour preview sur murs extérieurs
+    if (state.selectedTool === 'entrance') {
+      entranceCreation.updatePreview(snapResult.point)
+    }
   }, [
     isPanning, 
     lastPanPos, 
@@ -470,6 +475,7 @@ export function useCanvasInteraction({
     doorCreation,
     verticalLinkCreation,
     artworkCreation,
+    entranceCreation,
     boxSelection,
     elementDrag,
     vertexEdit,
