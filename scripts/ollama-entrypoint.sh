@@ -1,6 +1,6 @@
 #!/bin/bash
-# Script d'entrypoint pour Ollama - Pull automatique du modèle Mistral
-# OPTIMISÉ pour utiliser TOUS les CPU disponibles
+# Script d'entrypoint pour Ollama - Museum Voice
+# STRATÉGIE: Moins de requêtes parallèles mais plus de threads par requête
 
 set -e
 
@@ -8,52 +8,54 @@ echo "╔═══════════════════════�
 echo "║         OLLAMA ENTRYPOINT - MUSEUM VOICE                     ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 
-# ===== DÉTECTION DYNAMIQUE DES CPU =====
-CPU_COUNT=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 4)
+# ===== DÉTECTION CPU =====
+CPU_COUNT=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 8)
 echo "🔧 CPU détectés: ${CPU_COUNT}"
 
-# ===== AFFICHER VARIABLES REÇUES DE DOCKER =====
+# ===== VARIABLES REÇUES DE DOCKER =====
 echo ""
-echo "📋 Variables d'environnement reçues de Docker:"
+echo "📋 Variables d'environnement Ollama:"
 env | grep -E "^OLLAMA|^GOMAXPROCS" | sort | while read line; do
     echo "   ✓ $line"
 done
 
-# ===== VÉRIFICATION CRITIQUE: OLLAMA_NUM_PARALLEL =====
-if [ -z "$OLLAMA_NUM_PARALLEL" ] || [ "$OLLAMA_NUM_PARALLEL" = "1" ]; then
-    echo ""
-    echo "⚠️  ATTENTION: OLLAMA_NUM_PARALLEL non défini ou = 1"
-    echo "   Calcul dynamique basé sur ${CPU_COUNT} CPU..."
-    export OLLAMA_NUM_PARALLEL=$((CPU_COUNT / 2))
-    [ "$OLLAMA_NUM_PARALLEL" -lt 4 ] && export OLLAMA_NUM_PARALLEL=4
-    [ "$OLLAMA_NUM_PARALLEL" -gt 24 ] && export OLLAMA_NUM_PARALLEL=24
-    echo "   → OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL}"
+# ===== CONFIGURATION SI NON DÉFINIE =====
+# Stratégie: OLLAMA_NUM_THREAD=0 (auto) + OLLAMA_NUM_PARALLEL=4
+# Ollama répartira automatiquement les threads entre les requêtes
+
+if [ -z "$OLLAMA_NUM_PARALLEL" ]; then
+    # 4 requêtes parallèles est un bon compromis
+    export OLLAMA_NUM_PARALLEL=4
+    echo "   → OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL} (auto-configuré)"
 fi
 
-if [ -z "$OLLAMA_NUM_THREAD" ] || [ "$OLLAMA_NUM_THREAD" = "0" ]; then
-    export OLLAMA_NUM_THREAD=$((CPU_COUNT / OLLAMA_NUM_PARALLEL))
-    [ "$OLLAMA_NUM_THREAD" -lt 2 ] && export OLLAMA_NUM_THREAD=2
-    echo "   → OLLAMA_NUM_THREAD=${OLLAMA_NUM_THREAD}"
+if [ -z "$OLLAMA_NUM_THREAD" ]; then
+    # 0 = auto = Ollama utilise tous les threads disponibles
+    export OLLAMA_NUM_THREAD=0
+    echo "   → OLLAMA_NUM_THREAD=0 (auto - utilise tous les CPU)"
 fi
 
-# ===== OPTIMISATIONS ADDITIONNELLES =====
+# ===== OPTIMISATIONS =====
 [ -z "$OLLAMA_KEEP_ALIVE" ] && export OLLAMA_KEEP_ALIVE="24h"
 [ -z "$OLLAMA_FLASH_ATTENTION" ] && export OLLAMA_FLASH_ATTENTION="1"
 [ -z "$OLLAMA_HOST" ] && export OLLAMA_HOST="0.0.0.0:11434"
 [ -z "$GOMAXPROCS" ] && export GOMAXPROCS=${CPU_COUNT}
 
-# ===== RÉSUMÉ CONFIGURATION FINALE =====
+# ===== RÉSUMÉ =====
 echo ""
-echo "🚀 CONFIGURATION FINALE OLLAMA:"
-echo "   ├── OLLAMA_NUM_PARALLEL = ${OLLAMA_NUM_PARALLEL} (requêtes simultanées)"
-echo "   ├── OLLAMA_NUM_THREAD   = ${OLLAMA_NUM_THREAD} (threads/requête)"
-echo "   ├── OLLAMA_KEEP_ALIVE   = ${OLLAMA_KEEP_ALIVE}"
-echo "   ├── OLLAMA_FLASH_ATTENTION = ${OLLAMA_FLASH_ATTENTION}"
-echo "   ├── OLLAMA_HOST         = ${OLLAMA_HOST}"
-echo "   └── GOMAXPROCS          = ${GOMAXPROCS}"
+echo "🚀 CONFIGURATION FINALE:"
+echo "   ├── OLLAMA_NUM_PARALLEL   = ${OLLAMA_NUM_PARALLEL} requêtes simultanées"
+echo "   ├── OLLAMA_NUM_THREAD     = ${OLLAMA_NUM_THREAD} (0=auto=tous les CPU)"
+echo "   ├── OLLAMA_KEEP_ALIVE     = ${OLLAMA_KEEP_ALIVE}"
+echo "   ├── OLLAMA_FLASH_ATTENTION= ${OLLAMA_FLASH_ATTENTION}"
+echo "   └── GOMAXPROCS            = ${GOMAXPROCS}"
 echo ""
-echo "   📊 Utilisation CPU: ~$((OLLAMA_NUM_PARALLEL * OLLAMA_NUM_THREAD * 100))% max"
-echo "      (${OLLAMA_NUM_PARALLEL} requêtes × ${OLLAMA_NUM_THREAD} threads × 100%)"
+if [ "$OLLAMA_NUM_THREAD" = "0" ]; then
+    echo "   📊 Mode AUTO: Ollama répartit ${CPU_COUNT} CPU entre ${OLLAMA_NUM_PARALLEL} requêtes"
+    echo "      → ~$((CPU_COUNT / OLLAMA_NUM_PARALLEL)) threads par requête"
+else
+    echo "   📊 CPU utilisés: ${OLLAMA_NUM_PARALLEL} × ${OLLAMA_NUM_THREAD} = $((OLLAMA_NUM_PARALLEL * OLLAMA_NUM_THREAD)) threads"
+fi
 echo ""
 
 # ===== DÉMARRAGE OLLAMA =====

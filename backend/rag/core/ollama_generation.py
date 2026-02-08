@@ -9,81 +9,65 @@ import threading
 import requests
 from rag.core.pregeneration_db import add_pregeneration
 
-# ===== CONFIGURATION OPTIMISÉE POUR CPU-ONLY (PAS DE GPU) =====
+# ===== CONFIGURATION CPU DYNAMIQUE - UTILISATION MAXIMALE =====
 
 def _detect_cpu_count():
     """
     Détection robuste du nombre de CPUs, compatible Docker.
-    Utilise plusieurs méthodes pour garantir la bonne détection.
     """
     cpu_count = None
     
-    # Méthode 1: Variable d'environnement explicite (priorité max)
+    # Méthode 1: Variable d'environnement explicite
     env_cpu = os.getenv('CPU_COUNT')
     if env_cpu:
         try:
-            cpu_count = int(env_cpu)
-            print(f"   (détecté via CPU_COUNT env: {cpu_count})")
-            return cpu_count
+            return int(env_cpu)
         except:
             pass
     
-    # Méthode 2: multiprocessing (standard Python)
-    try:
-        cpu_count = multiprocessing.cpu_count()
-    except:
-        pass
-    
-    # Méthode 3: Lecture /proc/cpuinfo (Linux/Docker)
+    # Méthode 2: /proc/cpuinfo (Linux/Docker) - plus fiable dans Docker
     try:
         with open('/proc/cpuinfo', 'r') as f:
             proc_count = len([l for l in f.readlines() if l.startswith('processor')])
             if proc_count > 0:
-                # Prendre le max entre les deux méthodes
-                cpu_count = max(cpu_count or 0, proc_count)
+                return proc_count
     except:
         pass
     
-    # Méthode 4: os.cpu_count() (fallback)
-    if not cpu_count:
-        cpu_count = os.cpu_count() or 4
+    # Méthode 3: multiprocessing
+    try:
+        cpu_count = multiprocessing.cpu_count()
+        if cpu_count:
+            return cpu_count
+    except:
+        pass
     
-    return cpu_count
+    # Fallback
+    return os.cpu_count() or 8
 
-# Détection CPU réelle
-_CPU_COUNT = _detect_cpu_count()  # Ex: 96 threads sur VPS, 8 sur laptop
+# Détection CPU
+_CPU_COUNT = _detect_cpu_count()
 
-# PRIORITÉ: Variable d'environnement (définie dans docker-compose) sinon calcul adaptatif
+# ===== CONFIGURATION PARALLÉLISATION =====
+# STRATÉGIE: Laisser Ollama gérer les threads, on contrôle juste le nombre de requêtes parallèles
+# Le serveur Ollama est configuré avec OLLAMA_NUM_PARALLEL via Docker
+
+# Nombre de requêtes parallèles côté backend (doit matcher OLLAMA_NUM_PARALLEL du serveur)
 _ENV_PARALLEL = os.getenv('OLLAMA_PARALLEL_REQUESTS')
 if _ENV_PARALLEL:
     _OLLAMA_PARALLEL_REQUESTS = int(_ENV_PARALLEL)
-    print(f"   (OLLAMA_PARALLEL_REQUESTS depuis env: {_OLLAMA_PARALLEL_REQUESTS})")
 else:
-    # MODE CPU-ONLY: Configuration adaptative selon puissance CPU
-    # - Petits CPUs (< 16 threads): 1-2 requêtes parallèles
-    # - Moyens CPUs (16-64 threads): 2-4 requêtes parallèles  
-    # - Gros CPUs (64+ threads): 4-6 requêtes parallèles
-    if _CPU_COUNT >= 64:
-        _OLLAMA_PARALLEL_REQUESTS = min(6, _CPU_COUNT // 16)  # 96 threads -> 6 parallèles
-    elif _CPU_COUNT >= 16:
-        _OLLAMA_PARALLEL_REQUESTS = min(4, _CPU_COUNT // 8)   # 32 threads -> 4 parallèles
-    else:
-        _OLLAMA_PARALLEL_REQUESTS = max(1, _CPU_COUNT // 4)   # 8 threads -> 2 parallèles
+    # Auto-calcul: pour CPU-only, ~2-4 requêtes parallèles sont optimales
+    # Car chaque requête LLM est CPU-intensive
+    _OLLAMA_PARALLEL_REQUESTS = max(4, min(12, _CPU_COUNT // 4))
 
-# Threads CPU par requête Ollama - ne pas dépasser 75% du CPU total
-_THREADS_PER_REQUEST = max(4, min(_CPU_COUNT * 3 // 4, _CPU_COUNT // _OLLAMA_PARALLEL_REQUESTS))
-
-# Vérification: ne pas dépasser le CPU disponible
-_TOTAL_THREADS_USED = _OLLAMA_PARALLEL_REQUESTS * _THREADS_PER_REQUEST
-if _TOTAL_THREADS_USED > _CPU_COUNT:
-    _THREADS_PER_REQUEST = _CPU_COUNT // _OLLAMA_PARALLEL_REQUESTS
-
-# Semaphore global pour limiter les requêtes Ollama simultanées
+# Semaphore pour limiter les requêtes simultanées au backend
+# Doit matcher OLLAMA_NUM_PARALLEL du serveur Ollama
 _ollama_semaphore = threading.Semaphore(_OLLAMA_PARALLEL_REQUESTS)
 
-print(f"🔧 CPU-ONLY Config: {_CPU_COUNT} threads détectés")
-print(f"   → {_OLLAMA_PARALLEL_REQUESTS} requêtes parallèles, {_THREADS_PER_REQUEST} threads/req")
-print(f"   → Utilisation CPU max: {_OLLAMA_PARALLEL_REQUESTS * _THREADS_PER_REQUEST}/{_CPU_COUNT} threads")
+print(f"🔧 Backend Config: {_CPU_COUNT} CPUs détectés")
+print(f"   → {_OLLAMA_PARALLEL_REQUESTS} requêtes parallèles max (sémaphore)")
+print(f"   → Threads gérés par Ollama serveur (OLLAMA_NUM_THREAD)")
 
 
 class OllamaMediationSystem:
@@ -237,6 +221,9 @@ class OllamaMediationSystem:
     ) -> str:
         url = f"{self.ollama_url}/api/chat"
         
+        # ===== OPTIONS OPTIMISÉES =====
+        # NE PAS spécifier num_thread ici - laisser Ollama serveur gérer
+        # Les threads sont configurés via OLLAMA_NUM_THREAD au niveau serveur
         payload = {
             "model": model,
             "messages": messages,
@@ -244,12 +231,10 @@ class OllamaMediationSystem:
             "options": {
                 "temperature": self.temperature if temperature is None else temperature,
                 "num_predict": self.num_predict,
-                # ===== OPTIONS CPU-ONLY =====
-                "num_gpu": 0,  # FORCE CPU - pas de GPU
-                "num_thread": _THREADS_PER_REQUEST,  # Threads CPU par requête
-                "num_ctx": 2048,  # Contexte réduit pour CPU (moins de RAM)
-                "num_batch": 128,  # Batch size réduit pour CPU (512 = GPU)
-                "low_vram": True,  # Mode économie mémoire
+                # Laisser Ollama utiliser tous les CPU disponibles
+                # num_thread: géré par OLLAMA_NUM_THREAD serveur (ne pas override)
+                "num_ctx": 4096,  # Contexte standard
+                "num_batch": 256,  # Batch size pour bonne performance CPU
             },
         }
         r = requests.post(url, json=payload, timeout=(timeout_s or self.timeout_s))

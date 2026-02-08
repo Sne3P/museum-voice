@@ -62,25 +62,31 @@ services:
     container_name: museum-ollama-prod
     restart: always
     environment:
-      # ===== PARALLÉLISATION MAXIMALE (24 CPU) =====
-      # CRITIQUE: Ces valeurs DOIVENT être hardcodées, pas en variable
-      # OLLAMA_NUM_PARALLEL: nombre de requêtes simultanées (défaut Ollama = 1 !)
-      # Pour 24 CPU avec modèle 3B (~2 threads/requête): 24/2 = 12 parallèles
-      OLLAMA_NUM_PARALLEL: "12"
-      # OLLAMA_NUM_THREAD: threads CPU par requête
-      OLLAMA_NUM_THREAD: "2"
+      # ===== STRATÉGIE: MAXIMUM THROUGHPUT CPU =====
+      # 
+      # Pour 24 CPU, deux stratégies possibles:
+      # A) 12 requêtes × 2 threads = 24 threads (latence haute, throughput moyen)
+      # B) 4 requêtes × 6 threads = 24 threads (latence basse, throughput élevé)
+      #
+      # On choisit B: moins de requêtes mais chacune plus rapide
+      # Car les LLM bénéficient plus de threads par inférence
+      #
+      OLLAMA_NUM_PARALLEL: "4"
+      # 0 = auto = Ollama utilise tous les threads disponibles pour chaque requête
+      # Avec NUM_PARALLEL=4, chaque requête aura ~6 threads (24/4)
+      OLLAMA_NUM_THREAD: "0"
       # ===== OPTIMISATIONS PERFORMANCE =====
-      # Garder le modèle en mémoire 24h (évite rechargement lent)
+      # Garder le modèle en mémoire 24h (évite rechargement)
       OLLAMA_KEEP_ALIVE: "24h"
-      # Flash attention pour CPU (réduit mémoire, améliore perf)
+      # Flash attention pour meilleure perf mémoire
       OLLAMA_FLASH_ATTENTION: "1"
-      # Permettre charger plusieurs modèles si besoin
+      # Un seul modèle à la fois (économise RAM)
       OLLAMA_MAX_LOADED_MODELS: "1"
       # Queue de requêtes (évite 503)
       OLLAMA_MAX_QUEUE: "512"
-      # Host pour accepter connexions réseau
+      # Host réseau
       OLLAMA_HOST: "0.0.0.0:11434"
-      # Go runtime threads
+      # Go runtime - utiliser tous les CPU
       GOMAXPROCS: "24"
     ports:
       - "11434:11434"
@@ -101,8 +107,6 @@ services:
       resources:
         reservations:
           memory: 8G
-        limits:
-          cpus: "24"
     logging:
       driver: "json-file"
       options:
@@ -152,9 +156,9 @@ services:
       GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-180}
       GUNICORN_WORKER_CONNECTIONS: ${GUNICORN_WORKER_CONNECTIONS:-1000}
       
-      # Ollama Parallelization (doit matcher OLLAMA_NUM_PARALLEL du service ollama)
-      # 12 workers = 12 requêtes Ollama simultanées = ~24 cœurs utilisés (2 threads/requête)
-      OLLAMA_PARALLEL_REQUESTS: ${OLLAMA_NUM_PARALLEL:-12}
+      # Ollama Parallelization - DOIT matcher OLLAMA_NUM_PARALLEL du service ollama
+      # 4 requêtes parallèles, chacune utilisant ~6 threads = 24 CPU total
+      OLLAMA_PARALLEL_REQUESTS: "4"
       
       # LLM API Keys (fallback)
       GROQ_API_KEY: ${GROQ_API_KEY:-}
