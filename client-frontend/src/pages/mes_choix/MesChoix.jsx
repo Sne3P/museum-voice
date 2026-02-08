@@ -138,9 +138,23 @@ const MesChoix = () => {
         body: JSON.stringify(apiPayload),
       });
 
+      // Gérer les erreurs HTTP (timeout, erreur serveur, etc.)
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate parcours");
+        // Vérifier si la réponse est du JSON ou du HTML (erreur nginx)
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Erreur serveur (${response.status})`);
+        } else {
+          // Erreur nginx (504 timeout, 502, etc.) - réponse HTML
+          if (response.status === 504) {
+            throw new Error("La génération du parcours a pris trop de temps. Veuillez réessayer ou réduire la durée.");
+          } else if (response.status === 502) {
+            throw new Error("Le serveur est temporairement indisponible. Veuillez réessayer.");
+          } else {
+            throw new Error(`Erreur serveur (${response.status}). Veuillez réessayer.`);
+          }
+        }
       }
 
       const data = await response.json();

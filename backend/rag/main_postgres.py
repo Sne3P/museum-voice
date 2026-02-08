@@ -1168,11 +1168,23 @@ def generate_intelligent_parcours():
         variation_seed = data.get('variation_seed')
         generate_audio = data.get('generate_audio', True)
         
+        print(f"🎯 [PARCOURS] Génération pour profil: {criteria_dict}, durée: {target_duration}min, audio: {generate_audio}")
+        
         parcours_json = generate_parcours_v3(
             profile=criteria_dict,
             target_duration_min=target_duration,
             seed=variation_seed
         )
+        
+        # Vérifier si le parcours a des œuvres
+        if not parcours_json.get('artworks'):
+            print("⚠️ [PARCOURS] Aucune œuvre trouvée pour ce profil!")
+            return jsonify({
+                'success': False, 
+                'error': 'Aucune œuvre avec narration pré-générée trouvée pour ce profil. Veuillez d\'abord générer les narrations dans le dashboard admin.'
+            }), 404
+        
+        print(f"✅ [PARCOURS] {len(parcours_json['artworks'])} œuvres sélectionnées")
         
         audio_result = {'generated': False, 'count': 0, 'paths': {}}
         
@@ -1180,6 +1192,8 @@ def generate_intelligent_parcours():
             try:
                 parcours_id = parcours_json.get('metadata', {}).get('unique_parcours_id', variation_seed or int(time.time() * 1000))
                 narrations = [{'oeuvre_id': a['oeuvre_id'], 'narration_text': a['narration']} for a in parcours_json.get('artworks', [])]
+                
+                print(f"🎵 [PARCOURS] Génération audio pour {len(narrations)} narrations...")
                 
                 piper = get_piper_service('fr_FR')
                 audio_results = piper.generate_parcours_audio(
@@ -1207,8 +1221,11 @@ def generate_intelligent_parcours():
                     'paths': {k: v['path'] for k, v in audio_results.items()},
                     'durations': {k: v['duration_seconds'] for k, v in audio_results.items()}
                 }
+                print(f"✅ [PARCOURS] Audio généré: {len(audio_results)} fichiers")
             except Exception as audio_error:
+                print(f"⚠️ [PARCOURS] Erreur audio (parcours retourné sans audio): {audio_error}")
                 audio_result['error'] = str(audio_error)
+                # On retourne quand même le parcours sans audio
         
         return jsonify({'success': True, 'parcours': parcours_json, 'audio': audio_result})
     except ValueError as e:

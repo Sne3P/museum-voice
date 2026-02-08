@@ -193,6 +193,15 @@ def generate_parcours_v3(
                     a.position, next_artwork.position
                 )
             
+            # Construire l'URL de l'image (chemin relatif → URL complète)
+            image_path = getattr(a, 'image_link', '') or ''
+            if image_path and not image_path.startswith('http'):
+                # Chemin relatif: préfixer avec /uploads/ si nécessaire
+                if not image_path.startswith('/uploads'):
+                    image_path = f'/uploads/{image_path.lstrip("/")}'
+            if not image_path:
+                image_path = '/placeholder.svg'
+            
             artworks_with_distances.append({
                 'order': idx + 1,
                 'oeuvre_id': a.oeuvre_id,
@@ -205,7 +214,8 @@ def generate_parcours_v3(
                 'narration_word_count': int(a.narration_duration / 0.5),
                 'narration_duration': a.narration_duration,
                 'distance_to_next': distance_to_next / 0.8 / 60,  # mètres → minutes (vitesse 0.8 m/s)
-                'image_url': getattr(a, 'image_link', '') or '/placeholder.svg',
+                'image_url': image_path,  # Pour compatibilité
+                'image_link': image_path,  # Pour client React (Resume.jsx utilise image_link)
                 'position': {
                     'x': a.position.x,
                     'y': a.position.y,

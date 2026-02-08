@@ -150,6 +150,31 @@ class ArtworkSelector:
         """Charge les œuvres avec narrations selon profil"""
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
+        # Debug: vérifier le profil recherché
+        profile_json = json.dumps(profile, sort_keys=True)
+        print(f"🔍 [PARCOURS] Recherche pregenerations avec profil: {profile_json}")
+        
+        # Debug: compter les pregenerations totales vs matchées
+        cur.execute("SELECT COUNT(*) as total FROM pregenerations")
+        total_pregen = cur.fetchone()['total']
+        
+        cur.execute("""
+            SELECT COUNT(*) as matched 
+            FROM pregenerations p 
+            WHERE p.criteria_combination @> %s::jsonb
+        """, (profile_json,))
+        matched_pregen = cur.fetchone()['matched']
+        
+        print(f"   📊 Pregenerations: {matched_pregen}/{total_pregen} matchent le profil")
+        
+        # Debug: voir un échantillon de ce qui est stocké
+        if matched_pregen == 0 and total_pregen > 0:
+            cur.execute("SELECT DISTINCT criteria_combination FROM pregenerations LIMIT 3")
+            samples = cur.fetchall()
+            print(f"   🔎 Exemple de combinaisons stockées:")
+            for s in samples:
+                print(f"      → {s['criteria_combination']}")
+        
         # Query avec narrations pregenerées
         cur.execute("""
             SELECT DISTINCT
@@ -172,7 +197,7 @@ class ArtworkSelector:
               AND p.criteria_combination @> %(profile)s::jsonb
             ORDER BY o.oeuvre_id
         """, {
-            'profile': json.dumps(profile)
+            'profile': profile_json
         })
         
         artworks = []

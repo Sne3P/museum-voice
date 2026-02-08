@@ -26,18 +26,26 @@ logger = logging.getLogger(__name__)
 
 # ===== CONFIGURATION CPU ADAPTATIVE =====
 _CPU_COUNT = multiprocessing.cpu_count()
-# Nombre de workers parallèles pour la génération
-# Sur VPS avec plus de CPU, on peut augmenter
-if _CPU_COUNT >= 32:
-    MAX_PARALLEL_GENERATIONS = 4
-elif _CPU_COUNT >= 16:
-    MAX_PARALLEL_GENERATIONS = 3
-elif _CPU_COUNT >= 8:
-    MAX_PARALLEL_GENERATIONS = 2
+
+# PRIORITÉ: Variable d'environnement (définie dans docker-compose) sinon calcul adaptatif
+# DOIT matcher OLLAMA_PARALLEL_REQUESTS pour une vraie parallélisation
+_ENV_PARALLEL = os.getenv('OLLAMA_PARALLEL_REQUESTS')
+if _ENV_PARALLEL:
+    MAX_PARALLEL_GENERATIONS = int(_ENV_PARALLEL)
+    print(f"🔧 Generation Jobs: MAX_PARALLEL_GENERATIONS={MAX_PARALLEL_GENERATIONS} (depuis env OLLAMA_PARALLEL_REQUESTS)")
 else:
-    MAX_PARALLEL_GENERATIONS = 1  # Séquentiel si peu de CPU
+    # Fallback: calcul adaptatif selon CPU
+    if _CPU_COUNT >= 32:
+        MAX_PARALLEL_GENERATIONS = 6
+    elif _CPU_COUNT >= 16:
+        MAX_PARALLEL_GENERATIONS = 4
+    elif _CPU_COUNT >= 8:
+        MAX_PARALLEL_GENERATIONS = 2
+    else:
+        MAX_PARALLEL_GENERATIONS = 1
 
 logger.info(f"🔧 Generation Jobs: {_CPU_COUNT} CPUs détectés, {MAX_PARALLEL_GENERATIONS} workers parallèles")
+print(f"🔧 Generation Jobs: {_CPU_COUNT} CPUs détectés, {MAX_PARALLEL_GENERATIONS} workers parallèles")
 
 
 class JobStatus(Enum):
