@@ -55,10 +55,33 @@ except Exception as e:
 
 @app.route('/health', methods=['GET'])
 def health():
+    """Health check avec infos CPU pour vérification"""
+    import multiprocessing
+    import os
+    
+    # Détection CPU robuste pour Docker
+    cpu_count = multiprocessing.cpu_count()
+    
+    # Lire aussi depuis /proc pour vérification (Linux/Docker)
+    proc_cpu_count = None
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            proc_cpu_count = len([l for l in f.readlines() if l.startswith('processor')])
+    except:
+        pass
+    
+    # Variable d'environnement Ollama
+    ollama_parallel = os.getenv('OLLAMA_PARALLEL_REQUESTS', 'non défini')
+    
     return jsonify({
         'status': 'healthy',
         'service': 'museum-backend',
-        'database': 'postgresql'
+        'database': 'postgresql',
+        'cpu': {
+            'detected': cpu_count,
+            'proc_cpuinfo': proc_cpu_count,
+            'ollama_parallel_requests': ollama_parallel
+        }
     })
 
 
@@ -592,6 +615,13 @@ def start_async_pregenerate_all():
             import threading
             
             try:
+                # ===== ATTENDRE SON TOUR DANS LA QUEUE =====
+                # Le job reste "pending" tant qu'un autre job est "running"
+                if not job_manager.wait_for_turn(job.job_id):
+                    # Job annulé ou timeout pendant l'attente
+                    job_manager.complete_job(job.job_id, success=False, error_message="Job annulé ou timeout pendant l'attente")
+                    return
+                
                 conn = _connect_postgres()
                 cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cur.execute("SELECT oeuvre_id, title FROM oeuvres ORDER BY oeuvre_id")
@@ -623,6 +653,7 @@ def start_async_pregenerate_all():
                             })
                 
                 total_tasks = len(tasks)
+                # ===== MAINTENANT on peut démarrer (timer commence ici) =====
                 job_manager.start_job(job.job_id, total_tasks)
                 
                 # Compteurs thread-safe
@@ -744,10 +775,16 @@ def start_async_pregenerate_artwork(oeuvre_id):
             import threading
             
             try:
+                # ===== ATTENDRE SON TOUR DANS LA QUEUE =====
+                if not job_manager.wait_for_turn(job.job_id):
+                    job_manager.complete_job(job.job_id, success=False, error_message="Job annulé ou timeout pendant l'attente")
+                    return
+                
                 system = OllamaMediationSystem()
                 all_criteres = get_criteres()
                 combinaisons = system.generate_combinaisons(all_criteres)
                 
+                # ===== MAINTENANT on peut démarrer =====
                 job_manager.start_job(job.job_id, len(combinaisons))
                 
                 # Compteurs thread-safe
@@ -873,6 +910,11 @@ def start_async_pregenerate_profile():
             import threading
             
             try:
+                # ===== ATTENDRE SON TOUR DANS LA QUEUE =====
+                if not job_manager.wait_for_turn(job.job_id):
+                    job_manager.complete_job(job.job_id, success=False, error_message="Job annulé ou timeout pendant l'attente")
+                    return
+                
                 conn = _connect_postgres()
                 cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cur.execute("SELECT oeuvre_id, title FROM oeuvres ORDER BY oeuvre_id")
@@ -886,6 +928,7 @@ def start_async_pregenerate_profile():
                 
                 system = OllamaMediationSystem()
                 total_oeuvres = len(oeuvres)
+                # ===== MAINTENANT on peut démarrer =====
                 job_manager.start_job(job.job_id, total_oeuvres)
                 
                 # Compteurs thread-safe
@@ -1028,7 +1071,13 @@ def start_async_pregenerate_single():
         
         def run_generation(job):
             try:
+                # ===== ATTENDRE SON TOUR DANS LA QUEUE =====
+                if not job_manager.wait_for_turn(job.job_id):
+                    job_manager.complete_job(job.job_id, success=False, error_message="Job annulé ou timeout pendant l'attente")
+                    return
+                
                 system = OllamaMediationSystem()
+                # ===== MAINTENANT on peut démarrer =====
                 job_manager.start_job(job.job_id, 1)  # 1 seul item
                 
                 job_manager.update_job_progress(

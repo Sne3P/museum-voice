@@ -61,6 +61,13 @@ services:
     image: ollama/ollama:latest
     container_name: museum-ollama-prod
     restart: always
+    environment:
+      # IMPORTANT: Permet à Ollama de traiter plusieurs requêtes en parallèle
+      # Sans cette variable, Ollama traite les requêtes une par une même avec plusieurs workers
+      # Valeur recommandée: ~CPU_COUNT / 6 (ex: 24 cœurs → 4, 96 cœurs → 6)
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-6}
+      # Nombre de threads CPU pour le modèle (0 = auto = tous les cœurs disponibles)
+      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-0}
     ports:
       - "11434:11434"
     volumes:
@@ -127,6 +134,9 @@ services:
       GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
       GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-180}
       GUNICORN_WORKER_CONNECTIONS: ${GUNICORN_WORKER_CONNECTIONS:-1000}
+      
+      # Ollama Parallelization (doit matcher OLLAMA_NUM_PARALLEL du service ollama)
+      OLLAMA_PARALLEL_REQUESTS: ${OLLAMA_NUM_PARALLEL:-6}
       
       # LLM API Keys (fallback)
       GROQ_API_KEY: ${GROQ_API_KEY:-}

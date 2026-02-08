@@ -198,10 +198,19 @@ export function convertStateToExportData(state: EditorState): ExportData {
       // Trouver l'entity_id de la room à partir du roomId
       const roomEntityId = artwork.roomId ? roomIdToEntityId.get(artwork.roomId) : null
 
+      // IMPORTANT: Préférer metadata si présent (contient les données extraites du PDF)
+      // artwork.artist peut être vide "" après un load, donc on vérifie metadata d'abord
+      const finalArtist = (artwork.metadata?.artist && artwork.metadata.artist.trim()) 
+        || (artwork.artist && artwork.artist.trim()) 
+        || 'Artiste inconnu'
+      const finalTitle = (artwork.metadata?.title && artwork.metadata.title.trim())
+        || (artwork.name && artwork.name.trim())
+        || 'Sans titre'
+      
       oeuvres.push({
         oeuvre_id: oeuvreId,
-        title: artwork.name || artwork.metadata?.title || 'Sans titre',
-        artist: artwork.artist || artwork.metadata?.artist || 'Artiste inconnu',
+        title: finalTitle,
+        artist: finalArtist,
         description: artwork.metadata?.description || '',
         image_link: artwork.image_link || null,
         pdf_path: finalPdfPath,

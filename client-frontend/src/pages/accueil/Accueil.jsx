@@ -34,21 +34,36 @@ const Accueil = () => {
   const [museumSubtitle, setMuseumSubtitle] = useState('Explorez, observez, ressentez. L\'art se devoile a vous.');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [tokenActivated, setTokenActivated] = useState(false);
 
-  // Handle QR code token from URL
+  // Handle QR code token from URL - avec protection contre double exécution
   useEffect(() => {
     const token = searchParams.get('token');
-    if (token) {
+    if (token && !tokenActivated) {
+      // Vérifier si ce token n'a pas déjà été traité dans cette session
+      const processedToken = sessionStorage.getItem('processed_token');
+      if (processedToken === token) {
+        console.log('Token déjà traité dans cette session');
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
+      }
+      
+      setTokenActivated(true);
+      sessionStorage.setItem('processed_token', token);
+      
       activateSession(token).then(success => {
         if (success) {
           console.log('Session activee avec succes');
           window.history.replaceState({}, '', window.location.pathname);
         } else {
           console.error('Echec activation session');
+          // Nettoyer pour permettre un nouveau scan
+          sessionStorage.removeItem('processed_token');
+          setTokenActivated(false);
         }
       });
     }
-  }, [searchParams]);
+  }, [searchParams, tokenActivated]);
 
   // Load museum settings
   useEffect(() => {

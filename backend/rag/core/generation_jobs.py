@@ -529,6 +529,59 @@ class GenerationJobManager:
         except Exception as e:
             logger.error(f"Erreur démarrage job: {e}")
     
+    def can_start_job(self, job_id: str) -> bool:
+        """
+        Vérifie si un job peut démarrer.
+        Un job ne peut démarrer que s'il n'y a pas d'autre job 'running'.
+        """
+        try:
+            conn = _connect_postgres()
+            cur = conn.cursor()
+            # Vérifier s'il y a un job running
+            cur.execute("""
+                SELECT COUNT(*) FROM generation_jobs 
+                WHERE status = 'running' AND job_id != %s
+            """, (job_id,))
+            running_count = cur.fetchone()[0]
+            cur.close()
+            conn.close()
+            return running_count == 0
+        except Exception as e:
+            logger.error(f"Erreur vérification can_start: {e}")
+            return False
+    
+    def wait_for_turn(self, job_id: str, check_interval: float = 2.0, max_wait: int = 3600) -> bool:
+        """
+        Attend que ce soit le tour du job pour démarrer.
+        Retourne True si le job peut démarrer, False si annulé ou timeout.
+        Le job reste en 'pending' pendant l'attente.
+        """
+        import time
+        waited = 0
+        
+        while waited < max_wait:
+            # Vérifier si le job a été annulé
+            job = self.get_job(job_id)
+            if not job or job.status == JobStatus.CANCELLED:
+                logger.info(f"Job {job_id} annulé pendant l'attente")
+                return False
+            
+            # Vérifier si on peut démarrer
+            if self.can_start_job(job_id):
+                logger.info(f"Job {job_id} peut maintenant démarrer (attendu {waited}s)")
+                return True
+            
+            # Attendre avant de revérifier
+            time.sleep(check_interval)
+            waited += check_interval
+            
+            # Log périodique
+            if waited % 30 < check_interval:
+                logger.info(f"Job {job_id} en attente ({waited:.0f}s)...")
+        
+        logger.warning(f"Job {job_id} timeout après {max_wait}s d'attente")
+        return False
+    
     def complete_job(self, job_id: str, success: bool = True, error_message: str = None):
         """Marque un job comme terminé"""
         try:

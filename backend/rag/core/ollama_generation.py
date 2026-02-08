@@ -10,19 +10,65 @@ import requests
 from rag.core.pregeneration_db import add_pregeneration
 
 # ===== CONFIGURATION OPTIMISÉE POUR CPU-ONLY (PAS DE GPU) =====
-# Détection CPU réelle
-_CPU_COUNT = multiprocessing.cpu_count()  # Ex: 96 threads sur VPS, 8 sur laptop
 
-# MODE CPU-ONLY: Configuration adaptative selon puissance CPU
-# - Petits CPUs (< 16 threads): 1-2 requêtes parallèles
-# - Moyens CPUs (16-64 threads): 2-4 requêtes parallèles  
-# - Gros CPUs (64+ threads): 4-6 requêtes parallèles
-if _CPU_COUNT >= 64:
-    _OLLAMA_PARALLEL_REQUESTS = min(6, _CPU_COUNT // 16)  # 96 threads -> 6 parallèles
-elif _CPU_COUNT >= 16:
-    _OLLAMA_PARALLEL_REQUESTS = min(4, _CPU_COUNT // 8)   # 32 threads -> 4 parallèles
+def _detect_cpu_count():
+    """
+    Détection robuste du nombre de CPUs, compatible Docker.
+    Utilise plusieurs méthodes pour garantir la bonne détection.
+    """
+    cpu_count = None
+    
+    # Méthode 1: Variable d'environnement explicite (priorité max)
+    env_cpu = os.getenv('CPU_COUNT')
+    if env_cpu:
+        try:
+            cpu_count = int(env_cpu)
+            print(f"   (détecté via CPU_COUNT env: {cpu_count})")
+            return cpu_count
+        except:
+            pass
+    
+    # Méthode 2: multiprocessing (standard Python)
+    try:
+        cpu_count = multiprocessing.cpu_count()
+    except:
+        pass
+    
+    # Méthode 3: Lecture /proc/cpuinfo (Linux/Docker)
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            proc_count = len([l for l in f.readlines() if l.startswith('processor')])
+            if proc_count > 0:
+                # Prendre le max entre les deux méthodes
+                cpu_count = max(cpu_count or 0, proc_count)
+    except:
+        pass
+    
+    # Méthode 4: os.cpu_count() (fallback)
+    if not cpu_count:
+        cpu_count = os.cpu_count() or 4
+    
+    return cpu_count
+
+# Détection CPU réelle
+_CPU_COUNT = _detect_cpu_count()  # Ex: 96 threads sur VPS, 8 sur laptop
+
+# PRIORITÉ: Variable d'environnement (définie dans docker-compose) sinon calcul adaptatif
+_ENV_PARALLEL = os.getenv('OLLAMA_PARALLEL_REQUESTS')
+if _ENV_PARALLEL:
+    _OLLAMA_PARALLEL_REQUESTS = int(_ENV_PARALLEL)
+    print(f"   (OLLAMA_PARALLEL_REQUESTS depuis env: {_OLLAMA_PARALLEL_REQUESTS})")
 else:
-    _OLLAMA_PARALLEL_REQUESTS = max(1, _CPU_COUNT // 4)   # 8 threads -> 2 parallèles
+    # MODE CPU-ONLY: Configuration adaptative selon puissance CPU
+    # - Petits CPUs (< 16 threads): 1-2 requêtes parallèles
+    # - Moyens CPUs (16-64 threads): 2-4 requêtes parallèles  
+    # - Gros CPUs (64+ threads): 4-6 requêtes parallèles
+    if _CPU_COUNT >= 64:
+        _OLLAMA_PARALLEL_REQUESTS = min(6, _CPU_COUNT // 16)  # 96 threads -> 6 parallèles
+    elif _CPU_COUNT >= 16:
+        _OLLAMA_PARALLEL_REQUESTS = min(4, _CPU_COUNT // 8)   # 32 threads -> 4 parallèles
+    else:
+        _OLLAMA_PARALLEL_REQUESTS = max(1, _CPU_COUNT // 4)   # 8 threads -> 2 parallèles
 
 # Threads CPU par requête Ollama - ne pas dépasser 75% du CPU total
 _THREADS_PER_REQUEST = max(4, min(_CPU_COUNT * 3 // 4, _CPU_COUNT // _OLLAMA_PARALLEL_REQUESTS))
