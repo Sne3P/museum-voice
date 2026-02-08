@@ -595,26 +595,44 @@ const Resume = () => {
 
       {/* Slides Container - Style Instagram Reels */}
       <div className="slides-container">
-        {/* Previous Artwork Slide */}
+        {/* Previous Artwork Slide - SAME LAYOUT AS CURRENT */}
         {prevArtwork && (
           <div 
             className={`artwork-slide prev ${(swipeDirection === 'vertical' || isTransitioning) && swipeY > 0 ? 'visible' : ''}`}
             style={{
               transform: `translateY(${-100 + slideOffset}%)`,
-              transition: 'none' // Animation gérée par JS
+              transition: 'none'
             }}
           >
-            <div className="slide-content">
-              {prevArtwork.image_link ? (
-                <img src={prevArtwork.image_link} alt={prevArtwork.title} className="slide-image" />
-              ) : (
-                <div className="no-image"><span>Image non disponible</span></div>
+            <main className={`resume-main ${viewMode}`}>
+              {/* Background blur - same as current */}
+              {prevArtwork.image_link && (
+                <div className="artwork-backdrop">
+                  <img src={prevArtwork.image_link} alt="" />
+                </div>
               )}
-              <div className="slide-info">
-                <h2>{prevArtwork.title || 'Titre inconnu'}</h2>
-                <p>{prevArtwork.artist || 'Artiste inconnu'}</p>
+              {/* Image View - same structure */}
+              <div className={`view-panel image-view ${viewMode === 'image' ? 'active' : ''}`}>
+                <div className="image-container">
+                  {prevArtwork.image_link ? (
+                    <img src={prevArtwork.image_link} alt={prevArtwork.title} className="artwork-img" />
+                  ) : (
+                    <div className="no-image"><span>Image non disponible</span></div>
+                  )}
+                </div>
               </div>
-            </div>
+              {/* Text View - same structure */}
+              <div className={`view-panel text-view ${viewMode === 'text' ? 'active' : ''}`}>
+                <div className="text-scroll">
+                  <p className="narration">{prevArtwork.narration || "Description non disponible."}</p>
+                </div>
+              </div>
+              {/* View tabs - same as current */}
+              <div className="view-tabs">
+                <button className={`tab ${viewMode === 'image' ? 'active' : ''}`}>Image</button>
+                <button className={`tab ${viewMode === 'text' ? 'active' : ''}`}>Texte</button>
+              </div>
+            </main>
           </div>
         )}
 
@@ -686,26 +704,44 @@ const Resume = () => {
           </main>
         </div>
 
-        {/* Next Artwork Slide */}
+        {/* Next Artwork Slide - SAME LAYOUT AS CURRENT */}
         {nextArtwork && (
           <div 
             className={`artwork-slide next ${(swipeDirection === 'vertical' || isTransitioning) && swipeY < 0 ? 'visible' : ''}`}
             style={{
               transform: `translateY(${100 + slideOffset}%)`,
-              transition: 'none' // Animation gérée par JS
+              transition: 'none'
             }}
           >
-            <div className="slide-content">
-              {nextArtwork.image_link ? (
-                <img src={nextArtwork.image_link} alt={nextArtwork.title} className="slide-image" />
-              ) : (
-                <div className="no-image"><span>Image non disponible</span></div>
+            <main className={`resume-main ${viewMode}`}>
+              {/* Background blur - same as current */}
+              {nextArtwork.image_link && (
+                <div className="artwork-backdrop">
+                  <img src={nextArtwork.image_link} alt="" />
+                </div>
               )}
-              <div className="slide-info">
-                <h2>{nextArtwork.title || 'Titre inconnu'}</h2>
-                <p>{nextArtwork.artist || 'Artiste inconnu'}</p>
+              {/* Image View - same structure */}
+              <div className={`view-panel image-view ${viewMode === 'image' ? 'active' : ''}`}>
+                <div className="image-container">
+                  {nextArtwork.image_link ? (
+                    <img src={nextArtwork.image_link} alt={nextArtwork.title} className="artwork-img" />
+                  ) : (
+                    <div className="no-image"><span>Image non disponible</span></div>
+                  )}
+                </div>
               </div>
-            </div>
+              {/* Text View - same structure */}
+              <div className={`view-panel text-view ${viewMode === 'text' ? 'active' : ''}`}>
+                <div className="text-scroll">
+                  <p className="narration">{nextArtwork.narration || "Description non disponible."}</p>
+                </div>
+              </div>
+              {/* View tabs - same as current */}
+              <div className="view-tabs">
+                <button className={`tab ${viewMode === 'image' ? 'active' : ''}`}>Image</button>
+                <button className={`tab ${viewMode === 'text' ? 'active' : ''}`}>Texte</button>
+              </div>
+            </main>
           </div>
         )}
       </div>
