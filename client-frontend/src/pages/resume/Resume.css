@@ -693,10 +693,11 @@
 /* ================================ */
 
 .slides-container {
-  position: relative;
-  flex: 1;
-  margin-top: calc(70px + env(safe-area-inset-top, 0px));
-  margin-bottom: 250px;
+  position: absolute;
+  top: calc(70px + env(safe-area-inset-top, 0px));
+  left: 0;
+  right: 0;
+  bottom: 220px;
   overflow: hidden;
 }
 
@@ -725,21 +726,14 @@
   opacity: 1;
 }
 
-/* Resume main dans les slides prev/next - même structure que current */
+/* Resume main dans les slides - SANS marges, le container gère l'espace */
 .artwork-slide .resume-main {
   height: 100%;
-  margin-top: calc(70px + env(safe-area-inset-top, 0px));
-  margin-bottom: 220px;
+  margin: 0;
   flex: 1;
   display: flex;
   position: relative;
   overflow: hidden;
-}
-
-/* Current slide - reset les marges car déjà géré par le container */
-.artwork-slide.current .resume-main {
-  margin-top: calc(70px + env(safe-area-inset-top, 0px));
-  margin-bottom: 220px;
 }
 
 /* Backdrop fixe - ne bouge pas pendant le swipe */

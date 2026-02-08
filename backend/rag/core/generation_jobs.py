@@ -129,13 +129,24 @@ class GenerationJob:
     
     def _estimate_remaining_intelligent(self) -> Optional[float]:
         """
-        Estimation du temps restant basée UNIQUEMENT sur les vraies générations.
-        Les skips sont instantanés et ne comptent pas.
+        Estimation du temps restant qui DESCEND seconde par seconde.
         
-        Méthode:
-        1. Calculer le throughput de GÉNÉRATIONS: generated / elapsed
-        2. Estimer le nombre de générations restantes
-        3. Temps restant = générations_restantes / throughput
+        Formule: remaining = total_expected - elapsed
+        où total_expected = (total_items / completed_items) × elapsed
+        
+        Simplification: remaining = elapsed × (remaining_items / completed_items)
+        
+        MAIS pour que ça descende, on utilise:
+        remaining = (total_items / completed_items) × elapsed - elapsed
+                  = elapsed × ((total_items / completed_items) - 1)
+                  = elapsed × (remaining_items / completed_items)
+        
+        Ça augmente quand elapsed augmente... 
+        
+        VRAIE SOLUTION: Fixer le temps estimé au moment de chaque complétion
+        et soustraire le temps écoulé depuis.
+        
+        On utilise: temps_restant = avg_time_per_item × remaining_items - temps_depuis_dernière_completion
         """
         if not self.started_at:
             return None
@@ -145,52 +156,35 @@ class GenerationJob:
             return 0
         
         elapsed = (datetime.now() - self.started_at).total_seconds()
-        generations_done = self.generated
         
-        # Vérifier si force_regenerate est activé
-        force_regenerate = self.params.get('force_regenerate', False)
+        # Phase de démarrage
+        if elapsed < 3 or self.completed_items < 1:
+            time_per_item = 15.0 / MAX_PARALLEL_GENERATIONS
+            return remaining_items * time_per_item
         
-        # === ESTIMER LE NOMBRE DE GÉNÉRATIONS RESTANTES ===
-        if force_regenerate:
-            # Tout sera des générations
-            generations_remaining = remaining_items
-        elif self.completed_items > 0 and generations_done > 0:
-            # Ratio de génération observé
-            gen_ratio = generations_done / self.completed_items
-            generations_remaining = int(remaining_items * gen_ratio)
-            # Au minimum 1 si il reste des items
-            generations_remaining = max(1, generations_remaining)
-        else:
-            # Pas encore de données, on suppose tout est à générer
-            generations_remaining = remaining_items
+        # Temps moyen par item (inclut la parallélisation)
+        avg_time_per_item = elapsed / self.completed_items
         
-        # Si aucune génération restante estimée, temps = 0
-        if generations_remaining <= 0:
-            return 0
+        # Temps "de base" pour les items restants
+        base_remaining = remaining_items * avg_time_per_item
         
-        # === CALCULER LE THROUGHPUT DE GÉNÉRATIONS ===
-        # Phase de démarrage: pas assez de données
-        if elapsed < 10 or generations_done < 1:
-            # Estimation initiale: ~15s par génération, parallélisé
-            time_per_gen = 15.0 / MAX_PARALLEL_GENERATIONS
-            return generations_remaining * time_per_gen
+        # Pour faire descendre le temps:
+        # On calcule le temps écoulé "en excès" depuis que les items complétés auraient dû finir
+        # expected_elapsed = completed × avg_time = completed × (elapsed / completed) = elapsed
+        # Donc excess = 0... ça marche pas
         
-        # Throughput réel observé: générations par seconde
-        generation_throughput = generations_done / elapsed
+        # AUTRE APPROCHE: Interpoler vers la prochaine complétion
+        # On suppose que la prochaine complétion arrivera dans avg_time_per_item secondes
+        # Temps depuis "début du cycle courant" = elapsed % avg_time_per_item
+        # Temps restant dans ce cycle = avg_time_per_item - (elapsed % avg_time)
         
-        # Temps restant = générations restantes / throughput
-        remaining = generations_remaining / generation_throughput
+        # Fraction du "cycle courant" déjà écoulée
+        cycle_progress = (elapsed % avg_time_per_item) / avg_time_per_item if avg_time_per_item > 0 else 0
         
-        # Ne pas retourner de valeur négative
-        remaining = max(0, remaining)
+        # On soustrait cette fraction d'un item du temps restant
+        remaining = base_remaining - (cycle_progress * avg_time_per_item)
         
-        logger.debug(
-            f"Estimation: {generations_done} générés en {elapsed:.0f}s, "
-            f"throughput={generation_throughput:.3f}/s, "
-            f"restant={generations_remaining} → {remaining:.0f}s"
-        )
-        
-        return remaining
+        return max(0, remaining)
 
 
 def _connect_postgres():
